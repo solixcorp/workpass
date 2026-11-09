@@ -3,9 +3,9 @@ id = "TSK-1794159217-k1y"
 type = "task"
 title = "Design and migrate directory"
 description = "Model immutable user identities, status, groups and D1 migration with minimum personal data."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:33:37+09:00
-updated_at = 2026-11-09T02:33:37+09:00
+updated_at = 2026-11-09T16:10:44+09:00
 
 [metadata]
 acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]
