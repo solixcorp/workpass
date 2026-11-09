@@ -3,9 +3,9 @@ id = "TSK-1794159219-fby"
 type = "task"
 title = "Verify Tailscale integration after domain setup"
 description = "After the company domain, HTTPS WebFinger route and disposable Tailscale tenant are available, configure and test Custom OIDC login; document session revocation and unsupported user/group provisioning."
-status = "draft"
+status = "deprecated"
 created_at = 2026-11-09T02:33:39+09:00
-updated_at = 2026-11-09T03:02:36+09:00
+updated_at = 2026-11-09T16:40:53+09:00
 
 [metadata]
 acceptance = ["A real Tailscale test login succeeds using the configured issuer and WebFinger route. The test evidence records the downstream-session behavior and confirms user/group provisioning limitations."]

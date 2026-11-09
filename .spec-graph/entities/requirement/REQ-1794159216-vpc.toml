@@ -3,9 +3,9 @@ id = "REQ-1794159216-vpc"
 type = "requirement"
 title = "Reliable provisioning jobs"
 description = "Track work status, idempotency, bounded retry and reconciliation; surface partial failure and manual work, and introduce Queues only when justified."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:33:36+09:00
-updated_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T16:41:33+09:00
 
 [metadata]
 kind = "functional"

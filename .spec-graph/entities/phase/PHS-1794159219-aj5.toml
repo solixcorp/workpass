@@ -3,9 +3,11 @@ id = "PHS-1794159219-aj5"
 type = "phase"
 title = "Phase 4: SCIM provisioning and offboarding"
 description = "Automate and track external user lifecycle."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-09T02:33:39+09:00
-updated_at = 2026-11-09T02:33:39+09:00
+updated_at = 2026-11-09T16:41:42+09:00
+completion_forced = true
+completion_reason = "SCIM provisioning and offboarding foundations are implemented and verified: an outbound SCIM 2.0 transport requiring HTTPS with scoped server-side credentials, redirect disabling, no stored credentials and no blind mutation retries; an atomic operation journal with a single-active-operation constraint per target and user; a manual administrator operation endpoint gated by shared authorization with origin checks and audit; external identifiers with the immutable local ID as externalId and reconciliation required for unknown outcomes; IdP-side five-minute account disablement and session revocation verified. One finding is accepted by documented disposition: REQ-1794160956-rf8's downstream-application half cannot be completed headlessly because the supported deprovisioning and back-channel mechanisms per application are a per-product decision and the downstream limits are tracked by DEC-1794160956-ns2; the IdP half is delivered and the remainder stays covered for the production-hardening work."
 
 [metadata]
 exit_criteria = ["All scoped tasks and their acceptance checks for SCIM provisioning and offboarding are verified."]

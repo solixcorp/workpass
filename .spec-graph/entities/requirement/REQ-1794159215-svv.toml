@@ -3,9 +3,9 @@ id = "REQ-1794159215-svv"
 type = "requirement"
 title = "Authentication abuse controls"
 description = "Rate-limit password attempts and recovery flows, resist credential stuffing and account enumeration, and define safe lockout and recovery behavior without exposing credentials."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:33:35+09:00
-updated_at = 2026-11-09T02:33:35+09:00
+updated_at = 2026-11-09T16:40:49+09:00
 
 [metadata]
 kind = "non_functional"

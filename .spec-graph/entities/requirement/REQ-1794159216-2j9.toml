@@ -3,9 +3,9 @@ id = "REQ-1794159216-2j9"
 type = "requirement"
 title = "Session lifecycle and revocation"
 description = "Create, expire and revoke sessions; invalidate or deny access for disabled users; distinguish IdP sessions from independent downstream application sessions."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:33:36+09:00
-updated_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T16:40:49+09:00
 
 [metadata]
 kind = "functional"

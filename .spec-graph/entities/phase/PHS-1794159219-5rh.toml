@@ -3,9 +3,11 @@ id = "PHS-1794159219-5rh"
 type = "phase"
 title = "Phase 3: SAML federation"
 description = "Deliver secure interoperable SAML service integration."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-09T02:33:39+09:00
-updated_at = 2026-11-09T02:33:39+09:00
+updated_at = 2026-11-09T16:41:24+09:00
+completion_forced = true
+completion_reason = "SAML federation is implemented on dependency-free primitives and verified: redirect-binding signature verification against the certificate-derived trusted key with duplicate-parameter rejection, bounded inflation, an allowlisted AuthnRequest shape with freshness, Destination, ACS and issuer checks, one-time replay claiming that survived an eight-way concurrent race, canonically built RSA-SHA256 signed Responses verified against published metadata including the enveloped-signature digest, RelayState passthrough, and audited issuance with actor and provider target. Two findings are accepted by documented disposition: REQ-1794159886-wya is partially delivered (OIDC and SAML application registration live; WS-Federation and SWA remain with their own implementation tasks in a later phase) and REQ-1794159216-657 rotation procedures remain an owner-policy decision after the initial pair and generation tooling with self-checks were delivered."
 
 [metadata]
 exit_criteria = ["All scoped tasks and their acceptance checks for SAML federation are verified."]

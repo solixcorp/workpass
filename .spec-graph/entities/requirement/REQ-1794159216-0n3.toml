@@ -3,9 +3,9 @@ id = "REQ-1794159216-0n3"
 type = "requirement"
 title = "OIDC identity provider"
 description = "Provide standards-based OIDC discovery, authorization code flow, PKCE, token endpoint, JWKS and userinfo where applicable, stable subject identifiers, scopes and correctly validated client redirect URIs."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:33:36+09:00
-updated_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T16:40:49+09:00
 
 [metadata]
 kind = "functional"

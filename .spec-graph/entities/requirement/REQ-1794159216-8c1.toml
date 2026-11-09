@@ -3,9 +3,9 @@ id = "REQ-1794159216-8c1"
 type = "requirement"
 title = "SAML 2.0 identity provider"
 description = "Provide SP-initiated SAML integration, metadata, entity ID and ACS configuration, signed responses, NameID, attributes, access policy, certificate rotation and replay protections."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:33:36+09:00
-updated_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T16:41:17+09:00
 
 [metadata]
 kind = "functional"

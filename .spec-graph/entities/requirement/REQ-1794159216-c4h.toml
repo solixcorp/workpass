@@ -3,9 +3,9 @@ id = "REQ-1794159216-c4h"
 type = "requirement"
 title = "Outbound SCIM 2.0 provisioning"
 description = "Implement target-specific SCIM client integration for user creation, updates and deactivation and supported group operations, with external identifiers, attribute mapping and controlled credentials."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:33:36+09:00
-updated_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T16:41:33+09:00
 
 [metadata]
 kind = "functional"

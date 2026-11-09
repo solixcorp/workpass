@@ -3,9 +3,9 @@ id = "TSK-1794159218-y2h"
 type = "task"
 title = "Integrate OIDC and OAuth"
 description = "Configure vetted OIDC and OAuth provider with authorization code, PKCE, client policies, issuer, discovery, scopes and signing key lifecycle."
-status = "draft"
+status = "deprecated"
 created_at = 2026-11-09T02:33:38+09:00
-updated_at = 2026-11-09T02:33:38+09:00
+updated_at = 2026-11-09T16:41:05+09:00
 
 [metadata]
 acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]
@@ -30,3 +30,7 @@ type = "covers"
 [[relations]]
 to = "REQ-1794159216-seh"
 type = "covers"
+
+[[relations]]
+to = "REQ-1794159216-0n3"
+type = "delivers"

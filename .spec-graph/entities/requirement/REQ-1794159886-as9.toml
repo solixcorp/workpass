@@ -3,9 +3,9 @@ id = "REQ-1794159886-as9"
 type = "requirement"
 title = "Username and password sign-in"
 description = "Provide username-and-password login as a primary sign-in option in addition to passkey login. Users can authenticate using either enabled method, subject to the configured MFA and access policy. Use a vetted password hashing scheme with per-password salt and work factors validated against Workers limits; never store plaintext, reversibly encrypted passwords, or credentials in logs."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:44:46+09:00
-updated_at = 2026-11-09T02:44:46+09:00
+updated_at = 2026-11-09T16:40:49+09:00
 
 [metadata]
 kind = "functional"

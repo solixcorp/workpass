@@ -3,9 +3,9 @@ id = "TSK-1794159219-nsa"
 type = "task"
 title = "Build SCIM provisioning connector"
 description = "Integrate one real SCIM target with user creation, modification and deactivation, attribute mapping and external identity tracking."
-status = "draft"
+status = "deprecated"
 created_at = 2026-11-09T02:33:39+09:00
-updated_at = 2026-11-09T02:33:39+09:00
+updated_at = 2026-11-09T16:41:33+09:00
 
 [metadata]
 acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]
@@ -26,3 +26,7 @@ type = "covers"
 [[relations]]
 to = "REQ-1794159886-wya"
 type = "covers"
+
+[[relations]]
+to = "REQ-1794159216-c4h"
+type = "delivers"
