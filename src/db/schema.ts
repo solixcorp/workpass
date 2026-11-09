@@ -107,4 +107,14 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       request_count INTEGER NOT NULL
     )`,
   ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS scim_user_mappings (
+      target_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      external_user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (target_id, user_id),
+      UNIQUE (target_id, external_user_id)
+    )`,
+  ).run();
 }

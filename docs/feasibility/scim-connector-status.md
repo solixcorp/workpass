@@ -1,0 +1,7 @@
+# Outbound SCIM connector foundation
+
+The project has a server-side SCIM 2.0 transport for creating users, modifying selected user attributes, and deactivating users with `active: false`. It also has a D1 mapping table for local user IDs and target-side user IDs. These modules are not wired to an HTTP route, operator workflow, background retry loop, or automatic account lifecycle events. No production target has been selected and no downstream account has been provisioned.
+
+The transport requires an HTTPS base URL and caller-supplied bearer token, disables redirects, does not store credentials, and never automatically retries a mutation. A timeout or server error has an unknown outcome; operators must reconcile the target before retrying, especially for create. Mapping writes refuse to overwrite existing mappings. The create response must include a target user ID; a missing or malformed response after a successful HTTP mutation also needs reconciliation.
+
+The protected application migration creates `scim_user_mappings`. No inbound SCIM server is implied: inbound scope is still undecided. Target provisioning credentials, target-specific schemas, authorization, mapping rules, retries, cleanup, user-to-app assignment, audit behavior, and production interoperability remain open and must be implemented before the connector is exposed or enabled. Never infer deletion from a missing mapping.
