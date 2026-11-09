@@ -571,3 +571,13 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS app_temporal_grants_user_idx ON app_temporal_grants (user_id, subject)",
   ).run();
+  // Independent audit backup watermark (docs/security/audit-backup.md): the
+  // contiguous log position already exported to the R2 object store.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS audit_backup_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      log_pos INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+}
