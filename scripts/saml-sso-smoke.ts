@@ -249,6 +249,23 @@ expect("relay state reaches the POST page", relayed.status === 200 && relayedPag
 const replay = await fetch(ssoUrl, { headers: { Cookie: cookieHeader() } });
 expect("replayed signed request rejected", replay.status === 400, replay.status + " " + (await replay.clone().text()).slice(0, 120));
 
+// Eight concurrent requests for the same signed request: the atomic one-time
+// claim must yield exactly one issuance and seven rejections.
+const racedId = `_${randomId("r8", 12).replace(/-/g, "")}`;
+const racedUrl = await buildSignedSsoUrl(
+  '<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ' +
+  `ID="${racedId}" Version="2.0" IssueInstant="${new Date().toISOString().replace(/\.\d+Z$/, "Z")}" ` +
+  `Destination="${base}${SSO_PATH}" AssertionConsumerServiceURL="${spAcsUrl}">` +
+  `<saml:Issuer>${spEntityId}</saml:Issuer></samlp:AuthnRequest>`,
+  spKeyPair.privateKey!,
+);
+const racedStatuses = (await Promise.all(
+  Array.from({ length: 8 }, () => fetch(racedUrl, { headers: { Cookie: cookieHeader() } }).then((r) => r.status)),
+)).sort();
+const successes = racedStatuses.filter((status) => status === 200).length;
+const rejections = racedStatuses.filter((status) => status === 400).length;
+expect("race yields one issuance and seven rejections", successes === 1 && rejections === 7, racedStatuses);
+
 // Tampered request bytes break the binding signature.
 const tamperedUrl = ssoUrl.replace(encodeURIComponent(spAcsUrl), encodeURIComponent(spAcsUrl.replace("acs", "ac1")));
 const tampered = await fetch(tamperedUrl, { headers: { Cookie: cookieHeader() } });

@@ -116,6 +116,20 @@ expect("createdBy is the acting admin", createdBody.group?.createdBy === adminUs
 const duplicate = await call("/api/admin/directory-groups", { method: "POST", origin: true, body: { name: groupName } });
 expect("duplicate name rejected", duplicate.status === 409, duplicate.status);
 
+// Four concurrent creates with the same unique name: exactly one may win.
+const raced = await Promise.all(
+  Array.from({ length: 4 }, () => call("/api/admin/directory-groups", { method: "POST", origin: true, body: { name: `race-${groupName}` } }).then((r) => r.status)),
+).then((statuses) => statuses.sort());
+const createdWins = raced.filter((status) => status === 201).length;
+const conflictLoses = raced.filter((status) => status === 409).length;
+expect("unique-name race yields one creation and three conflicts", createdWins === 1 && conflictLoses === 3, raced);
+const raceGroup = (await (await call("/api/admin/directory-groups")).json()) as { groups?: Array<{ name?: string; id?: string }> };
+const racedId = raceGroup.groups?.find((g) => g.name === `race-${groupName}`)?.id ?? "";
+if (racedId) {
+  const cleanup = await call(`/api/admin/directory-groups/${racedId}`, { method: "DELETE", origin: true });
+  expect("race group cleaned up", cleanup.status === 200, cleanup.status);
+}
+
 const invalidName = await call("/api/admin/directory-groups", { method: "POST", origin: true, body: { name: "not allowed/bad" } });
 expect("invalid name rejected", invalidName.status === 400, invalidName.status);
 
