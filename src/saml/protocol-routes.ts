@@ -20,6 +20,7 @@ import {
   recordAppIssuance,
   policyTtlSeconds,
 } from "../access/policies";
+import { userSatisfiesRequireMfa } from "../mfa/second-factor";
 import { getEnabledSamlServiceProviderByEntityId } from "./service-providers";
 import { importSamlIdpPrivateKey, importSamlServiceProviderTrustedKey } from "./certificates";
 import { buildSignedSamlResponse, type SamlSigningMaterial } from "./assertion";
@@ -109,8 +110,9 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
     const policySubject = `saml:${provider.entityId}`;
     const policy = await loadAppAccessPolicy(context.env, policySubject);
     if (policy) {
-      if (policy.requireMfa && session.user.twoFactorEnabled !== true) {
-        return reject(context, "mfa-required");
+      if (policy.requireMfa) {
+        const satisfied = await userSatisfiesRequireMfa(context.env, session.user.id, session.user.twoFactorEnabled === true);
+        if (!satisfied) return reject(context, "mfa-required");
       }
       const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
       if (!evaluation.allowed) {

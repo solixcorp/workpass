@@ -20,6 +20,7 @@ import {
 } from "./relying-parties";
 import { buildWsfedSignInResult } from "./token";
 import { buildSsoLoginPage } from "../pages/sso-login";
+import { userSatisfiesRequireMfa } from "../mfa/second-factor";
 import { loadSamlIdpSigningMaterial } from "../saml/protocol-routes";
 import {
   evaluateAppAccess,
@@ -188,8 +189,9 @@ wsfedProtocolRoutes.get(WSFED_SIGNIN_PATH, async (context) => {
     const policySubject = `wsfed:${party.realm}`;
     const policy = await loadAppAccessPolicy(context.env, policySubject);
     if (policy) {
-      if (policy.requireMfa && session.user.twoFactorEnabled !== true) {
-        return rejectSignin(context, "mfa-required");
+      if (policy.requireMfa) {
+        const satisfied = await userSatisfiesRequireMfa(context.env, session.user.id, session.user.twoFactorEnabled === true);
+        if (!satisfied) return rejectSignin(context, "mfa-required");
       }
       const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
       if (!evaluation.allowed) return rejectSignin(context, "app-policy-denied");

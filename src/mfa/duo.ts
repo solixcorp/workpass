@@ -50,9 +50,8 @@ async function duoSignature(config: DuoConfig, date: string, method: string, pat
 
 export interface DuoAuthCall {
   user: string;
-  /** "auto" (push recommended), "passcode" for hardware-token or SMS passcodes. */
-  factor?: "auto" | "passcode" | "push";
-  passcode?: string | null;
+  /** This deployment uses Duo for push notifications only. */
+  factor?: "auto" | "push";
 }
 
 /** Perform Duo /auth/v2/auth for a user and normalize the result. */
@@ -60,7 +59,6 @@ export async function duoAuthCall(env: Env, input: DuoAuthCall): Promise<DuoAuth
   const config = duoConfig(env);
   if (!config) return null;
   const params = new URLSearchParams({ user: input.user, factor: input.factor ?? "auto" });
-  if (input.passcode) params.set("passcode", input.passcode);
   const date = new Date().toUTCString();
   const signature = await duoSignature(config, date, "POST", "/auth/v2/auth", params.toString());
   const authHeader = toBase64(new TextEncoder().encode(`${config.ikey}:${signature}`));

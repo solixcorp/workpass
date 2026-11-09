@@ -229,6 +229,19 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     "CREATE INDEX IF NOT EXISTS app_issuance_history_user_idx ON app_issuance_history (user_id, issued_at)",
   ).run();
   await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS mfa_hotp_tokens (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      secret_base32 TEXT NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS mfa_hotp_tokens_user_idx ON mfa_hotp_tokens (user_id)",
+  ).run();
+  await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS wsfed_relying_parties (
       id TEXT PRIMARY KEY NOT NULL,
       realm TEXT NOT NULL UNIQUE,

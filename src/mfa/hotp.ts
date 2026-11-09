@@ -1,0 +1,92 @@
+/**
+ * HOTP (RFC 4226) verification for hardware OTP tokens that we manage
+ * ourselves, independent of Duo: the operator attaches the token's base32
+ * secret to a user, and the user's generated passcode is verified against a
+ * small counter lookahead window (replay-safe by counter advancement).
+ */
+
+import type { Env } from "../env";
+
+const HOTP_LOOKAHEAD = 5;
+const HOTP_DIGITS = 6;
+
+function base32Decode(value: string): Uint8Array {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let accumulator = 0;
+  const output: number[] = [];
+  for (const char of value.replace(/=+$/g, "").toUpperCase()) {
+    const index = alphabet.indexOf(char);
+    if (index < 0) throw new Error("The token secret is not valid base32");
+    accumulator = (accumulator << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      output.push((accumulator >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  if (bits > 0) output.push((accumulator << (8 - bits)) & 0xff);
+  return new Uint8Array(output);
+}
+
+function hotpCode(secret: Uint8Array, counter: number): Promise<string> {
+  const counterBytes = new Uint8Array(8);
+  new DataView(counterBytes.buffer).setBigUint64(0, BigInt(counter), false);
+  const rawKey = new ArrayBuffer(secret.length);
+  new Uint8Array(rawKey).set(secret);
+  return crypto.subtle
+    .importKey("raw", rawKey, { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
+    .then((key) => crypto.subtle.sign("HMAC", key, counterBytes.buffer))
+    .then((mac) => {
+      const bytes = new Uint8Array(mac);
+      const offset = bytes[bytes.length - 1]! & 0x0f;
+      const binary =
+        ((bytes[offset]! & 0x7f) << 24) |
+        (bytes[offset + 1]! << 16) |
+        (bytes[offset + 2]! << 8) |
+        bytes[offset + 3]!;
+      return String(binary % 1_000_000).padStart(6, "0");
+    });
+}
+
+export function generateHotpSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(20));
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let out = "";
+  for (const byte of bytes) out += alphabet[byte & 31]!;
+  return out;
+}
+
+export async function hotpVerify(env: Env, userId: string, code: string): Promise<{ verified: boolean; tokenId: string | null }> {
+  if (!/^\d{6}$/.test(code)) return { verified: false, tokenId: null };
+  const rows = await env.DB.prepare(
+    `SELECT id, secret_base32 AS secretB32, counter FROM mfa_hotp_tokens WHERE user_id = ? ORDER BY created_at ASC LIMIT 10`,
+  ).bind(userId).all<{ id: string; secretB32: string; counter: number }>();
+  let secret: Uint8Array | null = null;
+  for (const row of rows.results) {
+    try {
+      secret = base32Decode(row.secretB32);
+    } catch {
+      continue;
+    }
+    if (!secret) continue;
+    for (let offset = 0; offset <= HOTP_LOOKAHEAD; offset += 1) {
+      const candidate = await hotpCode(secret, row.counter + offset);
+      if (candidate === code) {
+        await env.DB.prepare(
+          "UPDATE mfa_hotp_tokens SET counter = ? WHERE id = ? AND user_id = ?",
+        ).bind(row.counter + offset + 1, row.id, userId).run();
+        return { verified: true, tokenId: row.id };
+      }
+    }
+  }
+  return { verified: false, tokenId: null };
+}
+
+/** Does the user have an enrolled hardware OTP token? */
+export async function userHasHotpToken(env: Env, userId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM mfa_hotp_tokens WHERE user_id = ?",
+  ).bind(userId).first<{ count: number }>();
+  return (row?.count ?? 0) > 0;
+}

@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { jwt, twoFactor, username } from "better-auth/plugins";
+import { jwt, phoneNumber, twoFactor, username } from "better-auth/plugins";
 import { admin } from "better-auth/plugins/admin";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { passkey } from "@better-auth/passkey";
@@ -68,16 +68,24 @@ export function createAuth(env: Env) {
         jwt: { issuer: `${baseURL}/api/auth` },
         jwks: { keyPairConfig: { alg: "ES256" } },
       }),
-      passkey({ rpID: authBaseUrl.hostname, rpName: "Internal Auth" }),
+      phoneNumber({
+        // sms OTP delivery: the dev/mock webhook records the code; production
+        // gateways are wired through env credentials per deployment decision.
+        sendOTP: async ({ phoneNumber, code }, ctx) => {
+          const { sendSmsCode } = await import("../mfa/otp-senders");
+          await sendSmsCode(env, { to: phoneNumber, code });
+        },
+        phoneNumberValidator: (phoneNumber) => /^\+[1-9][0-9]{5,14}$/.test(phoneNumber.trim()),
+      }),
       twoFactor({
         issuer: authBaseUrl.hostname,
         otpOptions: {
           async sendOTP({ user, otp }, ctx) {
-            // Delivery is pluggable: a dev/mock webhook records the code, or the
-            // configured production sender delivers it. With no sender configured
-            // this fails closed and the OTP enrollment/use is not offered.
-            const { sendOtpEmail } = await import("../mfa/otp-senders");
-            await sendOtpEmail(env, { to: user.email, userId: user.id, otp });
+            // Delivery routing: a verified phone number receives the passcode by
+            // SMS (Duo-free alternative is not used for SMS; this is our own
+            // gateway), otherwise the code goes to the account email.
+            const { sendOtpWithFallback } = await import("../mfa/otp-senders");
+            await sendOtpWithFallback(env, { userId: user.id, email: user.email, otp });
           },
         },
       }),
