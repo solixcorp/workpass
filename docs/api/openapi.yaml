@@ -260,6 +260,495 @@ paths:
           description: Authenticated user is not permitted to create users.
         "404":
           description: Public signup route remains unavailable.
+  /api/admin/audit-events/verify:
+    get:
+      operationId: verifyAuditLog
+      summary: Recompute the tamper-evidence hashes of the positioned audit log (admin only)
+      responses:
+        "200":
+          description: Verification result with per-position coverage and legacy-entry count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verification]
+                properties:
+                  verification:
+                    type: object
+                    required: [verified, entries, legacyEntries, firstProblem]
+                    properties:
+                      verified: { type: boolean }
+                      entries: { type: integer }
+                      legacyEntries: { type: integer }
+                      firstProblem: { type: [string, "null"] }
+  /api/admin/audit-events/{eventId}:
+    get:
+      operationId: getAuditEvent
+      summary: Retrieve one audit event (admin only)
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The event.
+        "404": { description: Not found. }
+  /api/admin/saml-service-providers:
+    get:
+      operationId: listSamlServiceProviders
+      summary: List SAML SP registrations (admin only; omits certificates)
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200":
+          description: Registrations ordered by id.
+    post:
+      operationId: createSamlServiceProvider
+      summary: Register a SAML SP (disabled by default; admin only, exact Origin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entityId, acsUrl, signingCertificate]
+              properties:
+                entityId: { type: string, maxLength: 2048 }
+                acsUrl: { type: string, format: uri }
+                signingCertificate: { type: string, description: PEM-encoded X.509 certificate }
+      responses:
+        "201": { description: Created disabled. }
+        "409": { description: entityId already registered. }
+  /api/admin/saml-service-providers/{id}:
+    get:
+      operationId: getSamlServiceProvider
+      summary: Retrieve one SAML SP registration (admin only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: The registration with the certificate. }
+        "404": { description: Not found. }
+    delete:
+      operationId: deleteSamlServiceProvider
+      summary: Remove a disabled SAML SP registration (admin only, exact Origin)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Removed. }
+        "409": { description: Enabled registrations must be disabled first. }
+  /api/admin/saml-service-providers/{id}/enable:
+    post:
+      operationId: enableSamlServiceProvider
+      summary: Enable a SAML SP whose certificate imports as a usable RSA verify key
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Enabled. }
+        "400": { description: The stored certificate is not usable. }
+  /api/admin/saml-service-providers/{id}/disable:
+    post:
+      operationId: disableSamlServiceProvider
+      summary: Disable a SAML SP registration
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Disabled. }
+  /saml/sso:
+    get:
+      operationId: samlSingleSignOn
+      security: []
+      summary: SAML SSO via HTTP-Redirect binding (signed AuthnRequest required)
+      parameters:
+        - in: query
+          name: SAMLRequest
+          required: true
+          schema: { type: string }
+        - in: query
+          name: SigAlg
+          schema: { type: string }
+        - in: query
+          name: Signature
+          schema: { type: string }
+        - in: query
+          name: RelayState
+          schema: { type: string }
+      responses:
+        "200":
+          description: Auto-submitting POST form carrying the signed Response to the registered ACS.
+        "400": { description: Generic rejection; the stage is recorded server-side. }
+        "401": { description: Issuer has no enabled registration. }
+        "503": { description: Identity-provider signing material is not configured. }
+  /saml/metadata:
+    get:
+      operationId: samlIdpMetadata
+      security: []
+      summary: SAML IdP metadata (rotation publishes both signing KeyDescriptors)
+      responses:
+        "200":
+          description: application/samlmetadata+xml entity descriptor.
+        "503": { description: Signing material not configured. }
+  /api/admin/scim-operations:
+    post:
+      operationId: runScimOperation
+      summary: Execute one outbound SCIM operation (admin only; requires ENABLE_SCIM_PROVISIONING)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, operation]
+              properties:
+                userId: { type: string }
+                operation: { type: string, enum: [create, update, deactivate] }
+      responses:
+        "200": { description: Operation succeeded and was journaled. }
+        "409": { description: Mapping conflict or the single-active journal blocks it. }
+        "502": { description: Outcome unknown; reconciliation required. }
+  /api/admin/scim-operations/{id}:
+    get:
+      operationId: getScimOperation
+      summary: Read one journaled SCIM operation (admin only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: The journal entry. }
+        "404": { description: Not found. }
+  /api/admin/directory-groups:
+    get:
+      operationId: listDirectoryGroups
+      summary: List first-party directory groups (admin only)
+      responses:
+        "200": { description: Groups ordered by id. }
+    post:
+      operationId: createDirectoryGroup
+      summary: Create a directory group (admin only; audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, pattern: "^[A-Za-z0-9_.-]{1,64}$" }
+                description: { type: string }
+      responses:
+        "201": { description: Created. }
+        "409": { description: Name already exists. }
+  /api/admin/directory-groups/{id}:
+    get:
+      operationId: getDirectoryGroup
+      summary: Group detail with members (admin only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: The group with up to 500 members. }
+    delete:
+      operationId: deleteDirectoryGroup
+      summary: Remove the group and its memberships (admin only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Removed. }
+  /api/admin/directory-groups/{id}/members:
+    post:
+      operationId: addDirectoryGroupMember
+      summary: Grant membership to an existing user (admin only; audited)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId: { type: string }
+      responses:
+        "201": { description: Granted. }
+        "404": { description: User not found. }
+        "409": { description: Already a member. }
+  /api/admin/directory-groups/{id}/members/{userId}:
+    delete:
+      operationId: removeDirectoryGroupMember
+      summary: Revoke membership (admin only; audited)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Revoked. }
+        "404": { description: Membership not found. }
+  /api/admin/wsfed-relying-parties:
+    get:
+      operationId: listWsfedRelyingParties
+      summary: List WS-Federation relying parties (admin only)
+      responses:
+        "200": { description: Parties with enabled flags. }
+    post:
+      operationId: createWsfedRelyingParty
+      summary: Register a WS-Federation relying party (disabled by default; admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [realm, replyUrl]
+              properties:
+                realm: { type: string, maxLength: 2048 }
+                replyUrl: { type: string, format: uri }
+      responses:
+        "201": { description: Created disabled. }
+        "409": { description: Realm already registered. }
+  /api/admin/wsfed-relying-parties/{id}/enable:
+    post:
+      operationId: enableWsfedRelyingParty
+      summary: Enable a WS-Federation relying party (admin only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Enabled. }
+  /api/admin/wsfed-relying-parties/{id}/disable:
+    post:
+      operationId: disableWsfedRelyingParty
+      summary: Disable a WS-Federation relying party (admin only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Disabled. }
+  /api/admin/wsfed-relying-parties/{id}:
+    delete:
+      operationId: deleteWsfedRelyingParty
+      summary: Remove a disabled WS-Federation relying party (admin only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Removed. }
+        "409": { description: Enabled parties must be disabled first. }
+  /wsfed/signin:
+    get:
+      operationId: wsfedPassiveSignIn
+      security: []
+      summary: WS-Federation passive sign-in (wa=wsignin1.0; wsignout1.0 returns a cleanup page)
+      parameters:
+        - in: query
+          name: wa
+          required: true
+          schema: { type: string }
+        - in: query
+          name: wtrealm
+          schema: { type: string }
+        - in: query
+          name: wreply
+          schema: { type: string }
+        - in: query
+          name: wctx
+          schema: { type: string }
+      responses:
+        "200": { description: Auto-submitting POST form carrying the signed SAML 1.1 token to the registered reply URL. }
+        "401": { description: Realm is not an enabled registration. }
+        "503": { description: Signing material not configured. }
+  /wsfed/metadata:
+    get:
+      operationId: wsfedFederationMetadata
+      security: []
+      summary: WS-Federation metadata with signing key and passive requestor endpoint
+      responses:
+        "200": { description: application/xml entity descriptor. }
+        "503": { description: Signing material not configured. }
+  /sign-in:
+    get:
+      operationId: oidcSignInHandoff
+      security: []
+      summary: OIDC login handoff page (the authorization endpoint redirects here with a signed oauth query)
+      responses:
+        "200": { description: The sign-in form; approval posts the signed query back to the authorization endpoint. }
+        "400": { description: No signed continuation present. }
+  /consent:
+    get:
+      operationId: oidcConsentPage
+      security: []
+      summary: OIDC consent page (renders the requested client and scopes; approval posts the signed query to the consent endpoint)
+      responses:
+        "200": { description: The consent form. }
+        "400": { description: No signed continuation present. }
+  /api/swa/grants:
+    post:
+      operationId: issueSwaGrant
+      summary: Issue a five-minute single-use SWA grant for the acting user (same-origin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [origin]
+              properties:
+                origin: { type: string, description: Exact registered HTTPS origin }
+      responses:
+        "201": { description: Grant issued with its nonce. }
+        "401": { description: Origin is not registered and enabled. }
+  /api/swa/exchange:
+    post:
+      operationId: exchangeSwaGrant
+      summary: Consume a grant nonce atomically (single use; same-origin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nonce]
+              properties:
+                nonce: { type: string }
+      responses:
+        "200": { description: Attestation with the application and expiry. }
+        "401": { description: Unknown, replayed, expired nonce or user mismatch. }
+  /api/admin/swa-applications:
+    get:
+      operationId: listSwaApplications
+      summary: List SWA applications (admin only)
+      responses:
+        "200": { description: Applications with enabled flags. }
+    post:
+      operationId: createSwaApplication
+      summary: Register an SWA application bound to an exact HTTPS origin (disabled by default; admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, origin]
+              properties:
+                name: { type: string, pattern: "^[A-Za-z0-9_.-]{1,64}$" }
+                origin: { type: string, description: Exact HTTPS origin }
+      responses:
+        "201": { description: Created disabled. }
+        "409": { description: Origin already registered. }
+  /api/admin/swa-applications/{id}:
+    delete:
+      operationId: deleteSwaApplication
+      summary: Remove a disabled SWA application (admin only; audited)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Removed. }
+        "409": { description: Enabled applications must be disabled first. }
+  /api/admin/swa-applications/{id}/enable:
+    post:
+      operationId: enableSwaApplication
+      summary: Enable an SWA application (admin only; audited)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Enabled. }
+  /api/admin/swa-applications/{id}/disable:
+    post:
+      operationId: disableSwaApplication
+      summary: Disable an SWA application (admin only; audited)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Disabled. }
+  /api/admin/swa-applications/{id}/grants:
+    get:
+      operationId: listSwaApplicationGrants
+      summary: Visible activity view with masked nonces (admin only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Grants with consumed flags. }
+  /api/admin/swa-revocations:
+    post:
+      operationId: revokeUserSwaGrants
+      summary: Immediately burn a user's outstanding SWA grants (admin only; audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId: { type: string }
+      responses:
+        "200": { description: The number of grants revoked. }
+  /api/admin/usage-snapshot:
+    get:
+      operationId: getUsageSnapshot
+      summary: Row counts per bounded surface for the budget review (admin only)
+      responses:
+        "200":
+          description: Counts captured at the call time.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [capturedAt, counts]
+                properties:
+                  capturedAt: { type: string, format: date-time }
+                  counts: { type: object, additionalProperties: { type: integer } }
+
 components:
   securitySchemes:
     sessionCookie:
