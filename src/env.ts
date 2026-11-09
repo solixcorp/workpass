@@ -52,7 +52,7 @@ export interface Env extends Partial<WorkerBindings> {
   MFA_SMS_WEBHOOK_URL?: string;
   /** Sealed-storage AEAD key: 32 bytes, base64-encoded. */
   AEAD_SEALING_KEY?: string;
-  /** Cipher for sealed storage; defaults to xchacha20poly1305 (the only one). */
+  /** Cipher for sealed storage; xchacha20poly1305 (default) or aes256gcm (FIPS-aligned). */
   SEALED_STORAGE_CIPHER?: string;
   /** OPAQUE (RFC 9807) server master key: 32 bytes, base64-encoded. */
   OPAQUE_MASTER_KEY?: string;
