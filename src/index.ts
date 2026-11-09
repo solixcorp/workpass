@@ -11,8 +11,8 @@ import { cleanupSamlRequestClaims } from "./saml/request-claims";
 import { cleanupSwaGrants } from "./swa/applications";
 import { samlProtocolRoutes } from "./saml/protocol-routes";
 import { wsfedProtocolRoutes } from "./wsfed/routes";
-import { consentRoutes } from "./oidc/consent";
-import { oidcSignInRoutes } from "./oidc/sign-in";
+import { consentRoutes } from "./pages/consent";
+import { oidcSignInRoutes } from "./pages/sign-in";
 import { swaUserRoutes } from "./swa/routes";
 
 const app = new Hono<{ Bindings: Env }>();
