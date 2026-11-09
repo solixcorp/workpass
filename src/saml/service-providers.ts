@@ -82,13 +82,22 @@ export async function getEnabledSamlServiceProviderByEntityId(
 }
 
 /** Registrations are always created disabled until the protocol implementation is ready. */
+/** A duplicate insert returns false; any other constraint failure throws. */
 export async function createSamlServiceProvider(env: Env, input: Omit<SamlServiceProvider, "enabled">): Promise<boolean> {
   validateSamlServiceProvider({ ...input, enabled: false });
-  const result = await env.DB.prepare(
-    `INSERT OR IGNORE INTO saml_service_providers
-     (id, entity_id, acs_url, signing_certificate, enabled) VALUES (?, ?, ?, ?, 0)`,
-  ).bind(input.id, input.entityId, input.acsUrl, input.signingCertificate).run();
-  return result.meta.changes === 1;
+  let changes: number;
+  try {
+    const result = await env.DB.prepare(
+      `INSERT INTO saml_service_providers
+       (id, entity_id, acs_url, signing_certificate, enabled) VALUES (?, ?, ?, ?, 0)`,
+    ).bind(input.id, input.entityId, input.acsUrl, input.signingCertificate).run();
+    changes = result.meta.changes;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("UNIQUE constraint failed")) throw error;
+    changes = 0;
+  }
+  return changes === 1;
 }
 
 /** Set the enabled flag. Returns false when the registration does not exist. */

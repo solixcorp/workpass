@@ -52,11 +52,19 @@ export async function getEnabledWsfedRelyingPartyByRealm(
 
 export async function createWsfedRelyingParty(env: Env, input: Omit<WsfedRelyingParty, "enabled"> & { createdBy: string }): Promise<boolean> {
   validateWsfedRelyingParty({ ...input, enabled: false });
-  const result = await env.DB.prepare(
-    `INSERT OR IGNORE INTO wsfed_relying_parties (id, realm, reply_url, enabled, created_by, created_at)
-     VALUES (?, ?, ?, 0, ?, ?)`,
-  ).bind(input.id, input.realm, input.replyUrl, input.createdBy, new Date().toISOString()).run();
-  return result.meta.changes === 1;
+  let changes: number;
+  try {
+    const result = await env.DB.prepare(
+      `INSERT INTO wsfed_relying_parties (id, realm, reply_url, enabled, created_by, created_at)
+       VALUES (?, ?, ?, 0, ?, ?)`,
+    ).bind(input.id, input.realm, input.replyUrl, input.createdBy, new Date().toISOString()).run();
+    changes = result.meta.changes;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("UNIQUE constraint failed")) throw error;
+    changes = 0;
+  }
+  return changes === 1;
 }
 
 export async function setWsfedRelyingPartyEnabled(env: Env, id: string, enabled: boolean): Promise<boolean> {

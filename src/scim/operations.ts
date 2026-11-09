@@ -22,12 +22,27 @@ export async function createScimOperation(
   if (!input.targetId || !input.userId) throw new Error("SCIM operation identifiers are required");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const result = await env.DB.prepare(
-    `INSERT OR IGNORE INTO scim_operations
-     (id, target_id, user_id, operation, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
-  ).bind(id, input.targetId, input.userId, input.operation, now, now).run();
-  return result.meta.changes === 1 ? id : null;
+  // A duplicate insert (the single-active-operation constraint) creates no
+  // record; any other constraint failure must not masquerade as a duplicate.
+  let changes: number;
+  try {
+    const result = await env.DB.prepare(
+      `INSERT INTO scim_operations
+       (id, target_id, user_id, operation, status, created_at, updated_at)
+       SELECT ?, ?, ?, ?, 'pending', ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM scim_operations
+         WHERE target_id = ? AND user_id = ?
+           AND status IN ('pending', 'in_progress', 'outcome_unknown')
+       )`,
+    ).bind(id, input.targetId, input.userId, input.operation, now, now, input.targetId, input.userId).run();
+    changes = result.meta.changes;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("UNIQUE constraint failed") && !message.includes("CHECK constraint failed")) throw error;
+    changes = 0;
+  }
+  return changes === 1 ? id : null;
 }
 
 /** An atomic transition ensures only one worker can take an operation. */

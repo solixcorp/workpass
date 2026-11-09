@@ -25,9 +25,10 @@ export async function claimVerifiedSamlRequest(input: {
   const results = await input.env.DB.batch([
     input.env.DB.prepare("DELETE FROM saml_request_claims WHERE expires_at <= ?").bind(now.toISOString()),
     input.env.DB.prepare(
-      `INSERT OR IGNORE INTO saml_request_claims (provider_id, request_id, claimed_at, expires_at)
-       VALUES (?, ?, ?, ?)`,
-    ).bind(input.providerId, input.requestId, now.toISOString(), input.expiresAt.toISOString()),
+      `INSERT INTO saml_request_claims (provider_id, request_id, claimed_at, expires_at)
+       SELECT ?, ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM saml_request_claims WHERE provider_id = ? AND request_id = ?)`,
+    ).bind(input.providerId, input.requestId, now.toISOString(), input.expiresAt.toISOString(), input.providerId, input.requestId),
   ]);
   return results[1]?.meta.changes === 1;
 }

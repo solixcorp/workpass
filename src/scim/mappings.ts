@@ -16,9 +16,17 @@ export async function recordScimUserMapping(
   externalUserId: string,
 ): Promise<boolean> {
   if (!targetId || !userId || !externalUserId) throw new Error("SCIM mapping identifiers are required");
-  const result = await env.DB.prepare(
-    `INSERT OR IGNORE INTO scim_user_mappings (target_id, user_id, external_user_id, created_at)
-     VALUES (?, ?, ?, ?)`,
-  ).bind(targetId, userId, externalUserId, new Date().toISOString()).run();
-  return result.meta.changes === 1;
+  let changes: number;
+  try {
+    const result = await env.DB.prepare(
+      `INSERT INTO scim_user_mappings (target_id, user_id, external_user_id, created_at)
+       VALUES (?, ?, ?, ?)`,
+    ).bind(targetId, userId, externalUserId, new Date().toISOString()).run();
+    changes = result.meta.changes;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("UNIQUE constraint failed")) throw error;
+    changes = 0;
+  }
+  return changes === 1;
 }

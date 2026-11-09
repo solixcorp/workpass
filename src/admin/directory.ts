@@ -85,12 +85,18 @@ directoryRoutes.post("/directory-groups", async (context) => {
         actorUserId: actor.userId,
         targetUserId: id,
       };
-    } catch {
-      // The unique name index is the only expected constraint violation.
-      return {
-        response: Response.json({ error: "A group with this name already exists" }, { status: 409 }),
-        actorUserId: actor.userId,
-      };
+    } catch (error) {
+      // Only the unique NAME violation is a duplicate. A new NOT NULL or
+      // CHECK constraint failing here must not masquerade as one, so the
+      // error is witnessed and rethrown for the audited failure path.
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("UNIQUE constraint failed: directory_groups.name")) {
+        return {
+          response: Response.json({ error: "A group with this name already exists" }, { status: 409 }),
+          actorUserId: actor.userId,
+        };
+      }
+      throw error;
     }
   });
 });
