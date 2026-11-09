@@ -138,6 +138,10 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 
 ## Database initialization
 
+### Usage snapshot
+
+- `GET /api/admin/usage-snapshot` reports row counts per bounded surface (users, sessions, audit events, OAuth clients and tokens, SWA applications and grants, SAML providers, WS-Federation relying parties, directory groups, SCIM operations) captured at the call time. Administrator session required; read-only numbers only. This is the input for the plan's budget and service-minimization review.
+
 ### SWA applications
 
 - `POST /api/admin/swa-applications` registers a Secure Web Authentication application with `{name, origin}`; the origin binds an exact HTTPS origin (no path, credentials, query or fragment) and registrations start disabled. Administrator session, exact `Origin`, audited.

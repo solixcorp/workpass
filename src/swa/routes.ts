@@ -135,6 +135,27 @@ async function withApplication(
 
 export const swaUserRoutes = new Hono<{ Bindings: Env }>();
 
+swaAdminRoutes.post("/swa-revocations", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  let body: unknown;
+  try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON body" }, 400); }
+  const value = (body ?? {}) as Record<string, unknown>;
+  const userId = typeof value.userId === "string" ? value.userId : "";
+  if (userId.length === 0 || userId.length > 128) return context.json({ error: "Invalid body" }, 400);
+  return auditStandaloneOperation(context.env, "swa.grants.revoked", "/api/admin/swa-revocations", async () => {
+    const now = new Date().toISOString();
+    const burned = await context.env.DB.prepare(
+      "UPDATE swa_grants SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL AND expires_at > ?",
+    ).bind(now, userId, now).run();
+    return {
+      response: Response.json({ revoked: burned.meta.changes }),
+      actorUserId: actor.userId,
+      targetUserId: userId,
+    };
+  });
+});
+
 swaUserRoutes.post("/api/swa/grants", async (context) => {
   const baseOrigin = new URL(context.env.AUTH_BASE_URL).origin;
   if (context.req.header("origin") !== baseOrigin) {
