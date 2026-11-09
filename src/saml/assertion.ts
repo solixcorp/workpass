@@ -17,10 +17,9 @@ const ENVELOPED_TRANSFORM_URN = "http://www.w3.org/2000/09/xmldsig#enveloped-sig
 const SHA256_DIGEST_URN = "http://www.w3.org/2001/04/xmlenc#sha256";
 const RSA_SHA256_URN = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 const STATUS_SUCCESS = "urn:oasis:names:tc:SAML:2.0:status:Success";
-const NAMEID_EMAIL_URN = "urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress";
+const NAMEID_EMAIL_URN = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
 const BEARER_URN = "urn:oasis:names:tc:SAML:2.0:cm:bearer";
-/** AuthnContext class for username-plus-password sign-in. */
-const PASSWORD_PROTECTED_TRANSPORT = "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport";
+const UNSPECIFIED_AUTHN_CONTEXT = "urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified";
 
 export interface SamlSigningMaterial {
   entityId: string;
@@ -34,6 +33,7 @@ export interface SamlResponseSubject {
   /** NameID value, typically the verified account email address. */
   nameId: string;
   sessionId: string;
+  authenticatedAt: Date;
 }
 
 export interface SamlResponseParams {
@@ -80,7 +80,7 @@ export async function buildSignedSamlResponse(
   const notOnOrAfter = formatSamlInstant(new Date(now.getTime() + 5 * 60_000));
   const responseId = generateXmlId();
   const assertionId = generateXmlId();
-  const authnClass = params.authnClass ?? PASSWORD_PROTECTED_TRANSPORT;
+  const authnClass = params.authnClass ?? UNSPECIFIED_AUTHN_CONTEXT;
 
   const coreAssertion =
     `<saml:Assertion xmlns:saml="${ASSERTION_URN}" ID="${assertionId}" IssueInstant="${issueInstant}" Version="2.0">` +
@@ -94,7 +94,7 @@ export async function buildSignedSamlResponse(
     `<saml:Conditions NotBefore="${notBefore}" NotOnOrAfter="${notOnOrAfter}">` +
     `<saml:AudienceRestriction><saml:Audience>${escapeSamlText(params.serviceProviderEntityId)}</saml:Audience></saml:AudienceRestriction>` +
     `</saml:Conditions>` +
-    `<saml:AuthnStatement AuthnInstant="${issueInstant}" SessionIndex="${escapeSamlXml(params.subject.sessionId)}">` +
+    `<saml:AuthnStatement AuthnInstant="${formatSamlInstant(params.subject.authenticatedAt)}" SessionIndex="${assertionId}">` +
     `<saml:AuthnContext><saml:AuthnContextClassRef>${authnClass}</saml:AuthnContextClassRef></saml:AuthnContext>` +
     `</saml:AuthnStatement>` +
     `</saml:Assertion>`;

@@ -38,6 +38,7 @@ export function buildSsoLoginPage(options: {
     '<label for="password">Password</label>',
     '<input id="password" name="password" type="password" required/>',
     '<button id="b" type="submit">Continue</button>',
+    '<button id="passkey" type="button" style="margin-top:10px;background:#5f6368">Sign in with a passkey</button>',
     '<div id="error" role="alert"></div>',
     "</form>",
     "</main>",
@@ -54,6 +55,42 @@ if(res.status===200){location.reload();return;}
 b.disabled=false;
 e.textContent=res.status===429?'Too many attempts. Try again shortly.':(res.status===401||res.status===400?'Sign-in failed. Check your credentials.':'Sign-in is unavailable. Try again later.');})
 .catch(function(){b.disabled=false;e.textContent='Sign-in is unavailable. Try again later.';});});
+
+var pk=document.getElementById('passkey');
+function b64urlToBuffer(s){var b=s.replace(/-/g,'+').replace(/_/g,'/');var d=atob(b+'='.slice(0,(4-b.length%4)%4));var v=new Uint8Array(d.length);for(var i=0;i<d.length;i++)v[i]=d.charCodeAt(i);return v;}
+function bufferToB64url(v){var s='';var u=new Uint8Array(v);for(var i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s).replace(/=+$/g,'').replace(/\\+/g,'-').replace(/\\//g,'_');}
+pk.addEventListener('click',function(){
+pk.disabled=true;e.textContent='';
+fetch('/api/auth/passkey/generate-authenticate-options',{method:'GET',credentials:'same-origin'})
+.then(function(r){return r.json();})
+.then(function(o){
+if(!o.challenge){throw new Error('no-options');}
+var publicKey={challenge:b64urlToBuffer(o.challenge),
+rpId:o.rpId||location.hostname,
+timeout:o.timeout||60000,
+userVerification:o.userVerification||'preferred',
+allowCredentials:(o.allowCredentials||[]).map(function(c){return {id:b64urlToBuffer(c.id),type:'public-key',transports:c.transports};})};
+return navigator.credentials.get({publicKey:publicKey});
+})
+.then(function(assertion){
+if(!assertion){return null;}
+var body={id:assertion.id,rawId:assertion.id,type:assertion.type,clientExtensionResults:{},
+response:{clientDataJSON:bufferToB64url(assertion.response.clientDataJSON),
+authenticatorData:bufferToB64url(assertion.response.authenticatorData),
+signature:bufferToB64url(assertion.response.signature),
+userHandle:assertion.response.userHandle?bufferToB64url(assertion.response.userHandle):null}};
+return fetch('/api/auth/passkey/verify-authentication',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({response:body})});
+})
+.then(function(r){
+if(!r){pk.disabled=false;return;}
+if(r.ok){location.reload();return;}
+pk.disabled=false;e.textContent='Passkey sign-in failed. Use your password.';
+})
+.catch(function(err){
+pk.disabled=false;
+e.textContent=err&&err.message==='no-options'?'A passkey cannot be used right now. Sign in with your password.':'Passkey sign-in was cancelled or unavailable. Use your password.';
+});
+});
 </script></body></html>`,
   ].join("");
 }

@@ -96,6 +96,10 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
     }
     const email = session.user.email;
     if (!email || email.length > 256) return reject(context, "no-nameid");
+    const authenticatedAt = new Date(session.session.createdAt);
+    if (!Number.isFinite(authenticatedAt.getTime()) || authenticatedAt.getTime() > now.getTime() + ISSUE_INSTANT_SKEW_MS) {
+      return reject(context, "invalid-session-time");
+    }
 
     // Stage 6: one-time claim prevents replay of this request ID per SP.
     const claimed = await claimVerifiedSamlRequest({
@@ -113,7 +117,7 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
       acsUrl: provider.acsUrl,
       serviceProviderEntityId: provider.entityId,
       relayState: verified.relayState,
-      subject: { nameId: email, sessionId: sessionUserId(session) },
+      subject: { nameId: email, sessionId: sessionUserId(session), authenticatedAt },
       signing,
     });
     context.header("Cache-Control", "no-store");
@@ -201,6 +205,10 @@ export async function loadSamlIdpSigningMaterial(env: Env): Promise<SamlSigningM
   if (!entityId || !certificate || !privateKeyPem) return null;
   try {
     const privateKey = await importSamlIdpPrivateKey(privateKeyPem);
+    const publicKey = await importSamlServiceProviderTrustedKey(certificate);
+    const probe = new TextEncoder().encode("SAML IdP signing key check");
+    const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, probe);
+    if (!await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signature, probe)) return null;
     return { entityId, certificate, privateKey };
   } catch {
     return null;

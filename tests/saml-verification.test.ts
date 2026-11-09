@@ -236,14 +236,15 @@ describe("SAML IdP metadata", () => {
     expect(metadata).toContain(`entityID="${IDP_ENTITY_ID}"`);
     expect(metadata).toContain('WantAuthnRequestsSigned="true"');
     expect(metadata).toContain(`Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="${SSO_URL}"`);
-    expect(metadata).toContain(`Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${SSO_URL}"`);
+    // Only Redirect is supported as a request binding; no POST SSO endpoint is advertised.
+    expect(metadata).not.toContain(`SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"`);
     // The stored certificate body is embedded without whitespace.
     const body = sp.certificatePem
       .split("-----BEGIN CERTIFICATE-----\n")[1]!
       .split("\n-----END CERTIFICATE-----")[0]!
       .replace(/\n/g, "");
     expect(metadata).toContain(`<ds:X509Certificate>${body}</ds:X509Certificate>`);
-    expect(metadata).toContain("urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress");
+    expect(metadata).toContain("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress");
   });
 
   test("escapes XML-injected entity identifiers", () => {
@@ -263,6 +264,10 @@ describe("SSO login page", () => {
     expect(page).toContain("/api/auth/sign-in/email");
     expect(page).toContain("/api/auth/sign-in/username");
     expect(page).toContain("location.reload()");
+    // The passkey ceremony uses the plugin endpoints with the standard API.
+    expect(page).toContain("/api/auth/passkey/generate-authenticate-options");
+    expect(page).toContain("/api/auth/passkey/verify-authentication");
+    expect(page).toContain("navigator.credentials.get");
     // The page never navigates away or includes external content.
     expect(page).not.toMatch(/location\.href|window\.open|http:\/\/|https:\/\//);
     // The form itself posts nothing; the fetch call is same-origin.
@@ -307,7 +312,7 @@ describe("SP-side response verification from published metadata", () => {
       acsUrl: ACS_URL,
       serviceProviderEntityId: SP_ENTITY_ID,
       relayState: "relay-state-1",
-      subject: { nameId: "user@example.com", sessionId: "sess-1" },
+      subject: { nameId: "user@example.com", sessionId: "sess-1", authenticatedAt: new Date(NOW.getTime() - 60_000) },
       signing: { entityId: IDP_ENTITY_ID, certificate: idpCertificatePem, privateKey: imported },
       now: NOW,
     });
@@ -358,7 +363,7 @@ describe("Signed response round trip", () => {
       acsUrl: ACS_URL,
       serviceProviderEntityId: SP_ENTITY_ID,
       relayState: null,
-      subject: { nameId: "user@example.com", sessionId: "sess-1" },
+      subject: { nameId: "user@example.com", sessionId: "sess-1", authenticatedAt: new Date(NOW.getTime() - 60_000) },
       signing: { entityId: IDP_ENTITY_ID, certificate: idpCertificatePem, privateKey: imported },
       now: NOW,
     });

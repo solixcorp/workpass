@@ -11,8 +11,7 @@ const MD_URN = "urn:oasis:names:tc:SAML:2.0:metadata";
 const DS_URN = "http://www.w3.org/2000/09/xmldsig#";
 const PROTOCOL_URN = "urn:oasis:names:tc:SAML:2.0:protocol";
 const REDIRECT_BINDING_URN = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect";
-const POST_BINDING_URN = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST";
-const NAMEID_EMAIL_URN = "urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress";
+const NAMEID_EMAIL_URN = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
 
 export function buildSamlIdpMetadata(options: {
   entityId: string;
@@ -32,7 +31,6 @@ export function buildSamlIdpMetadata(options: {
     `</md:KeyDescriptor>` +
     `<md:NameIDFormat>${NAMEID_EMAIL_URN}</md:NameIDFormat>` +
     `<md:SingleSignOnService Binding="${REDIRECT_BINDING_URN}" Location="${ssoUrl}"/>` +
-    `<md:SingleSignOnService Binding="${POST_BINDING_URN}" Location="${ssoUrl}"/>` +
     `</md:IDPSSODescriptor>` +
     `</md:EntityDescriptor>`
   );

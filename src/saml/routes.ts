@@ -127,7 +127,7 @@ async function setProviderEnabled(
       );
     }
   }
-  return auditStandaloneOperation(context.env, eventType, `/api/admin/saml-service-providers/${id}/enable`, async () => {
+  return auditStandaloneOperation(context.env, eventType, `/api/admin/saml-service-providers/${id}/${enabled ? "enable" : "disable"}`, async () => {
     const changed = await setSamlServiceProviderEnabled(context.env, id, enabled);
     return {
       response: changed
