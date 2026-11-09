@@ -110,6 +110,17 @@ export async function issueSwaGrant(env: Env, input: {
   return { nonce, expiresAt };
 }
 
+/** The scheduled handler may run before the SWA migration has been applied. */
+export async function cleanupSwaGrants(env: Env, now = new Date()): Promise<void> {
+  const table = await env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'swa_grants'",
+  ).first<{ name: string }>();
+  if (!table) return;
+  await env.DB.prepare("DELETE FROM swa_grants WHERE expires_at <= ?")
+    .bind(now.toISOString())
+    .run();
+}
+
 /** Consume the nonce atomically: a replay, unknown or expired nonce rejects. */
 export async function consumeSwaGrant(env: Env, nonce: string): Promise<{
   applicationId: string;

@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test tests/",
     "saml:keygen": "bun run scripts/generate-saml-key.ts",
+    "smoke": "bun run scripts/run-all-smokes.ts",
     "build:check": "wrangler deploy --dry-run --outdir .wrangler/deploy",
     "deploy": "wrangler deploy"
   },

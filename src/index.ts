@@ -8,6 +8,7 @@ import { webfingerRoutes } from "./oidc/webfinger";
 import { trustedDeviceRoutes } from "./security/trusted-device-routes";
 import { cleanupFingerprintData } from "./security/fingerprint-retention";
 import { cleanupSamlRequestClaims } from "./saml/request-claims";
+import { cleanupSwaGrants } from "./swa/applications";
 import { samlProtocolRoutes } from "./saml/protocol-routes";
 import { wsfedProtocolRoutes } from "./wsfed/routes";
 import { consentRoutes } from "./oidc/consent";
@@ -57,6 +58,7 @@ async function scheduled(
     // Cleanup runs even while the related features are disabled.
     await cleanupFingerprintData(env, new Date(controller.scheduledTime));
     await cleanupSamlRequestClaims(env, new Date(controller.scheduledTime));
+    await cleanupSwaGrants(env, new Date(controller.scheduledTime));
   } catch (error) {
     console.error("Scheduled security cleanup failed", {
       cron: controller.cron,
