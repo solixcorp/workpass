@@ -40,3 +40,23 @@
 - Audit tamper-evidence is detection-only (content hashes + log positions); D1 is not immutable.
 - WS-Federation/SAML/SWA tokens are opaque bearer artifacts; replay protection is party-side per the documented profiles.
 - The MFA policy, recovery channel and test SaaS targets are pending owner decisions recorded in the plan.
+
+## Platform configuration (2026-11)
+
+The following wrangler.jsonc platform settings are in force; verify them at deploy:
+
+- `compatibility_date: 2026-11-09` — Node.js compatibility (v1+v2) and
+  AsyncLocalStorage are default-on at this date; the explicit `nodejs_als`
+  flag was removed as redundant.
+- `workers_dev: false` — internal IdP is served by a configured route only.
+- `upload_source_maps: true` — stack traces in Workers Logs resolve to source.
+- `observability: { enabled: true, head_sampling_rate: 1 }` — Workers Logs
+  persists every request (7-day retention).
+- `limits: { cpu_ms: 5000, subrequests: 1000 }` — runaway-cost protection with
+  generous headroom (SAML RSA signing and OIDC crypto stay in single-digit ms).
+- `placement: { mode: "smart" }` — Smart Placement co-locates execution with
+  D1, Fingerprint and Duo server APIs; monitor with the `cf-placement` header.
+- SAML metadata endpoints are edge-cached for 60 s (`caches.default`), which is
+  also pass-through-safe on workers.dev. **Key rotation note:** after rotating
+  the SAML signing secret, SP metadata refreshes within 60 s; force a refresh
+  immediately `cache.delete` by requesting metadata once after deployment.

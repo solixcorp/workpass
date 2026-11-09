@@ -2,14 +2,19 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "internal-auth",
   "main": "src/index.ts",
-  "compatibility_date": "2026-11-08",
-  "compatibility_flags": ["nodejs_als"],
+  "compatibility_date": "2026-11-09",
+  "upload_source_maps": true,
+  "workers_dev": false,
   "observability": {
-    "logs": {
-      "enabled": true,
-      "invocation_logs": true,
-      "persist": true
-    }
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "limits": {
+    "cpu_ms": 5000,
+    "subrequests": 1000
+  },
+  "placement": {
+    "mode": "smart"
   },
   "vars": {
     "ENABLE_ADMIN_BOOTSTRAP": "false",
@@ -19,7 +24,9 @@
     "FINGERPRINT_REGION": "us"
   },
   "triggers": {
-    "crons": ["17 4 * * *"]
+    "crons": [
+      "17 4 * * *"
+    ]
   },
   "d1_databases": [
     {

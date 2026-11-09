@@ -25,6 +25,7 @@ import { getEnabledSamlServiceProviderByEntityId } from "./service-providers";
 import { importSamlIdpPrivateKey, importSamlServiceProviderTrustedKey } from "./certificates";
 import { buildSignedSamlResponse, type SamlSigningMaterial } from "./assertion";
 import { buildSamlIdpMetadata } from "./metadata";
+import { cachedProtocolDocument, storeProtocolDocument } from "../web/protocol-cache";
 import { buildSsoLoginPage } from "../pages/sso-login";
 
 export const SAML_SSO_PATH = "/saml/sso";
@@ -201,21 +202,26 @@ function renderLoginPage(context: Context<{ Bindings: Env }>) {
 
 /** Public, unsigned protocol metadata for service provider configuration. */
 samlProtocolRoutes.get("/saml/metadata", async (context) => {
+  const url = new URL(context.req.url);
+  const edgeCached = await cachedProtocolDocument(url);
+  if (edgeCached) return edgeCached;
   const signing = await loadSamlIdpSigningMaterial(context.env);
   if (!signing) {
     return context.json({ error: UNAVAILABLE }, 503);
   }
   context.header("Cache-Control", "no-store");
   context.header("Content-Type", "application/samlmetadata+xml; charset=utf-8");
-  return context.body(
-    buildSamlIdpMetadata({
-      entityId: signing.entityId,
-      certificate: signing.certificate,
-      ssoUrl: expectedSsoDestination(context.env),
-      previousCertificate: signing.previousCertificate,
-    }),
-    200,
-  );
+  const metadata = buildSamlIdpMetadata({
+    entityId: signing.entityId,
+    certificate: signing.certificate,
+    ssoUrl: expectedSsoDestination(context.env),
+    previousCertificate: signing.previousCertificate,
+  });
+  await storeProtocolDocument(url, new Response(metadata, {
+    status: 200,
+    headers: { "Content-Type": "application/samlmetadata+xml; charset=utf-8" },
+  }));
+  return context.body(metadata, 200);
 });
 
 function reject(
