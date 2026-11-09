@@ -1,0 +1,8 @@
+schema = 1
+id = "QST-1794159221-myn"
+type = "question"
+title = "Choose Workers-compatible identity engine and implementation language"
+description = "Select a maintained, security-reviewed OIDC/OAuth, SAML, password and WebAuthn implementation that runs within Workers limits. Evaluate TypeScript as the default implementation language, D1 compatibility, cryptographic key management and whether any required feature forces a different runtime."
+status = "draft"
+created_at = 2026-11-09T02:33:41+09:00
+updated_at = 2026-11-09T02:44:47+09:00

@@ -1,0 +1,21 @@
+schema = 1
+id = "PHS-1794159216-w4e"
+type = "phase"
+title = "Phase 0: Feasibility and protocol proof of concept"
+description = "Select a Workers-compatible identity engine and verify actual interoperability, login methods, audit architecture and major open constraints before implementation."
+status = "active"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T03:13:48+09:00
+
+[metadata]
+exit_criteria = ["A maintained OIDC/OAuth, SAML, password and passkey implementation path is validated against Workers limits.", "Tailscale OIDC WebFinger and login requirements are tested or documented as blocked.", "TypeScript and the proposed D1 audit plus Workers Logs split are reviewed against runtime, security and retention needs.", "Open recovery, MFA and app-target questions are recorded without inventing decisions."]
+goal = "Prove the selected Workers architecture, protocols and login methods before building product features."
+order = 1.0
+
+[[relations]]
+to = "PLN-1794159216-par"
+type = "belongs_to"
+
+[[relations]]
+to = "PHS-1794159217-f8q"
+type = "precedes"

@@ -1,0 +1,12 @@
+schema = 1
+id = "REQ-1794159216-seh"
+type = "requirement"
+title = "OAuth authorization and client management"
+description = "Support authorization code with PKCE, managed clients and scoped access; assess client credentials for machine-to-machine use. Define token lifetime, revocation and client authentication."
+status = "draft"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:33:36+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"

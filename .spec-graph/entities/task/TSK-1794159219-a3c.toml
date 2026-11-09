@@ -1,0 +1,28 @@
+schema = 1
+id = "TSK-1794159219-a3c"
+type = "task"
+title = "Integrate SAML identity provider"
+description = "Implement or configure vetted SAML IdP with metadata, ACS and entity ID, signing, attributes, replay protection and certificate rotation."
+status = "draft"
+created_at = 2026-11-09T02:33:39+09:00
+updated_at = 2026-11-09T02:33:39+09:00
+
+[metadata]
+acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]
+instructions = ["Implement or configure vetted SAML IdP with metadata, ACS and entity ID, signing, attributes, replay protection and certificate rotation."]
+must_not = ["Do not mark undelivered work as delivered or include credentials in logs."]
+order = 1.0
+qa = [{command = "spec-graph validate", evidence = "", expected = "Graph validation completes and relevant findings are reviewed; implementation-specific tests must be specified before execution."}]
+references = []
+
+[[relations]]
+to = "PHS-1794159219-5rh"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794159216-8c1"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159886-wya"
+type = "covers"

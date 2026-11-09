@@ -1,0 +1,28 @@
+schema = 1
+id = "REQ-1794159216-dap"
+type = "requirement"
+title = "Structured security audit events"
+description = "Persist authentication success and failure, user and role changes, credential enrollment, application configuration, provisioning and signing key events in D1 with actor, target, timestamp, outcome and correlation ID."
+status = "draft"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:33:36+09:00
+
+[metadata]
+kind = "non_functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794159981-8mg"
+type = "constrained_by"
+
+[[relations]]
+to = "DEC-1794160955-xpn"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159887-jwy"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-jpz"
+type = "references"

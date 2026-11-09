@@ -1,0 +1,56 @@
+schema = 1
+id = "TSK-1794159217-6z0"
+type = "task"
+title = "Resolve security and service decisions"
+description = "Evaluate password hashing cost and recovery, MFA, operational logs, service limits and actual SaaS compatibility; preserve unresolved decisions and risks."
+status = "draft"
+created_at = 2026-11-09T02:33:37+09:00
+updated_at = 2026-11-09T02:33:37+09:00
+
+[metadata]
+acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]
+instructions = ["Evaluate password hashing cost and recovery, MFA, operational logs, service limits and actual SaaS compatibility; preserve unresolved decisions and risks."]
+must_not = ["Do not mark undelivered work as delivered or include credentials in logs."]
+order = 3.0
+qa = [{command = "spec-graph validate", evidence = "", expected = "Graph validation completes and relevant findings are reviewed; implementation-specific tests must be specified before execution."}]
+references = []
+
+[[relations]]
+to = "PHS-1794159216-w4e"
+type = "belongs_to"
+
+[[relations]]
+to = "DEC-1794159981-8mg"
+type = "covers"
+
+[[relations]]
+to = "DEC-1794160955-fb0"
+type = "covers"
+
+[[relations]]
+to = "DEC-1794160956-y42"
+type = "covers"
+
+[[relations]]
+to = "DEC-1794163184-ns2"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159215-ag6"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159215-z1v"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159216-vm6"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159886-as9"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159886-wya"
+type = "covers"

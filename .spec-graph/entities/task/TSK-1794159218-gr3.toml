@@ -1,0 +1,32 @@
+schema = 1
+id = "TSK-1794159218-gr3"
+type = "task"
+title = "Implement passkeys MFA and sessions"
+description = "Implement vetted WebAuthn, account recovery, MFA and session revocation with explicit assurance policy."
+status = "draft"
+created_at = 2026-11-09T02:33:38+09:00
+updated_at = 2026-11-09T02:33:38+09:00
+
+[metadata]
+acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]
+instructions = ["Implement vetted WebAuthn, account recovery, MFA and session revocation with explicit assurance policy."]
+must_not = ["Do not mark undelivered work as delivered or include credentials in logs."]
+order = 2.0
+qa = [{command = "spec-graph validate", evidence = "", expected = "Graph validation completes and relevant findings are reviewed; implementation-specific tests must be specified before execution."}]
+references = []
+
+[[relations]]
+to = "PHS-1794159218-jqv"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794159215-ag6"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159215-r8k"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159216-2j9"
+type = "covers"

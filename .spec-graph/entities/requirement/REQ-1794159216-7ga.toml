@@ -1,0 +1,24 @@
+schema = 1
+id = "REQ-1794159216-7ga"
+type = "requirement"
+title = "Privacy and credential protection"
+description = "Minimize collected personal data, restrict access, set retention and deletion policy, and protect secrets and signing material using a verified Cloudflare-compatible approach."
+status = "draft"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:33:36+09:00
+
+[metadata]
+kind = "non_functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794160955-xpn"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159222-ane"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-jpz"
+type = "references"

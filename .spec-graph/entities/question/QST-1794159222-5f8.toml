@@ -1,0 +1,8 @@
+schema = 1
+id = "QST-1794159222-5f8"
+type = "question"
+title = "Choose password recovery channel and post-PoC MFA policy"
+description = "The product owner chose email address and separate username as login identifiers and deferred MFA policy until after the feasibility proof of concept. Still decide password reset and invitation delivery, recovery identity checks, administrator approval rules, and the post-PoC MFA assurance policy."
+status = "draft"
+created_at = 2026-11-09T02:33:42+09:00
+updated_at = 2026-11-09T03:02:35+09:00

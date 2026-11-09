@@ -1,0 +1,20 @@
+schema = 1
+id = "DEC-1794160955-ppj"
+type = "decision"
+title = "Accept email address and username as login identifiers"
+description = "Allow an employee to sign in with either their verified email address or a distinct username. Enforce uniqueness and normalization rules for each identifier; retain an immutable internal account ID so identifier changes do not alter account identity."
+status = "draft"
+created_at = 2026-11-09T03:02:35+09:00
+updated_at = 2026-11-09T03:02:35+09:00
+
+[metadata]
+date = "2026-11-09"
+rationale = "The product owner selected support for both email and a separate username as sign-in identifiers."
+
+[[relations]]
+to = "QST-1794159222-5f8"
+type = "references"
+
+[[relations]]
+to = "REQ-1794159886-as9"
+type = "references"

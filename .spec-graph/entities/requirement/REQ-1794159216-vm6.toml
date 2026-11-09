@@ -1,0 +1,24 @@
+schema = 1
+id = "REQ-1794159216-vm6"
+type = "requirement"
+title = "Usage budgets and service minimization"
+description = "Start with Workers and D1 and operational logs; adopt KV, Queues, Durable Objects, R2 or Containers only with justified needs, quotas and pricing review. Free-tier exhaustion and paid overages must be monitored."
+status = "draft"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:33:36+09:00
+
+[metadata]
+kind = "non_functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794159981-8mg"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159887-jwy"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-eh5"
+type = "references"

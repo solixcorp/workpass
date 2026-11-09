@@ -1,0 +1,28 @@
+schema = 1
+id = "TSK-1794159888-3gc"
+type = "task"
+title = "Implement and validate WS-Federation compatibility"
+description = "After Phase 0 selects a compatible maintained engine, support the explicitly scoped WS-Federation profile, document unsupported extensions and test against a real legacy service provider."
+status = "draft"
+created_at = 2026-11-09T02:44:48+09:00
+updated_at = 2026-11-09T02:44:48+09:00
+
+[metadata]
+acceptance = ["A real test service provider completes sign-in. Invalid signature, audience, expiry and replay are rejected. Supported profile and setup steps are documented."]
+instructions = ["After Phase 0 selects a compatible maintained engine, support the explicitly scoped WS-Federation profile, document unsupported extensions and test against a real legacy service provider."]
+must_not = ["Do not store or log plaintext credentials, tokens, assertions or secrets. Do not claim compatibility without a real interoperability test."]
+order = 1.0
+qa = [{command = "spec-graph validate --layer mapping --phase PHS-1794159887-9mc", evidence = "", expected = "The phase scope is valid; replace or supplement this graph check with executable protocol and security tests when the implementation harness is selected."}]
+references = []
+
+[[relations]]
+to = "PHS-1794159887-9mc"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794159886-m3c"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159886-wya"
+type = "covers"

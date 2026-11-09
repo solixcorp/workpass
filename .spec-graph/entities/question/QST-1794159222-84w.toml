@@ -1,0 +1,8 @@
+schema = 1
+id = "QST-1794159222-84w"
+type = "question"
+title = "Select production SAML and SCIM target applications"
+description = "Initial federation and provisioning validation will use test services. Before production rollout, identify the real SAML and SCIM applications, supported features and required subscription tiers."
+status = "draft"
+created_at = 2026-11-09T02:33:42+09:00
+updated_at = 2026-11-09T03:02:35+09:00

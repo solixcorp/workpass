@@ -1,0 +1,19 @@
+schema = 1
+id = "TST-1794159888-phy"
+type = "test"
+title = "SWA origin isolation and credential protection tests"
+description = "Verify registered-origin-only credential release, lookalike-domain rejection, consent, revocation, secret redaction and failure behavior under browser extension or page injection threats."
+status = "draft"
+created_at = 2026-11-09T02:44:48+09:00
+updated_at = 2026-11-09T02:47:04+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "RSK-1794159887-wj7"
+type = "mitigates"
+
+[[relations]]
+to = "REQ-1794159886-2ah"
+type = "verifies"

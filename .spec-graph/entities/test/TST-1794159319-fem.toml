@@ -1,0 +1,19 @@
+schema = 1
+id = "TST-1794159319-fem"
+type = "test"
+title = "OAuth client and scope tests"
+description = "Verify registered clients, authorization code with PKCE, scope enforcement, confidential-client credentials, expiry and revoked token behavior according to the selected implementation."
+status = "draft"
+created_at = 2026-11-09T02:35:19+09:00
+updated_at = 2026-11-09T02:35:19+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794159216-0n3"
+type = "verifies"
+
+[[relations]]
+to = "REQ-1794159216-seh"
+type = "verifies"

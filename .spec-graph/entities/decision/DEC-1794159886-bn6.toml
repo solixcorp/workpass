@@ -1,0 +1,16 @@
+schema = 1
+id = "DEC-1794159886-bn6"
+type = "decision"
+title = "Retain WS-Federation and SWA in compatibility scope"
+description = "Include WS-Federation and SWA as compatibility targets, subject to protocol-engine and security feasibility validation before production use."
+status = "draft"
+created_at = 2026-11-09T02:44:46+09:00
+updated_at = 2026-11-09T02:44:46+09:00
+
+[metadata]
+date = "2026-11-09"
+rationale = "The product owner requested the complete original app-integration set and only explicitly removed LDAP, RADIUS and directory synchronization."
+
+[[relations]]
+to = "QST-1794159222-erx"
+type = "answers"

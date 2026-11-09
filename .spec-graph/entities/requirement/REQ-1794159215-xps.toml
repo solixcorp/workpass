@@ -1,0 +1,12 @@
+schema = 1
+id = "REQ-1794159215-xps"
+type = "requirement"
+title = "Groups and role-based authorization"
+description = "Support employee groups, application assignments and separated administrative roles, default deny, and enforce permissions server side."
+status = "draft"
+created_at = 2026-11-09T02:33:35+09:00
+updated_at = 2026-11-09T02:33:35+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"

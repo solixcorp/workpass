@@ -1,0 +1,11 @@
+schema = 1
+id = "RSK-1794159223-cj0"
+type = "risk"
+title = "Downstream sessions remain active"
+description = "Disabling an account at the IdP may not revoke independent SaaS or Tailscale sessions."
+status = "draft"
+created_at = 2026-11-09T02:33:43+09:00
+updated_at = 2026-11-09T02:33:43+09:00
+
+[metadata]
+impact = "high"

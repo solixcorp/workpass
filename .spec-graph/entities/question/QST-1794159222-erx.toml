@@ -1,0 +1,8 @@
+schema = 1
+id = "QST-1794159222-erx"
+type = "question"
+title = "SWA and WS-Federation scope"
+description = "Resolved: include WS-Federation and SWA as required compatibility targets, subject to protocol-engine feasibility, real interoperability tests and a security review before production use."
+status = "resolved"
+created_at = 2026-11-09T02:33:42+09:00
+updated_at = 2026-11-09T02:47:08+09:00

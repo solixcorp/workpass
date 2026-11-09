@@ -1,0 +1,10 @@
+schema = 1
+id = "PLN-1794159216-par"
+type = "plan"
+title = "Cloudflare IAM and application federation delivery"
+description = "Deliver a Cloudflare-hosted identity platform with username-password and passkey login, OIDC/OAuth, SAML, SCIM, Tailscale OIDC, WS-Federation and security-reviewed SWA. Exclude LDAP server, RADIUS, AD and Entra synchronization. Minimize services and preserve explicit cost review gates."
+status = "active"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:46:20+09:00
+amendment_forced = true
+amendment_reason = "Update the active delivery plan to reflect the product owner confirmed scope; no implementation or phase status is being advanced."

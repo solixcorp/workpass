@@ -1,0 +1,11 @@
+schema = 1
+id = "RSK-1794159223-zw0"
+type = "risk"
+title = "Audit tampering or loss"
+description = "D1 audit records are mutable by sufficiently privileged operators and may be lost without independently verified backups."
+status = "draft"
+created_at = 2026-11-09T02:33:43+09:00
+updated_at = 2026-11-09T02:33:43+09:00
+
+[metadata]
+impact = "high"

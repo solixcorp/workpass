@@ -1,0 +1,21 @@
+schema = 1
+id = "PHS-1794159219-5rh"
+type = "phase"
+title = "Phase 3: SAML federation"
+description = "Deliver secure interoperable SAML service integration."
+status = "draft"
+created_at = 2026-11-09T02:33:39+09:00
+updated_at = 2026-11-09T02:33:39+09:00
+
+[metadata]
+exit_criteria = ["All scoped tasks and their acceptance checks for SAML federation are verified."]
+goal = "Deliver secure interoperable SAML service integration."
+order = 4.0
+
+[[relations]]
+to = "PLN-1794159216-par"
+type = "belongs_to"
+
+[[relations]]
+to = "PHS-1794159219-aj5"
+type = "precedes"

@@ -1,0 +1,20 @@
+schema = 1
+id = "REQ-1794159216-evr"
+type = "requirement"
+title = "Workers operational logs"
+description = "Use Workers Logs for operational diagnostics; minimize personal data, never log passwords, tokens, auth codes, SAML assertions or secrets, and do not sample away required security audit events."
+status = "draft"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:33:36+09:00
+
+[metadata]
+kind = "non_functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794159981-8mg"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159887-jwy"
+type = "references"

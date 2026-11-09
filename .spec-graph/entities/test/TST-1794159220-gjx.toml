@@ -1,0 +1,19 @@
+schema = 1
+id = "TST-1794159220-gjx"
+type = "test"
+title = "Passkey challenge and recovery tests"
+description = "Verify correct origin, RP ID, replay resistance, account binding and secure lost-key recovery."
+status = "draft"
+created_at = 2026-11-09T02:33:40+09:00
+updated_at = 2026-11-09T02:33:40+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794159215-ag6"
+type = "verifies"
+
+[[relations]]
+to = "REQ-1794159215-r8k"
+type = "verifies"

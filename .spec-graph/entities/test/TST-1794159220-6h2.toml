@@ -1,0 +1,27 @@
+schema = 1
+id = "TST-1794159220-6h2"
+type = "test"
+title = "Password sign-in and reset abuse tests"
+description = "Verify wrong passwords, brute-force limits, enumeration resistance, single-use expired reset tokens and no secret logging."
+status = "draft"
+created_at = 2026-11-09T02:33:40+09:00
+updated_at = 2026-11-09T02:33:40+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "RSK-1794159223-jpz"
+type = "mitigates"
+
+[[relations]]
+to = "REQ-1794159215-svv"
+type = "verifies"
+
+[[relations]]
+to = "REQ-1794159215-z1v"
+type = "verifies"
+
+[[relations]]
+to = "REQ-1794159886-as9"
+type = "verifies"

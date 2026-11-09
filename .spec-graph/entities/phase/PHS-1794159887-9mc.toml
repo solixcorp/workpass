@@ -1,0 +1,21 @@
+schema = 1
+id = "PHS-1794159887-9mc"
+type = "phase"
+title = "Phase 5: Legacy application compatibility"
+description = "Deliver narrowly scoped WS-Federation and SWA compatibility after runtime feasibility and security review."
+status = "draft"
+created_at = 2026-11-09T02:44:47+09:00
+updated_at = 2026-11-09T02:44:47+09:00
+
+[metadata]
+exit_criteria = ["WS-Federation interoperability is verified; SWA passes origin-binding and credential-handling security tests; any unsupported profile is documented."]
+goal = "Deliver narrowly scoped WS-Federation and SWA compatibility after runtime feasibility and security review."
+order = 6.0
+
+[[relations]]
+to = "PLN-1794159216-par"
+type = "belongs_to"
+
+[[relations]]
+to = "PHS-1794159220-e4v"
+type = "precedes"

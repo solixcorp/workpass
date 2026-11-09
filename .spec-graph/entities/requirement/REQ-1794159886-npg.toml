@@ -1,0 +1,37 @@
+schema = 1
+id = "REQ-1794159886-npg"
+type = "requirement"
+title = "Cloudflare-hosted identity platform with minimal services"
+description = "Host the identity platform on Cloudflare with the smallest justified service set and strong operational/audit logging. Support username-password and passkey sign-in, OIDC/OAuth, SAML, SCIM, Tailscale OIDC, WS-Federation and SWA. Explicitly exclude providing an LDAP server, RADIUS, Active Directory integration and Microsoft Entra synchronization. Minimize costs; review any paid plan or additional service before adoption."
+status = "draft"
+created_at = 2026-11-09T02:44:46+09:00
+updated_at = 2026-11-09T02:44:46+09:00
+
+[metadata]
+kind = "non_functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794159886-bn6"
+type = "constrained_by"
+
+[[relations]]
+to = "DEC-1794159886-qd7"
+type = "constrained_by"
+
+[[relations]]
+to = "DEC-1794163184-ns2"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159222-erx"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-caw"
+type = "references"
+
+[[relations]]
+to = "REQ-1794159215-x8e"
+type = "supersedes"
+metadata = {reason = "Clarify confirmed scope: exclude LDAP server, RADIUS, AD and Entra synchronization while retaining all selected web app federation and provisioning methods."}

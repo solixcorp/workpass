@@ -1,0 +1,16 @@
+schema = 1
+id = "DEC-1794160956-y42"
+type = "decision"
+title = "Defer live Tailscale OIDC validation until domain setup is available"
+description = "Do not configure or run a live Tailscale OIDC test yet. Record the missing company email domain, HTTPS WebFinger route and disposable Tailscale tenant as prerequisites. Resume live validation after the product owner supplies the domain and confirms setup access."
+status = "active"
+created_at = 2026-11-09T03:02:36+09:00
+updated_at = 2026-11-09T13:59:09+09:00
+
+[metadata]
+date = "2026-11-09"
+rationale = "The product owner chose to validate Tailscale later rather than provide a domain for the current proof of concept."
+
+[[relations]]
+to = "QST-1794159222-jq6"
+type = "references"

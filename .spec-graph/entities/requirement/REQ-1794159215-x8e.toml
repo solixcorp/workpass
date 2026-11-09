@@ -1,0 +1,20 @@
+schema = 1
+id = "REQ-1794159215-x8e"
+type = "requirement"
+title = "Cloudflare-hosted low-cost identity platform"
+description = "Host the identity application on Cloudflare Workers, preserve the free website plan, minimize services and cost, and explicitly exclude LDAP server, RADIUS, Active Directory and Entra synchronization. Paid Workers and other services require cost review."
+status = "deprecated"
+created_at = 2026-11-09T02:33:35+09:00
+updated_at = 2026-11-09T02:44:46+09:00
+
+[metadata]
+kind = "non_functional"
+priority = "must"
+
+[[relations]]
+to = "QST-1794159222-erx"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-caw"
+type = "references"

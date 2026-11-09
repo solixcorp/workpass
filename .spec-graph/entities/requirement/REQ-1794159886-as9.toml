@@ -1,0 +1,25 @@
+schema = 1
+id = "REQ-1794159886-as9"
+type = "requirement"
+title = "Username and password sign-in"
+description = "Provide username-and-password login as a primary sign-in option in addition to passkey login. Users can authenticate using either enabled method, subject to the configured MFA and access policy. Use a vetted password hashing scheme with per-password salt and work factors validated against Workers limits; never store plaintext, reversibly encrypted passwords, or credentials in logs."
+status = "draft"
+created_at = 2026-11-09T02:44:46+09:00
+updated_at = 2026-11-09T02:44:46+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
+
+[[relations]]
+to = "QST-1794159221-myn"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-caw"
+type = "references"
+
+[[relations]]
+to = "REQ-1794159215-1z8"
+type = "supersedes"
+metadata = {reason = "Make the user-confirmed username-password option explicit alongside independently usable passkeys."}

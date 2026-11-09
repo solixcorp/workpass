@@ -1,0 +1,20 @@
+schema = 1
+id = "DEC-1794159886-rv3"
+type = "decision"
+title = "Support both password and passkey sign-in"
+description = "Username-and-password and passkey authentication are both in scope as distinct sign-in options. Password enrollment, recovery, MFA policy and secure hashing remain explicit requirements."
+status = "draft"
+created_at = 2026-11-09T02:44:46+09:00
+updated_at = 2026-11-09T02:44:46+09:00
+
+[metadata]
+date = "2026-11-09"
+rationale = "The product owner explicitly confirmed that both username-password and passkey login must be available."
+
+[[relations]]
+to = "REQ-1794159215-r8k"
+type = "references"
+
+[[relations]]
+to = "REQ-1794159886-as9"
+type = "references"

@@ -1,0 +1,16 @@
+schema = 1
+id = "DEC-1794160956-ns2"
+type = "decision"
+title = "Set a five-minute IdP revocation target and track downstream limits"
+description = "Revoke IdP-managed sessions within five minutes of employee suspension or offboarding. For downstream apps, target the same window only where the application exposes a suitable revocation or deprovisioning mechanism; document each app’s actual enforcement limit and track exceptions or failures rather than claiming a guarantee the app cannot provide."
+status = "draft"
+created_at = 2026-11-09T03:02:36+09:00
+updated_at = 2026-11-09T03:02:36+09:00
+
+[metadata]
+date = "2026-11-09"
+rationale = "The product owner selected a maximum five-minute access-revocation target; downstream application session controls vary by provider."
+
+[[relations]]
+to = "QST-1794159222-njc"
+type = "answers"

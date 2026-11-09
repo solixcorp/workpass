@@ -1,0 +1,28 @@
+schema = 1
+id = "TSK-1794159217-k1y"
+type = "task"
+title = "Design and migrate directory"
+description = "Model immutable user identities, status, groups and D1 migration with minimum personal data."
+status = "draft"
+created_at = 2026-11-09T02:33:37+09:00
+updated_at = 2026-11-09T02:33:37+09:00
+
+[metadata]
+acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]
+instructions = ["Model immutable user identities, status, groups and D1 migration with minimum personal data."]
+must_not = ["Do not mark undelivered work as delivered or include credentials in logs."]
+order = 1.0
+qa = [{command = "spec-graph validate", evidence = "", expected = "Graph validation completes and relevant findings are reviewed; implementation-specific tests must be specified before execution."}]
+references = []
+
+[[relations]]
+to = "PHS-1794159217-f8q"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794159215-mre"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159216-7ga"
+type = "covers"

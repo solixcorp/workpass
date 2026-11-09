@@ -1,0 +1,32 @@
+schema = 1
+id = "REQ-1794159216-yc6"
+type = "requirement"
+title = "Audit durability and access control"
+description = "Authorize audit viewing, preserve audit on security-sensitive mutations using appropriate atomicity, separately handle failed events, define retention and write failure response, protect backups and do not claim D1 is immutable."
+status = "draft"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:33:36+09:00
+
+[metadata]
+kind = "non_functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794159981-8mg"
+type = "constrained_by"
+
+[[relations]]
+to = "DEC-1794160955-xpn"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159222-ane"
+type = "references"
+
+[[relations]]
+to = "QST-1794159887-jwy"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-zw0"
+type = "references"

@@ -1,0 +1,23 @@
+schema = 1
+id = "TST-1794159221-8j4"
+type = "test"
+title = "OIDC protocol and Tailscale end-to-end tests"
+description = "Verify Tailscale WebFinger and real login, issuer, signature, redirect allowlist, PKCE, replay and disabled users."
+status = "draft"
+created_at = 2026-11-09T02:33:41+09:00
+updated_at = 2026-11-09T02:33:41+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794159216-0n3"
+type = "verifies"
+
+[[relations]]
+to = "REQ-1794159216-2j9"
+type = "verifies"
+
+[[relations]]
+to = "REQ-1794159216-3af"
+type = "verifies"

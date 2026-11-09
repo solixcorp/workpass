@@ -1,0 +1,20 @@
+schema = 1
+id = "REQ-1794159216-h0b"
+type = "requirement"
+title = "Complete and visible offboarding"
+description = "Disable IdP account, revoke local sessions, execute supported downstream deprovisioning and explicitly track manual or failed downstream session revocation without falsely declaring completion."
+status = "deprecated"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T03:02:36+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
+
+[[relations]]
+to = "QST-1794159222-njc"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-cj0"
+type = "references"

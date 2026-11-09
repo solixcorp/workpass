@@ -1,0 +1,19 @@
+schema = 1
+id = "TST-1794160956-cz2"
+type = "test"
+title = "Five-minute IdP revocation and downstream exception tests"
+description = "Verify IdP-managed sessions are rejected within five minutes of suspension/offboarding. For downstream apps, verify supported revocation is initiated and that provider limits, unsupported operations and failures remain visible rather than being reported as successful revocation."
+status = "draft"
+created_at = 2026-11-09T03:02:36+09:00
+updated_at = 2026-11-09T03:02:36+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794159216-2j9"
+type = "verifies"
+
+[[relations]]
+to = "REQ-1794160956-rf8"
+type = "verifies"

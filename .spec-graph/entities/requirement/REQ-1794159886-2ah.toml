@@ -1,0 +1,16 @@
+schema = 1
+id = "REQ-1794159886-2ah"
+type = "requirement"
+title = "Secure SWA support for applications without federation"
+description = "Support a controlled Secure Web Authentication workflow for selected web applications without SSO. Define browser interaction, origin binding, credential protection, access controls, revocation and security review; never expose credentials to an untrusted origin or log them."
+status = "draft"
+created_at = 2026-11-09T02:44:46+09:00
+updated_at = 2026-11-09T02:44:46+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
+
+[[relations]]
+to = "RSK-1794159887-wj7"
+type = "references"

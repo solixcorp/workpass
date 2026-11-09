@@ -1,0 +1,24 @@
+schema = 1
+id = "REQ-1794159216-3af"
+type = "requirement"
+title = "Tailscale custom OIDC interoperability"
+description = "Provide WebFinger on the email domain with matching issuer, openid profile email scopes, compatible ES256 or RSA signatures and callback https://login.tailscale.com/a/oauth_response. Verify real login and offboarding; custom OIDC does not support Tailscale user or group provisioning."
+status = "draft"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:33:36+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794160956-y42"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159222-jq6"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-cj0"
+type = "references"

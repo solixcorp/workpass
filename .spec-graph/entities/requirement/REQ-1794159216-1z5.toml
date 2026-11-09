@@ -1,0 +1,20 @@
+schema = 1
+id = "REQ-1794159216-1z5"
+type = "requirement"
+title = "Backup recovery and safe operations"
+description = "Test D1 and signing-key recovery, incident procedures, break-glass access, deployment rollback and fail-closed authorization. Require security review before production."
+status = "draft"
+created_at = 2026-11-09T02:33:36+09:00
+updated_at = 2026-11-09T02:33:36+09:00
+
+[metadata]
+kind = "non_functional"
+priority = "must"
+
+[[relations]]
+to = "RSK-1794159223-eh5"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-zw0"
+type = "references"

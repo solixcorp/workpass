@@ -1,0 +1,33 @@
+schema = 1
+id = "REQ-1794159886-wya"
+type = "requirement"
+title = "Application registration and protocol compatibility"
+description = "Register and manage OIDC, OAuth, SAML 2.0, WS-Federation and SWA applications. Track app-specific login behavior, callbacks, entity IDs, claims, groups, provisioning support, session revocation, subscription requirements and tested compatibility."
+status = "draft"
+created_at = 2026-11-09T02:44:46+09:00
+updated_at = 2026-11-09T02:44:46+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794159886-bn6"
+type = "constrained_by"
+
+[[relations]]
+to = "DEC-1794160955-8f5"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159222-84w"
+type = "references"
+
+[[relations]]
+to = "QST-1794159222-erx"
+type = "references"
+
+[[relations]]
+to = "REQ-1794159216-dws"
+type = "supersedes"
+metadata = {reason = "Expand application compatibility scope to include every confirmed federation and password-form integration protocol."}

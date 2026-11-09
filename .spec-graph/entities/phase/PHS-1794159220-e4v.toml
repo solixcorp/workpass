@@ -1,0 +1,17 @@
+schema = 1
+id = "PHS-1794159220-e4v"
+type = "phase"
+title = "Phase 6: Production hardening and recovery"
+description = "Verify security, monitoring, budgets and disaster recovery after protocol integrations."
+status = "draft"
+created_at = 2026-11-09T02:33:40+09:00
+updated_at = 2026-11-09T02:44:47+09:00
+
+[metadata]
+exit_criteria = ["All scoped tasks and acceptance checks are verified; security, recovery, cost and production readiness reviews pass."]
+goal = "Verify security, monitoring, budgets and disaster recovery after protocol integrations."
+order = 7.0
+
+[[relations]]
+to = "PLN-1794159216-par"
+type = "belongs_to"

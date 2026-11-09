@@ -1,0 +1,28 @@
+schema = 1
+id = "TSK-1794159888-zc4"
+type = "task"
+title = "Design and implement security-reviewed SWA"
+description = "Design a minimal browser-assisted SWA flow for selected applications. Prove strict origin binding, user consent, encrypted credential handling, revocation and safe browser behavior before enabling any live credentials."
+status = "draft"
+created_at = 2026-11-09T02:44:48+09:00
+updated_at = 2026-11-09T02:44:48+09:00
+
+[metadata]
+acceptance = ["A dedicated test site accepts the test flow only for its registered origin. Cross-origin and lookalike-domain attempts fail. Credential storage and recovery threat model is reviewed before production use."]
+instructions = ["Design a minimal browser-assisted SWA flow for selected applications. Prove strict origin binding, user consent, encrypted credential handling, revocation and safe browser behavior before enabling any live credentials."]
+must_not = ["Do not store or log plaintext credentials, tokens, assertions or secrets. Do not claim compatibility without a real interoperability test."]
+order = 2.0
+qa = [{command = "spec-graph validate --layer mapping --phase PHS-1794159887-9mc", evidence = "", expected = "The phase scope is valid; replace or supplement this graph check with executable protocol and security tests when the implementation harness is selected."}]
+references = []
+
+[[relations]]
+to = "PHS-1794159887-9mc"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794159886-2ah"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159886-wya"
+type = "covers"

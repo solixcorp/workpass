@@ -1,0 +1,8 @@
+schema = 1
+id = "QST-1794159222-njc"
+type = "question"
+title = "Access revocation timing"
+description = "Resolved: revoke IdP-managed sessions within five minutes. Target the same window for downstream applications only where the provider supports it; document provider-specific limits and track unsupported, delayed or failed revocation as an exception."
+status = "resolved"
+created_at = 2026-11-09T02:33:42+09:00
+updated_at = 2026-11-09T03:02:37+09:00

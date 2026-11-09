@@ -1,0 +1,36 @@
+schema = 1
+id = "TSK-1794159219-bwj"
+type = "task"
+title = "Implement reliable offboarding with five-minute IdP revocation"
+description = "Disable IdP accounts and revoke IdP-managed sessions within five minutes. Execute supported downstream deprovisioning/revocation, track retries and reconciliation, and record app-specific limits or manual actions without overstating completion."
+status = "draft"
+created_at = 2026-11-09T02:33:40+09:00
+updated_at = 2026-11-09T03:02:36+09:00
+
+[metadata]
+acceptance = ["IdP-managed sessions are revoked within five minutes of suspension/offboarding. Supported downstream revocation is attempted toward the same target; unsupported or failed actions remain visibly tracked with app-specific residual-session limits."]
+instructions = ["Track retries and reconciliation, manual downstream actions and independent session revocation; add Queues only if required."]
+must_not = ["Do not mark undelivered work as delivered or include credentials in logs."]
+order = 2.0
+qa = [{command = "spec-graph validate", evidence = "", expected = "Graph validation completes and relevant findings are reviewed; implementation-specific tests must be specified before execution."}]
+references = []
+
+[[relations]]
+to = "PHS-1794159219-aj5"
+type = "belongs_to"
+
+[[relations]]
+to = "DEC-1794160956-ns2"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159216-2j9"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794159216-vpc"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794160956-rf8"
+type = "covers"

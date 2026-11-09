@@ -1,0 +1,12 @@
+schema = 1
+id = "REQ-1794159215-t17"
+type = "requirement"
+title = "Employee and administrator portals"
+description = "Provide employee application access and account settings plus administrative user, application and access management. Visibility alone is not authorization."
+status = "draft"
+created_at = 2026-11-09T02:33:35+09:00
+updated_at = 2026-11-09T02:33:35+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"

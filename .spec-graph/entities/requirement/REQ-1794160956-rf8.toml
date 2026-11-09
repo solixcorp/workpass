@@ -1,0 +1,29 @@
+schema = 1
+id = "REQ-1794160956-rf8"
+type = "requirement"
+title = "Complete and visible offboarding with five-minute revocation target"
+description = "Disable the IdP account and revoke IdP-managed sessions within five minutes. For each downstream application, initiate supported deprovisioning/session-revocation mechanisms toward the same five-minute target, and document the application-specific enforcement limit. Track unsupported, delayed or failed revocation as an explicit exception; never claim downstream sessions are revoked when the application cannot confirm it."
+status = "draft"
+created_at = 2026-11-09T03:02:36+09:00
+updated_at = 2026-11-09T03:02:36+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794160956-ns2"
+type = "constrained_by"
+
+[[relations]]
+to = "QST-1794159222-njc"
+type = "references"
+
+[[relations]]
+to = "RSK-1794159223-cj0"
+type = "references"
+
+[[relations]]
+to = "REQ-1794159216-h0b"
+type = "supersedes"
+metadata = {reason = "Record the product owner selected five-minute access-revocation target while distinguishing IdP sessions from application-controlled downstream sessions."}

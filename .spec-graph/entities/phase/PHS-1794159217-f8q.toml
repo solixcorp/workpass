@@ -1,0 +1,21 @@
+schema = 1
+id = "PHS-1794159217-f8q"
+type = "phase"
+title = "Phase 1: Directory authorization and audit foundation"
+description = "Establish account, group and audit foundations."
+status = "draft"
+created_at = 2026-11-09T02:33:37+09:00
+updated_at = 2026-11-09T02:33:37+09:00
+
+[metadata]
+exit_criteria = ["All scoped tasks and their acceptance checks for Directory authorization and audit foundation are verified."]
+goal = "Establish account, group and audit foundations."
+order = 2.0
+
+[[relations]]
+to = "PLN-1794159216-par"
+type = "belongs_to"
+
+[[relations]]
+to = "PHS-1794159218-jqv"
+type = "precedes"
