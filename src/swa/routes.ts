@@ -10,6 +10,12 @@ import type { Context } from "hono";
 import { requireAdministrator } from "../security/authorization";
 import type { Env } from "../env";
 import { createAuth } from "../auth/config";
+import {
+  evaluateAppAccess,
+  hasRecentAppIssuance,
+  loadAppAccessPolicy,
+  policyTtlSeconds,
+} from "../access/policies";
 import { auditStandaloneOperation } from "../audit/store";
 import {
   consumeSwaGrant,
@@ -173,11 +179,39 @@ swaUserRoutes.post("/api/swa/grants", async (context) => {
     console.error("SWA grant rejected", { stage: "unregistered-origin" });
     return context.json({ error: GENERIC_REJECTION }, 401);
   }
+  // The per-application access policy gates grant issuance.
+  const policySubject = `swa:${application.origin}`;
+  const policy = await loadAppAccessPolicy(context.env, policySubject);
+  if (policy) {
+    const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
+    if (!evaluation.allowed) {
+      console.error("SWA grant rejected", { stage: "app-policy-denied" });
+      return context.json({ error: GENERIC_REJECTION }, 403);
+    }
+    // Prior-success bypass: a recent attestation for this origin/user skips
+    // the fresh-grant friction by allowing the exchange flow directly.
+    if (await hasRecentAppIssuance(context.env, policySubject, session.user.id, policy.bypassWindowSeconds)) {
+      console.error("SWA grant bypassed by prior success", { stage: "prior-success-bypass" });
+    }
+  }
+  const grantTtl = policy && policy.sessionTtlSeconds !== null
+    ? policyTtlSeconds(policy, 5 * 60_000)
+    : 5 * 60_000;
   return auditStandaloneOperation(context.env, "swa.grant.issue", `${SWA_PREFIX}/grants`, async () => {
     const grant = await issueSwaGrant(context.env, {
       applicationId: application.id,
       userId: session.user.id,
+      ttlSeconds: grantTtl,
     });
+    if (policy) {
+      await (await import("../access/policies")).recordAppIssuance(
+        context.env,
+        policySubject,
+        session.user.id,
+        "swa",
+        policy.enforcementMode,
+      );
+    }
     return {
       response: Response.json(grant, { status: 201 }),
       actorUserId: session.user.id,

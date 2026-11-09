@@ -6,6 +6,7 @@ import { scimAdminRoutes } from "../scim/routes";
 import { directoryRoutes } from "./directory";
 import { wsfedAdminRoutes } from "../wsfed/routes";
 import { swaAdminRoutes } from "../swa/routes";
+import { accessPolicyRoutes } from "../access/routes";
 import { usageRoutes } from "./usage";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
@@ -16,4 +17,5 @@ adminRoutes.route("/", scimAdminRoutes);
 adminRoutes.route("/", directoryRoutes);
 adminRoutes.route("/", wsfedAdminRoutes);
 adminRoutes.route("/", swaAdminRoutes);
+adminRoutes.route("/", accessPolicyRoutes);
 adminRoutes.route("/", usageRoutes);

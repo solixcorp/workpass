@@ -94,6 +94,7 @@ export async function setSwaApplicationEnabled(env: Env, id: string, enabled: bo
 export async function issueSwaGrant(env: Env, input: {
   applicationId: string;
   userId: string;
+  ttlSeconds?: number;
 }): Promise<{ nonce: string; expiresAt: string }> {
   const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
   let binary = "";
@@ -101,7 +102,7 @@ export async function issueSwaGrant(env: Env, input: {
   const nonce = btoa(binary).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
   const now = new Date();
   const createdAt = now.toISOString();
-  const expiresAt = new Date(now.getTime() + 5 * 60_000).toISOString();
+  const expiresAt = new Date(now.getTime() + (input.ttlSeconds ?? 5 * 60_000) * 1000).toISOString();
   const result = await env.DB.prepare(
     `INSERT INTO swa_grants (nonce, application_id, user_id, created_at, expires_at)
      VALUES (?, ?, ?, ?, ?)`,

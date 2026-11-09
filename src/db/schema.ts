@@ -197,6 +197,37 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     "CREATE INDEX IF NOT EXISTS swa_grants_application_idx ON swa_grants (application_id)",
   ).run();
   await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS app_access_policies (
+      subject TEXT PRIMARY KEY NOT NULL,
+      allowed_methods TEXT NOT NULL DEFAULT 'password,passkey',
+      session_ttl_seconds INTEGER,
+      bypass_window_seconds INTEGER NOT NULL DEFAULT 28800,
+      enforcement_mode TEXT NOT NULL DEFAULT 'enforce' CHECK (enforcement_mode IN ('enforce', 'observe')),
+      updated_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS app_policy_groups (
+      subject TEXT NOT NULL,
+      group_id TEXT NOT NULL REFERENCES directory_groups (id) ON DELETE CASCADE,
+      PRIMARY KEY (subject, group_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS app_issuance_history (
+      subject TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      issued_at TEXT NOT NULL,
+      enforcement_mode TEXT NOT NULL,
+      method TEXT,
+      PRIMARY KEY (subject, user_id, issued_at)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS app_issuance_history_user_idx ON app_issuance_history (user_id, issued_at)",
+  ).run();
+  await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS wsfed_relying_parties (
       id TEXT PRIMARY KEY NOT NULL,
       realm TEXT NOT NULL UNIQUE,

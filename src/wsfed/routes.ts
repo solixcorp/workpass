@@ -21,6 +21,11 @@ import {
 import { buildWsfedSignInResult } from "./token";
 import { buildSsoLoginPage } from "../pages/sso-login";
 import { loadSamlIdpSigningMaterial } from "../saml/protocol-routes";
+import {
+  evaluateAppAccess,
+  loadAppAccessPolicy,
+  policyTtlSeconds,
+} from "../access/policies";
 
 export const WSFED_SIGNIN_PATH = "/wsfed/signin";
 export const WSFED_METADATA_PATH = "/wsfed/metadata";
@@ -178,6 +183,13 @@ wsfedProtocolRoutes.get(WSFED_SIGNIN_PATH, async (context) => {
     }
     const email = session.user.email;
     if (!email || email.length > 256) return rejectSignin(context, "no-nameid");
+    // The per-application access policy: group gating before issuance.
+    const policySubject = `wsfed:${party.realm}`;
+    const policy = await loadAppAccessPolicy(context.env, policySubject);
+    if (policy) {
+      const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
+      if (!evaluation.allowed) return rejectSignin(context, "app-policy-denied");
+    }
     const authenticatedAt = new Date(session.session?.createdAt);
     if (!Number.isFinite(authenticatedAt.getTime()) || authenticatedAt.getTime() > now.getTime() + 2 * 60_000) {
       return rejectSignin(context, "invalid-session-time");
@@ -196,6 +208,13 @@ wsfedProtocolRoutes.get(WSFED_SIGNIN_PATH, async (context) => {
       signing,
       now,
     });
+    await (await import("../access/policies")).recordAppIssuance(
+      context.env,
+      policySubject,
+      session.user.id,
+      "wsfed",
+      policy?.enforcementMode ?? "enforce",
+    );
     const replyOrigin = new URL(party.replyUrl).origin;
     return auditStandaloneOperation(context.env, "wsfed.token.issue", WSFED_SIGNIN_PATH, async () => ({
       response: new Response(issued.postPage, {

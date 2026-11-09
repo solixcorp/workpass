@@ -11,6 +11,7 @@
 
 import { Hono } from "hono";
 import type { Env } from "../env";
+import { evaluateAppAccess, hasRecentAppIssuance, loadAppAccessPolicy } from "../access/policies";
 
 export const consentRoutes = new Hono<{ Bindings: Env }>();
 
@@ -22,6 +23,25 @@ consentRoutes.get("/consent", async (context) => {
   }
   const scopes = (query.get("scope") ?? "").split(" ").filter(Boolean);
   const clientId = query.get("client_id") ?? "";
+  // The per-application access policy: group gating at the consent step.
+  const policySubject = `oidc:${clientId}`;
+  let gate = { allowed: true, observedOnly: false, priorSuccess: false };
+  try {
+    const policy = await loadAppAccessPolicy(context.env, policySubject);
+    if (policy) {
+      const session = await (await import("../auth/config")).createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
+      const evaluation = await evaluateAppAccess(context.env, policy, session?.user.id ?? "");
+      const priorSuccess = session?.user.id
+        ? await hasRecentAppIssuance(context.env, policySubject, session.user.id, policy.bypassWindowSeconds)
+        : false;
+      gate = { allowed: evaluation.allowed, observedOnly: evaluation.observedOnly, priorSuccess };
+    }
+  } catch {
+    // Policy storage not ready: behave like the no-policy case.
+  }
+  if (!gate.allowed && !(gate.priorSuccess && !gate.observedOnly)) {
+    return context.redirect(`${new URL(context.env.AUTH_BASE_URL).origin}/api/auth/error?error=access_denied`, 302);
+  }
   context.header("Cache-Control", "no-store");
   context.header("Referrer-Policy", "no-referrer");
   context.header(
