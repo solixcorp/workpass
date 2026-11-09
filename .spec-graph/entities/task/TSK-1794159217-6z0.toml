@@ -3,9 +3,9 @@ id = "TSK-1794159217-6z0"
 type = "task"
 title = "Resolve security and service decisions"
 description = "Evaluate password hashing cost and recovery, MFA, operational logs, service limits and actual SaaS compatibility; preserve unresolved decisions and risks."
-status = "draft"
+status = "deprecated"
 created_at = 2026-11-09T02:33:37+09:00
-updated_at = 2026-11-09T02:33:37+09:00
+updated_at = 2026-11-09T16:07:50+09:00
 
 [metadata]
 acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]

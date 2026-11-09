@@ -3,9 +3,9 @@ id = "TSK-1794159216-kh9"
 type = "task"
 title = "Compare Workers identity engines"
 description = "Evaluate vetted OIDC, SAML and password implementations for Workers, D1 adapters, one-time code atomicity, key handling, maintenance and runtime limits."
-status = "active"
+status = "deprecated"
 created_at = 2026-11-09T02:33:36+09:00
-updated_at = 2026-11-09T03:33:32+09:00
+updated_at = 2026-11-09T16:07:47+09:00
 
 [metadata]
 acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]

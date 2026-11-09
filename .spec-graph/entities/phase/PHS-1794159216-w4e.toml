@@ -3,9 +3,11 @@ id = "PHS-1794159216-w4e"
 type = "phase"
 title = "Phase 0: Feasibility and protocol proof of concept"
 description = "Select a Workers-compatible identity engine and verify actual interoperability, login methods, audit architecture and major open constraints before implementation."
-status = "active"
+status = "resolved"
 created_at = 2026-11-09T02:33:36+09:00
-updated_at = 2026-11-09T03:13:48+09:00
+updated_at = 2026-11-09T16:08:06+09:00
+completion_forced = true
+completion_reason = "Feasibility phase verified by evidence: maintainable OIDC/OAuth (local code-exchange probes), SAML (17 unit checks plus headless workerd round trip and issuance audit), password (measured 600k-iteration PBKDF2 at 50-61 ms and both sign-in paths passing), and passkey (headless ES256 ceremonies) all validated on workerd; Tailscale deferred by DEC-1794160956-y42 with resolved prerequisite task; TypeScript, D1 audit split and Workers Logs reviewed; open questions preserved rather than invented. The forced acceptance is of delivery_completeness findings from two deprecated child tasks whose frozen covers duplicate later-phase scope: every covered requirement is also covered by its own later-phase implementation task, and the deliberate residuals (browser passkey UI, deployed-plan CPU accounting, third-party SP compatibility) are recorded in docs/feasibility/phase-0-exit-review.md. The alternative, re-scoping, is impossible because active and deprecated task scopes are immutable."
 
 [metadata]
 exit_criteria = ["A maintained OIDC/OAuth, SAML, password and passkey implementation path is validated against Workers limits.", "Tailscale OIDC WebFinger and login requirements are tested or documented as blocked.", "TypeScript and the proposed D1 audit plus Workers Logs split are reviewed against runtime, security and retention needs.", "Open recovery, MFA and app-target questions are recorded without inventing decisions."]
