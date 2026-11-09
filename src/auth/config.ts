@@ -4,11 +4,14 @@ import { admin } from "better-auth/plugins/admin";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { passkey } from "@better-auth/passkey";
 import { oauthProvider } from "@better-auth/oauth-provider";
+import type { OAuthResourceInput } from "@better-auth/oauth-provider";
 import type { Env } from "../env";
 import { verifyPassword, hashPassword } from "./password";
 import { constantTimeTokenMatches } from "../security/tokens";
 import { validateFingerprintConfig } from "../security/fingerprint";
 import { revokeTrustedDevices } from "../security/trusted-device-store";
+import { tokenExchangeExtension } from "../token/grant";
+import { backchannelFailureEvent } from "../oidc/logout-logging";
 
 export type AuthInstance = ReturnType<typeof createAuth>;
 
@@ -22,6 +25,18 @@ export function createAuth(env: Env) {
     baseURL,
     basePath: "/api/auth",
     secret: env.AUTH_SECRET,
+    logger: {
+      level: "warn",
+      log(level, message, ...args) {
+        const failure = backchannelFailureEvent(message);
+        if (failure) {
+          console.error(failure);
+          return;
+        }
+        if (level === "error") console.error("Better Auth:", message, ...args);
+        else if (level === "warn") console.warn("Better Auth:", message, ...args);
+      },
+    },
     database: env.DB,
     disabledPaths: ["/token"],
     trustedOrigins: [baseURL],
@@ -111,9 +126,54 @@ export function createAuth(env: Env) {
           }
           return { referenceId: "operator-provisioned" };
         },
+        resources: parseResourceSeed(env.OAUTH_RESOURCES),
+        clientRegistrationAllowedResources: resourceSeedIdentifiers(parseResourceSeed(env.OAUTH_RESOURCES)),
+        // RFC 8693 token exchange is opt-in; the extension enforces an explicit
+        // client→resource allowlist and denies everything by default.
+        extensions: env.ENABLE_TOKEN_EXCHANGE === "true" ? [tokenExchangeExtension(env)] : [],
       }),
     ],
   });
+}
+
+/** Parse the RFC 8707 resource seed. Failing closed on malformed
+ * configuration beats silently issuing tokens for an unknown audience map. */
+function parseResourceSeed(raw: string | undefined): Array<string | OAuthResourceInput> | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  if (raw.length > 16384) throw new Error("OAUTH_RESOURCES must be at most 16384 characters");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("OAUTH_RESOURCES must be valid JSON");
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 100) {
+    throw new Error("OAUTH_RESOURCES must be a non-empty JSON array");
+  }
+  return parsed.map((entry) => {
+    if (typeof entry === "string") {
+      const identifier = entry.trim();
+      const url = new URL(identifier);
+      if (url.protocol !== "https:" || url.username || url.password || url.hash) {
+        throw new Error(`OAUTH_RESOURCES identifier must be a https URL without credentials or fragment: ${identifier}`);
+      }
+      if (identifier.length > 2048) throw new Error("OAUTH_RESOURCES identifier must be at most 2048 characters");
+      return identifier;
+    }
+    if (
+      typeof entry !== "object" || Array.isArray(entry) || typeof (entry as { identifier?: unknown }).identifier !== "string"
+    ) {
+      throw new Error("OAUTH_RESOURCES entries must be strings or objects with identifier");
+    }
+    return entry as OAuthResourceInput;
+  });
+}
+
+/** Identifiers an operator-provisioned dynamic registration may link a client
+ * to — equal to the seeded set, since every seed entry is an approved audience. */
+function resourceSeedIdentifiers(seed: Array<string | OAuthResourceInput> | undefined): string[] | undefined {
+  if (seed === undefined) return undefined;
+  return seed.map((entry) => (typeof entry === "string" ? entry : entry.identifier));
 }
 
 function validateAuthEnvironment(env: Env): void {
@@ -129,6 +189,9 @@ function validateAuthEnvironment(env: Env): void {
     [env.ENABLE_DYNAMIC_CLIENT_REGISTRATION, env.CLIENT_REGISTRATION_TOKEN, "CLIENT_REGISTRATION_TOKEN"],
     [env.ENABLE_ADMIN_BOOTSTRAP, env.ADMIN_BOOTSTRAP_TOKEN, "ADMIN_BOOTSTRAP_TOKEN"],
     [env.ENABLE_MIGRATIONS, env.MIGRATION_TOKEN, "MIGRATION_TOKEN"],
+    [env.ENABLE_OAUTH1, env.OAUTH1_MANAGEMENT_TOKEN, "OAUTH1_MANAGEMENT_TOKEN"],
+    [env.ENABLE_SSF_RECEIVER, env.SSF_MANAGEMENT_TOKEN, "SSF_MANAGEMENT_TOKEN"],
+    [env.ENABLE_SSF_SENDER, env.SSF_MANAGEMENT_TOKEN, "SSF_MANAGEMENT_TOKEN"],
   ] as const) {
     if (enabled === "true" && (!token || new TextEncoder().encode(token).byteLength < 32)) {
       throw new Error(`${name} must be at least 32 bytes when its feature is enabled`);

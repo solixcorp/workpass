@@ -16,6 +16,26 @@ export interface Env extends Partial<WorkerBindings> {
   MIGRATION_TOKEN?: string;
   ENABLE_DYNAMIC_CLIENT_REGISTRATION?: string;
   CLIENT_REGISTRATION_TOKEN?: string;
+  ENABLE_TOKEN_EXCHANGE?: string;
+  TOKEN_EXCHANGE_ALLOWED_RESOURCES?: string;
+  /**
+   * RFC 8707 protected-resource seed (JSON array of strings, or objects with
+   * identifier/accessTokenTtl/allowedScopes). Seeded into the provider's
+   * oauthResource table on first use; malformed config disables startup.
+   */
+  OAUTH_RESOURCES?: string;
+  /** OAuth 1.0a server (RFC 5849 HMAC-SHA1 profile); routes fail closed. */
+  ENABLE_OAUTH1?: string;
+  /** Operator token for /api/oauth1/consumers management; >= 32 bytes when enabled. */
+  OAUTH1_MANAGEMENT_TOKEN?: string;
+  /** SSF (Shared Signals Framework) push receiver; routes fail closed. */
+  ENABLE_SSF_RECEIVER?: string;
+  /** SSF event sender (outbound SETs); routes fail closed. */
+  ENABLE_SSF_SENDER?: string;
+  /** Trusted SSF sender streams: JSON array of {id, issuer, audience, jwks, event_types}. */
+  SSF_STREAMS?: string;
+  /** Operator token for SSF management endpoints; >= 32 bytes when enabled. */
+  SSF_MANAGEMENT_TOKEN?: string;
   SCIM_TARGET_ID?: string;
   SCIM_BASE_URL?: string;
   SCIM_BEARER_TOKEN?: string;
