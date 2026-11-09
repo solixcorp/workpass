@@ -22,10 +22,12 @@ import { oauth1Routes } from "./oauth1/routes";
 import { cleanupOAuth1Temporaries } from "./oauth1/store";
 import { ssfReceiverRoutes } from "./ssf/routes";
 import { ssfSenderRoutes, cleanupSsfDeliveries } from "./ssf/sender-routes";
-import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
-import { cleanupAccessRequests } from "./access/requests";
 import { cleanupSsfInbox } from "./ssf/inbox";
 import { attemptPendingSSFDispatch } from "./ssf/dispatch";
+import { accountRoutes } from "./accounts/routes";
+import { cleanupAccountSessionContexts } from "./accounts/store";
+import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
+import { cleanupAccessRequests } from "./access/requests";
 
 const app = new Hono<{ Bindings: Env }>();
 app.onError((error, context) => {
@@ -73,6 +75,7 @@ app.route("/", inboundScimRoutes);
 app.route("/", oauth1Routes);
 app.route("/", ssfReceiverRoutes);
 app.route("/", ssfSenderRoutes);
+app.route("/", accountRoutes);
 app.route("/api/admin", accessRequestAdminRoutes);
 app.route("/", accessRequestUserRoutes);
 
@@ -91,6 +94,7 @@ async function scheduled(
     await cleanupSsfInbox(env.DB, controller.scheduledTime);
     await cleanupSsfDeliveries(env, controller.scheduledTime);
     await attemptPendingSSFDispatch(env, controller.scheduledTime);
+    await cleanupAccountSessionContexts(env, new Date(controller.scheduledTime));
     await cleanupAccessRequests(env, controller.scheduledTime);
   } catch (error) {
     console.error("Scheduled security cleanup failed", {

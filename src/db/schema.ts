@@ -316,7 +316,58 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     )`,
   ).run();
   await env.DB.prepare(
-    "CREATE INDEX IF NOT EXISTS session_mfa_proofs_time_idx  // Custom object attributes: one flat JSON object per (object_type, object_id)
+    "CREATE INDEX IF NOT EXISTS session_mfa_proofs_time_idx  // Multi-account switching: tenant-like accounts a user may belong to and
+  // switch between (see docs/design/multi-accounts.md).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS account_members (
+      account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+      granted_by TEXT NOT NULL,
+      granted_at TEXT NOT NULL,
+      PRIMARY KEY (account_id, user_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS account_members_user_idx ON account_members (user_id)",
+  ).run();
+  // The active account is bound per session token, mirroring the
+  // session_mfa_proofs pattern, so two sessions of the same user may hold
+  // different account contexts and no Better Auth schema change is needed.
+  // A secondary session_id column lets protocol claim release (OIDC `sid`)
+  // resolve the account without holding raw session tokens in token
+  // issuance paths.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS account_session_contexts (
+      session_token TEXT PRIMARY KEY NOT NULL,
+      session_id TEXT,
+      user_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      switched_at TEXT NOT NULL
+    )`,
+  ).run();
+  const contextColumns = await env.DB.prepare("PRAGMA table_info(account_session_contexts)")
+    .all<{ name: string }>();
+  if (!contextColumns.results.some((column) => column.name === "session_id")) {
+    await env.DB.prepare("ALTER TABLE account_session_contexts ADD COLUMN session_id TEXT").run();
+  }
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS account_session_contexts_time_idx ON account_session_contexts (switched_at)",
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS account_session_contexts_session_idx ON account_session_contexts (session_id)",
+  ).run();
+  // Custom object attributes: one flat JSON object per (object_type, object_id)
   // (see docs/design/object-attributes.md).
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS object_attributes (
