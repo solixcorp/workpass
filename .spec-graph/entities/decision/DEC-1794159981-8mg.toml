@@ -3,9 +3,9 @@ id = "DEC-1794159981-8mg"
 type = "decision"
 title = "Separate security audit records from operational logs"
 description = "Store structured security and account-management audit events in D1 for application-level querying with a minimum one-year retention period. Use Workers Logs for operational diagnostics; do not log secrets or substitute sampled operational logs for required audit events. Independent backups, tamper-evidence, audit-write-failure behavior and Workers Logs retention remain open."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-09T02:46:21+09:00
-updated_at = 2026-11-09T03:08:54+09:00
+updated_at = 2026-11-10T08:55:06+09:00
 
 [metadata]
 date = "2026-11-09"

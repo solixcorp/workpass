@@ -1,0 +1,22 @@
+schema = 1
+id = "CHG-1794268484-c8g"
+type = "change"
+title = "R2 independent audit backup with watermark export"
+description = "Decision record and implementation for QST-1794159222-jq6: daily watermark-guarded JSONL export of positioned audit rows to the AUDIT_BACKUP R2 bucket, restore-side chain verification, fails-safe without the binding, plus the 30-day Workers Logs retention (QST-1794159887-jwy) and fail-closed audit-write confirmation."
+status = "resolved"
+created_at = 2026-11-10T08:54:44+09:00
+updated_at = 2026-11-10T08:55:00+09:00
+amendment_forced = true
+amendment_reason = "Record the QA evidence file that proves the export, replay and tamper behavior; the change is complete and verified."
+
+[metadata]
+acceptance = ["Export/replay/tamper tests pass."]
+instructions = ["Export is idempotent per log position; verification checks dates, hashes and contiguity."]
+must_not = []
+order = 1.0
+qa = [{command = "bun test tests/audit-backup.test.ts", evidence = "tests/audit-backup.test.ts", expected = "exit 0"}]
+references = ["docs/security/audit-backup.md", "docs/operations/production-checklist.md"]
+
+[[relations]]
+to = "REQ-1794159216-yc6"
+type = "covers"

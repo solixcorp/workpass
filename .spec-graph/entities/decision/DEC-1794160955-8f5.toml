@@ -3,9 +3,9 @@ id = "DEC-1794160955-8f5"
 type = "decision"
 title = "Use test services for initial federation and provisioning validation"
 description = "Use test service providers for initial SAML and SCIM interoperability validation. The specific test providers are not yet named. Identify the real production applications, supported profiles and subscription tiers before enabling production integrations."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-09T03:02:35+09:00
-updated_at = 2026-11-09T03:08:54+09:00
+updated_at = 2026-11-10T08:55:06+09:00
 
 [metadata]
 date = "2026-11-09"

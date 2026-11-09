@@ -2,10 +2,10 @@ schema = 1
 id = "QST-1794159887-jwy"
 type = "question"
 title = "Define audit-write failure and operational-log retention behavior"
-description = "The D1 audit store and Workers Logs diagnostic split is selected, with at least one year of structured security audit retention. Decide how security-sensitive writes behave if audit persistence fails, whether operational diagnostics need a specific retention period, and what alerts are required."
-status = "draft"
+description = "ANSWERED 2026-11-10: audit writes keep failing closed (an operation refuses to proceed without its audit record, already implemented); operational Workers Logs diagnostics retention raised to the 30-day maximum in wrangler.jsonc; alerts for export failures surface in operator logs until a transport decision arrives."
+status = "resolved"
 created_at = 2026-11-09T02:44:47+09:00
-updated_at = 2026-11-09T03:02:36+09:00
+updated_at = 2026-11-10T08:54:47+09:00
 
 [metadata]
 due_at = ""

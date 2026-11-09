@@ -3,9 +3,9 @@ id = "DEC-1794163184-ns2"
 type = "decision"
 title = "Use Cloudflare Workers with Bun and TypeScript as the mandatory stack"
 description = "Use Cloudflare Workers as the production and local execution platform, TypeScript for all application source, and Bun as the required JavaScript toolchain for package management, lockfiles and project scripts. Do not introduce a separate application runtime or service. Wrangler is a development/deployment CLI rather than an application runtime and must be invoked in its officially supported Node.js environment if Bun execution is unsupported. Worker code and runtime integration tests must execute in workerd/Cloudflare Workers, not Bun; Bun-native unit tests may be used only for runtime-independent modules. Confirm framework, identity-library, cryptography, D1 and test compatibility in Phase 0."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-09T03:39:44+09:00
-updated_at = 2026-11-09T03:39:44+09:00
+updated_at = 2026-11-10T08:55:06+09:00
 
 [metadata]
 date = "2026-11-09"

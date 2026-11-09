@@ -2,7 +2,7 @@ schema = 1
 id = "QST-1794159222-ane"
 type = "question"
 title = "Define audit backup privacy and tamper-evidence controls"
-description = "Structured security audit events have a one-year minimum retention period in D1. Define independent backup and restoration requirements, privacy and deletion constraints, and whether tamper-evidence beyond D1 access controls is required."
-status = "draft"
+description = "ANSWERED 2026-11-10: the company email domain for Tailscale OIDC/WebFinger validation is auth.solixllc.com. Configure OIDC_EMAIL_DOMAIN=auth.solixllc.com, point that domain's /.well-known/webfinger at the Worker, and provision the disposable Tailscale test tenant when the live run is scheduled (recorded in docs/operations/production-checklist.md)."
+status = "resolved"
 created_at = 2026-11-09T02:33:42+09:00
-updated_at = 2026-11-09T03:02:36+09:00
+updated_at = 2026-11-10T08:54:44+09:00

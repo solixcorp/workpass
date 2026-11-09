@@ -3,9 +3,9 @@ id = "REQ-1794159215-ag6"
 type = "requirement"
 title = "Multi-factor and step-up policy"
 description = "Support configurable MFA and privileged-operation step-up; verify which authenticators satisfy the intended assurance policy and protect recovery paths. Specific additional factors remain undecided."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-09T02:33:35+09:00
-updated_at = 2026-11-09T02:33:35+09:00
+updated_at = 2026-11-10T08:55:06+09:00
 
 [metadata]
 kind = "functional"

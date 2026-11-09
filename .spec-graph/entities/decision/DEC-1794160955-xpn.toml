@@ -3,9 +3,9 @@ id = "DEC-1794160955-xpn"
 type = "decision"
 title = "Retain structured security audit events for at least one year"
 description = "Retain structured security audit events in D1 for a minimum of one year. Continue using Workers Logs for operational diagnostics, not as the authoritative security audit trail. Define backup, privacy, tamper-evidence, audit-write-failure and operational-log retention policies separately; do not describe D1 as immutable."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-09T03:02:35+09:00
-updated_at = 2026-11-09T03:02:35+09:00
+updated_at = 2026-11-10T08:55:06+09:00
 
 [metadata]
 date = "2026-11-09"
