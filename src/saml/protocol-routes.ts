@@ -17,7 +17,7 @@ import { getEnabledSamlServiceProviderByEntityId } from "./service-providers";
 import { importSamlIdpPrivateKey, importSamlServiceProviderTrustedKey } from "./certificates";
 import { buildSignedSamlResponse, type SamlSigningMaterial } from "./assertion";
 import { buildSamlIdpMetadata } from "./metadata";
-import { buildSsoLoginPage } from "./sso-login";
+import { buildSsoLoginPage } from "../pages/sso-login";
 
 export const SAML_SSO_PATH = "/saml/sso";
 

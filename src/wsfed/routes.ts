@@ -19,7 +19,7 @@ import {
   validateWsfedRelyingParty,
 } from "./relying-parties";
 import { buildWsfedSignInResult } from "./token";
-import { buildSsoLoginPage } from "../saml/sso-login";
+import { buildSsoLoginPage } from "../pages/sso-login";
 import { loadSamlIdpSigningMaterial } from "../saml/protocol-routes";
 
 export const WSFED_SIGNIN_PATH = "/wsfed/signin";

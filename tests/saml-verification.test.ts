@@ -18,7 +18,7 @@ import {
 import { verifySamlRedirectSignature } from "../src/saml/redirect-signature";
 import { buildSignedSamlResponse, type IssuedSamlResponse } from "../src/saml/assertion";
 import { buildSamlIdpMetadata } from "../src/saml/metadata";
-import { buildSsoLoginPage } from "../src/saml/sso-login";
+import { buildSsoLoginPage } from "../src/pages/sso-login";
 import { buildCertificateDer, derToPem } from "./saml-x509";
 
 const SP_ENTITY_ID = "https://sp.example.com/metadata";
