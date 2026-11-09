@@ -179,7 +179,7 @@ const rawSearch = new URL(consentUrlResolved ?? "").search.startsWith("?")
 const consentPage = await call(consentUrlResolved!, { headers: {} });
 expect("consent page renders", consentPage.status === 200, consentPage.status);
 const consentPageHtml = await consentPage.text();
-const inlineScript = RegExp("<script>([\\s\\S]*?)</script>").exec(consentPageHtml)![1]!;
+const inlineScript = RegExp("<script\\b[^>]*>([\\s\\S]*?)</script>").exec(consentPageHtml)![1]!;
 new Function(inlineScript.replace(/document\.[a-zA-Z]+\([^)]*\)/g, "{}").replace(/document/g, "{}"));
 const consent = await call("/api/auth/oauth2/consent", {
   method: "POST",

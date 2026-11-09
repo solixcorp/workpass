@@ -4,6 +4,7 @@ import type { Env } from "../env";
 import { createAuth } from "../auth/config";
 import { constantTimeTokenMatches } from "../security/tokens";
 import { ensureApplicationTables } from "../db/schema";
+import { installOidcOffboardingGuards } from "../db/oidc-offboarding";
 import { insertAuditEvent } from "../audit/store";
 
 export const migrationRoutes = new Hono<{ Bindings: Env }>();
@@ -37,6 +38,7 @@ migrationRoutes.post("/migrate", async (context) => {
     }
 
     await migrations.runMigrations();
+    await installOidcOffboardingGuards(context.env);
     await ensureApplicationTables(context.env);
 
     try {

@@ -12,6 +12,7 @@ import { auditStandaloneOperation } from "../audit/store";
 import { duoAuthCall, duoConfig } from "./duo";
 import { sealString } from "../crypto/sealed";
 import { generateHotpSecret, hotpVerify, userHasHotpToken } from "./hotp";
+import { recordSessionMfaProof } from "./second-factor";
 
 
 export const mfaRoutes = new Hono<{ Bindings: Env }>();
@@ -37,6 +38,14 @@ mfaRoutes.post("/mfa/duo/verify", async (context) => {
     });
     if (!result) {
       return { response: Response.json({ error: "Duo secondary authentication is not configured" }, { status: 503 }), actorUserId: session.user.id };
+    }
+    if (result.result === "allow") {
+      // A push approval in this session is a session-bound second factor.
+      const token = proofSessionToken(session);
+      const verified = token !== null && await recordSessionMfaProof(context.env, token, session.user.id);
+      if (!verified) {
+        return { response: Response.json({ error: "The verification could not be recorded" }, { status: 503 }), actorUserId: session.user.id };
+      }
     }
     return {
       response: Response.json({ result: result.result, status: result.status, statusMessage: result.statusMessage }),
@@ -84,6 +93,15 @@ mfaRoutes.post("/mfa/hotp/verify", async (context) => {
   const code = typeof value.code === "string" ? value.code : "";
   return auditStandaloneOperation(context.env, "mfa.hotp.verify", "/api/mfa/hotp/verify", async () => {
     const result = await hotpVerify(context.env, session.user.id, code);
+    if (result.verified) {
+      const token = proofSessionToken(session);
+      const recorded = token !== null && await recordSessionMfaProof(context.env, token, session.user.id);
+      if (!recorded) {
+        // The code itself was correct, but the proof must be durable or MFA
+        // policies cannot honor it later; do not report a passing verification.
+        return { response: Response.json({ error: "The verification could not be recorded" }, { status: 503 }), actorUserId: session.user.id };
+      }
+    }
     return {
       response: Response.json({ verified: result.verified }, { status: result.verified ? 200 : 400 }),
       actorUserId: session.user.id,
@@ -91,9 +109,19 @@ mfaRoutes.post("/mfa/hotp/verify", async (context) => {
   });
 });
 
-// The admin-facing second-factor check used by the SSO routes; SAML and
-// WS-Fed call the shared userSatisfiesRequireMfa helper directly
-// (src/mfa/second-factor.ts).
+interface MfaProofSession {
+  user: { id: string };
+  session?: { token?: unknown } | null;
+}
+
+/** The acting session token for a proof record (fail closed). */
+function proofSessionToken(session: MfaProofSession): string | null {
+  const token = session.session?.token;
+  return typeof token === "string" && token.length > 0 && token.length <= 512 ? token : null;
+}
+
+// The admin-facing second-factor status endpoint (display only); the SSO
+// routes gate on sessionSatisfiesRequireMfa (src/mfa/second-factor.ts).
 mfaRoutes.get("/mfa/second-factor", async (context) => {
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);

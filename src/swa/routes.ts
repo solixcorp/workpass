@@ -17,6 +17,7 @@ import {
   policyTtlSeconds,
 } from "../access/policies";
 import { auditStandaloneOperation } from "../audit/store";
+import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
 import {
   consumeSwaGrant,
   createSwaApplication,
@@ -183,6 +184,11 @@ swaUserRoutes.post("/api/swa/grants", async (context) => {
   const policySubject = `swa:${application.origin}`;
   const policy = await loadAppAccessPolicy(context.env, policySubject);
   if (policy) {
+    // requireMfa honors session-bound proofs, not enrollment.
+    if (policy.requireMfa && !(await sessionSatisfiesRequireMfa(context.env, session))) {
+      console.error("SWA grant rejected", { stage: "mfa-required" });
+      return context.json({ error: GENERIC_REJECTION }, 403);
+    }
     const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
     if (!evaluation.allowed) {
       console.error("SWA grant rejected", { stage: "app-policy-denied" });
@@ -195,8 +201,8 @@ swaUserRoutes.post("/api/swa/grants", async (context) => {
     }
   }
   const grantTtl = policy && policy.sessionTtlSeconds !== null
-    ? policyTtlSeconds(policy, 5 * 60_000)
-    : 5 * 60_000;
+    ? policyTtlSeconds(policy, 5 * 60)
+    : 5 * 60;
   return auditStandaloneOperation(context.env, "swa.grant.issue", `${SWA_PREFIX}/grants`, async () => {
     const grant = await issueSwaGrant(context.env, {
       applicationId: application.id,

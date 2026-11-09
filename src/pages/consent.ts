@@ -37,23 +37,24 @@ consentRoutes.get("/consent", async (context) => {
       gate = { allowed: evaluation.allowed, observedOnly: evaluation.observedOnly, priorSuccess };
     }
   } catch {
-    // Policy storage not ready: behave like the no-policy case.
+    return context.json({ error: "Authorization policy unavailable" }, 503);
   }
-  if (!gate.allowed && !(gate.priorSuccess && !gate.observedOnly)) {
+  if (!gate.allowed) {
     return context.redirect(`${new URL(context.env.AUTH_BASE_URL).origin}/api/auth/error?error=access_denied`, 302);
   }
   context.header("Cache-Control", "no-store");
   context.header("Referrer-Policy", "no-referrer");
+  const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
   context.header(
     "Content-Security-Policy",
-    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+    `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; form-action 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'`,
   );
-  return context.body(consentPage(clientId, scopes, oauthQuery), 200, {
+  return context.body(consentPage(clientId, scopes, oauthQuery, nonce), 200, {
     "Content-Type": "text/html; charset=utf-8",
   });
 });
 
-function consentPage(clientId: string, scopes: string[], oauthQuery: string): string {
+function consentPage(clientId: string, scopes: string[], oauthQuery: string, nonce: string): string {
   const scopeList = scopes.length === 0
     ? "<li>your identity</li>"
     : scopes.map((scope) => `<li>${escapeHtml(scope)}</li>`).join("");
@@ -79,8 +80,8 @@ function consentPage(clientId: string, scopes: string[], oauthQuery: string): st
     '<button class="deny" id="d" name="decision" type="submit" value="deny">No, do not continue</button>',
     '<div id="error" role="alert"></div>',
     "</form></main>",
-    '<script>var Q=document.getElementById("f").elements["oauth_query"].value;var A=document.getElementById("a");var D=document.getElementById("d");var E=document.getElementById("error");',
-    "var SC=[", scopes.map((scope) => JSON.stringify(scope)).join(","), "];",
+    `<script nonce="${nonce}">var Q=document.getElementById("f").elements["oauth_query"].value;var A=document.getElementById("a");var D=document.getElementById("d");var E=document.getElementById("error");`,
+    "var SC=new URLSearchParams(Q).get('scope')?.split(' ').filter(Boolean)||[];",
     "function send(accept,button){A.disabled=true;D.disabled=true;E.textContent='';",
     "fetch('/api/auth/oauth2/consent',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json'},",
     "body:JSON.stringify({oauth_query:Q,accept:accept,scopes:SC})})",

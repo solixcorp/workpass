@@ -104,10 +104,11 @@ export async function hotpVerify(env: Env, userId: string, code: string): Promis
     for (let offset = 0; offset <= HOTP_LOOKAHEAD; offset += 1) {
       const candidate = await hotpCode(secret, row.counter + offset);
       if (candidate === code) {
-        await env.DB.prepare(
-          "UPDATE mfa_hotp_tokens SET counter = ? WHERE id = ? AND user_id = ?",
-        ).bind(row.counter + offset + 1, row.id, userId).run();
-        return { verified: true, tokenId: row.id };
+        const updated = await env.DB.prepare(
+          "UPDATE mfa_hotp_tokens SET counter = ? WHERE id = ? AND user_id = ? AND counter = ?",
+        ).bind(row.counter + offset + 1, row.id, userId, row.counter).run();
+        if (updated.meta.changes === 1) return { verified: true, tokenId: row.id };
+        return { verified: false, tokenId: null };
       }
     }
   }

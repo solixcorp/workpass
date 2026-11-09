@@ -20,7 +20,7 @@ import {
   recordAppIssuance,
   policyTtlSeconds,
 } from "../access/policies";
-import { userSatisfiesRequireMfa } from "../mfa/second-factor";
+import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
 import { getEnabledSamlServiceProviderByEntityId } from "./service-providers";
 import { importSamlIdpPrivateKey, importSamlServiceProviderTrustedKey } from "./certificates";
 import { buildSignedSamlResponse, type SamlSigningMaterial } from "./assertion";
@@ -112,7 +112,7 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
     const policy = await loadAppAccessPolicy(context.env, policySubject);
     if (policy) {
       if (policy.requireMfa) {
-        const satisfied = await userSatisfiesRequireMfa(context.env, session.user.id, session.user.twoFactorEnabled === true);
+        const satisfied = await sessionSatisfiesRequireMfa(context.env, session);
         if (!satisfied) return reject(context, "mfa-required");
       }
       const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
@@ -149,7 +149,7 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
         relayState: verified.relayState,
         subject: { nameId: email, sessionId: sessionUserId(session), authenticatedAt },
         signing,
-        lifetimeSeconds: policy ? policyTtlSeconds(policy, 5 * 60_000) : undefined,
+        lifetimeSeconds: policy ? policyTtlSeconds(policy, 5 * 60) : undefined,
       });
       await recordAppIssuance(
         context.env,

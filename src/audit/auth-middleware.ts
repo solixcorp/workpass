@@ -8,6 +8,9 @@ import {
   isFingerprintRiskLogin,
 } from "../security/risk-auth-middleware";
 import { revokeTrustedDevices } from "../security/trusted-device-store";
+import { enforceOidcPolicy } from "../access/oidc-gate";
+import { recordSessionMfaProof } from "../mfa/second-factor";
+import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
 
 const auditEventTypes: Record<string, string> = {
   "POST /api/auth/sign-up/email": "identity.user.public_registration.denied",
@@ -35,6 +38,18 @@ const auditEventTypes: Record<string, string> = {
   "POST /api/auth/oauth2/register": "oauth.client.register.success_or_failure",
 };
 
+/**
+ * The Better Auth endpoints whose success IS a passed second factor. A
+ * successful verification returns { token, user } in both the sign-in
+ * continuation case (new session issued) and the already-signed-in case
+ * (existing session echoed), so the proof binds to the verified session.
+ */
+const twoFactorVerifyPaths = new Set([
+  "/api/auth/two-factor/verify-totp",
+  "/api/auth/two-factor/verify-otp",
+  "/api/auth/two-factor/verify-backup-code",
+]);
+
 function getResponseUserId(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
   const user = (value as { user?: unknown }).user;
@@ -47,6 +62,13 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   const auth = createAuth(env);
   const path = new URL(request.url).pathname;
   const eventType = auditEventTypes[`${request.method} ${path}`];
+
+  const policyRejection = await enforceOidcPolicy(request, env, auth);
+  if (policyRejection) return policyRejection;
+
+  if (request.method === "POST" && twoFactorVerifyPaths.has(path)) {
+    return handleTwoFactorVerification(request, env, auth);
+  }
 
   if (request.method === "POST" && path === "/api/auth/sign-up/email") {
     return denyPublicRegistration(request, env, auth, eventType!);
@@ -165,6 +187,67 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
 
   return response;
+}
+
+/**
+ * A successful two-factor verification records a session-bound MFA proof.
+ * Fail closed: an unverifiable verification must not be reported as success,
+ * because requireMfa policies honor only durable proofs.
+ *
+ * Prefer a session issued or rotated by this verification over the echoed
+ * body token: the plugin rotates the session on the FIRST verification
+ * (new cookie issued, old session row deleted) while the body still carries
+ * the rotated-out token. Only tokens that resolve in the session table are
+ * recorded.
+ */
+export async function handleTwoFactorVerification(request: Request, env: Env, auth: AuthInstance): Promise<Response> {
+  let response: Response;
+  try {
+    response = await auth.handler(request);
+  } catch {
+    return Response.json({ error: "Authentication operation failed" }, { status: 500 });
+  }
+  if (!response.ok) return response;
+
+  let token: string | null = null;
+  let userId: string | null = null;
+  try {
+    const fromCookie = await findNewSessionFromResponse(env, response);
+    token = fromCookie?.token ?? null;
+    userId = fromCookie?.userId ?? null;
+  } catch {
+    // Falls through to the body token below.
+  }
+  if (!token) {
+    try {
+      const body = await response.clone().json() as { token?: unknown } | null;
+      if (typeof body?.token === "string" && body.token.length > 0 && body.token.length <= 512) {
+        token = body.token;
+      }
+    } catch {
+      // Some successful verifications have no JSON body; userId stays null.
+    }
+  }
+  // The proof binds only to a token that really exists in storage.
+  if (token && !userId) {
+    try {
+      userId = await sessionUserIdForToken(env, token);
+    } catch {
+      userId = null;
+    }
+  }
+  if (!token || !userId || !(await recordSessionMfaProof(env, token, userId))) {
+    return Response.json({ error: "The verification could not be recorded" }, { status: 503 });
+  }
+  return response;
+}
+
+/** Resolve the owning user of a session token directly from storage. */
+async function sessionUserIdForToken(env: Env, token: string): Promise<string | null> {
+  const row = await env.DB.prepare(
+    'SELECT "userId" FROM "session" WHERE token = ? LIMIT 1',
+  ).bind(token).first<{ userId: string }>();
+  return typeof row?.userId === "string" && row.userId.length > 0 && row.userId.length <= 128 ? row.userId : null;
 }
 
 async function auditClientRegistration(
