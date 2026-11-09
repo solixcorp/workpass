@@ -45,6 +45,7 @@ accessPolicyRoutes.put("/app-access-policies", async (context) => {
   const sessionTtlSeconds = typeof value.sessionTtlSeconds === "number" ? value.sessionTtlSeconds : null;
   const bypassWindowSeconds = typeof value.bypassWindowSeconds === "number" ? value.bypassWindowSeconds : 28800;
   const enforcementMode = value.enforcementMode === "observe" ? "observe" : "enforce";
+  const requireMfa = value.requireMfa === true;
   const groups = Array.isArray(value.groups) ? value.groups.filter((g): g is string => typeof g === "string" && g.length <= 128) : [];
   const subjectPattern = /^(saml|oidc|wsfed|swa):[A-Za-z0-9_.:\/-]{1,2000}$/;
   if (!subjectPattern.test(subject)) {
@@ -57,6 +58,7 @@ accessPolicyRoutes.put("/app-access-policies", async (context) => {
     sessionTtlSeconds,
     bypassWindowSeconds,
     enforcementMode: enforcementMode as "enforce" | "observe",
+    requireMfa,
     groups,
   };
   try {

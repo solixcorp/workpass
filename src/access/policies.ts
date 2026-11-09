@@ -22,6 +22,8 @@ export interface AppAccessPolicy {
   /** A prior successful issuance within this window skips consent friction. */
   bypassWindowSeconds: number;
   enforcementMode: "enforce" | "observe";
+  /** Applications with this flag require the user to have a second factor. */
+  requireMfa: boolean;
   groups: string[];
 }
 
@@ -61,13 +63,14 @@ export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, u
   validateAppAccessPolicy(policy);
   await env.DB.prepare(
     `INSERT INTO app_access_policies
-       (subject, allowed_methods, session_ttl_seconds, bypass_window_seconds, enforcement_mode, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+       (subject, allowed_methods, session_ttl_seconds, bypass_window_seconds, enforcement_mode, require_mfa, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (subject) DO UPDATE SET
        allowed_methods = excluded.allowed_methods,
        session_ttl_seconds = excluded.session_ttl_seconds,
        bypass_window_seconds = excluded.bypass_window_seconds,
        enforcement_mode = excluded.enforcement_mode,
+       require_mfa = excluded.require_mfa,
        updated_by = excluded.updated_by,
        updated_at = excluded.updated_at`,
   )
@@ -77,6 +80,7 @@ export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, u
       policy.sessionTtlSeconds,
       policy.bypassWindowSeconds,
       policy.enforcementMode,
+      policy.requireMfa ? 1 : 0,
       updatedBy,
       new Date().toISOString(),
     )
@@ -86,9 +90,16 @@ export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, u
 export async function loadAppAccessPolicy(env: Env, subject: string): Promise<AppAccessPolicy | null> {
   const row = await env.DB.prepare(
     `SELECT subject, allowed_methods AS allowedMethods, session_ttl_seconds AS sessionTtlSeconds,
-            bypass_window_seconds AS bypassWindowSeconds, enforcement_mode AS enforcementMode
+            bypass_window_seconds AS bypassWindowSeconds, enforcement_mode AS enforcementMode, require_mfa AS requireMfa
      FROM app_access_policies WHERE subject = ?`,
-  ).bind(subject).first<AppAccessPolicy>();
+  ).bind(subject).first<{
+    subject: string;
+    allowedMethods: string;
+    sessionTtlSeconds: number | null;
+    bypassWindowSeconds: number;
+    enforcementMode: "enforce" | "observe";
+    requireMfa: number;
+  }>();
   if (!row) return null;
   const groups = await env.DB.prepare(
     "SELECT group_id FROM app_policy_groups WHERE subject = ?",
@@ -99,6 +110,7 @@ export async function loadAppAccessPolicy(env: Env, subject: string): Promise<Ap
     sessionTtlSeconds: row.sessionTtlSeconds,
     bypassWindowSeconds: row.bypassWindowSeconds,
     enforcementMode: row.enforcementMode as "enforce" | "observe",
+    requireMfa: row.requireMfa === 1,
     groups: groups.results.map((r) => r.group_id),
   };
 }

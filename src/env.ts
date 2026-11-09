@@ -26,4 +26,10 @@ export interface Env {
   SAML_IDP_SIGNING_PRIVATE_KEY?: string;
   SAML_IDP_PREVIOUS_SIGNING_CERTIFICATE?: string;
   SAML_IDP_PREVIOUS_SIGNING_PRIVATE_KEY?: string;
+  MFA_OTP_EMAIL_WEBHOOK_URL?: string;
+  RESEND_API_KEY?: string;
+  MFA_OTP_EMAIL_FROM?: string;
+  DUO_IKEY?: string;
+  DUO_SKEY?: string;
+  DUO_API_HOSTNAME?: string;
 }

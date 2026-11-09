@@ -203,6 +203,7 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       session_ttl_seconds INTEGER,
       bypass_window_seconds INTEGER NOT NULL DEFAULT 28800,
       enforcement_mode TEXT NOT NULL DEFAULT 'enforce' CHECK (enforcement_mode IN ('enforce', 'observe')),
+      require_mfa INTEGER NOT NULL DEFAULT 0 CHECK (require_mfa IN (0, 1)),
       updated_by TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,

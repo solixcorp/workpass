@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { jwt, username } from "better-auth/plugins";
+import { jwt, twoFactor, username } from "better-auth/plugins";
 import { admin } from "better-auth/plugins/admin";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { passkey } from "@better-auth/passkey";
@@ -69,6 +69,18 @@ export function createAuth(env: Env) {
         jwks: { keyPairConfig: { alg: "ES256" } },
       }),
       passkey({ rpID: authBaseUrl.hostname, rpName: "Internal Auth" }),
+      twoFactor({
+        issuer: authBaseUrl.hostname,
+        otpOptions: {
+          async sendOTP({ user, otp }, ctx) {
+            // Delivery is pluggable: a dev/mock webhook records the code, or the
+            // configured production sender delivers it. With no sender configured
+            // this fails closed and the OTP enrollment/use is not offered.
+            const { sendOtpEmail } = await import("../mfa/otp-senders");
+            await sendOtpEmail(env, { to: user.email, userId: user.id, otp });
+          },
+        },
+      }),
       oauthProvider({
         loginPage: "/sign-in",
         consentPage: "/consent",

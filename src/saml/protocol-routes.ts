@@ -97,25 +97,25 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
     // Stage 5: an Issuer-visible user session is mandatory before claiming.
     // With no session the login page is rendered for this verified request;
     // after sign-in the same URL reloads and the full chain runs again.
-    // The per-application access policy: group gating with enforce/observe
-    // modes, evaluated before any issuance decision.
-    const policySubject = `saml:${provider.entityId}`;
-    const policy = await loadAppAccessPolicy(context.env, policySubject);
-    if (policy) {
-      const session0 = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-      const evaluation = await evaluateAppAccess(context.env, policy, session0?.user.id ?? "");
-      if (!evaluation.allowed) {
-        return reject(context, "app-policy-denied");
-      }
-      void evaluation.observedOnly;
-    }
-
     const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
     if (!session) {
       if (request.isPassive) return reject(context, "passive-session-unavailable");
       // Prior-success bypass: a session is still required, but a signed-in
       // skip never applies here; the login page always gates unauthenticated users.
       return renderLoginPage(context);
+    }
+    // The per-application access policy: group gating plus per-app MFA
+    // requirement, evaluated against the signed-in user.
+    const policySubject = `saml:${provider.entityId}`;
+    const policy = await loadAppAccessPolicy(context.env, policySubject);
+    if (policy) {
+      if (policy.requireMfa && session.user.twoFactorEnabled !== true) {
+        return reject(context, "mfa-required");
+      }
+      const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
+      if (!evaluation.allowed) {
+        return reject(context, "app-policy-denied");
+      }
     }
     const email = session.user.email;
     if (!email || email.length > 256) return reject(context, "no-nameid");

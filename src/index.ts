@@ -14,6 +14,7 @@ import { wsfedProtocolRoutes } from "./wsfed/routes";
 import { consentRoutes } from "./pages/consent";
 import { oidcSignInRoutes } from "./pages/sign-in";
 import { swaUserRoutes } from "./swa/routes";
+import { mfaRoutes } from "./mfa/duo-routes";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -45,6 +46,7 @@ app.route("/", wsfedProtocolRoutes);
 app.route("/", consentRoutes);
 app.route("/", oidcSignInRoutes);
 app.route("/", swaUserRoutes);
+app.route("/", mfaRoutes);
 app.route("/.well-known", webfingerRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin", bootstrapRoutes);

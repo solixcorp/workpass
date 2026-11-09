@@ -183,10 +183,14 @@ wsfedProtocolRoutes.get(WSFED_SIGNIN_PATH, async (context) => {
     }
     const email = session.user.email;
     if (!email || email.length > 256) return rejectSignin(context, "no-nameid");
-    // The per-application access policy: group gating before issuance.
+    // The per-application access policy: group gating plus per-app MFA
+    // requirement, evaluated against the signed-in user.
     const policySubject = `wsfed:${party.realm}`;
     const policy = await loadAppAccessPolicy(context.env, policySubject);
     if (policy) {
+      if (policy.requireMfa && session.user.twoFactorEnabled !== true) {
+        return rejectSignin(context, "mfa-required");
+      }
       const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
       if (!evaluation.allowed) return rejectSignin(context, "app-policy-denied");
     }
