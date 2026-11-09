@@ -9,6 +9,7 @@ import { webfingerRoutes } from "./oidc/webfinger";
 import { trustedDeviceRoutes } from "./security/trusted-device-routes";
 import { lockdownRoutes } from "./security/lockdown-routes";
 import { cleanupFingerprintData } from "./security/fingerprint-retention";
+import { cleanupSessionNetworkBindings } from "./security/session-geo-binding";
 import { cleanupSamlRequestClaims } from "./saml/request-claims";
 import { cleanupSwaGrants } from "./swa/applications";
 import { samlProtocolRoutes } from "./saml/protocol-routes";
@@ -91,6 +92,7 @@ async function scheduled(
   try {
     // Cleanup runs even while the related features are disabled.
     await cleanupFingerprintData(env, new Date(controller.scheduledTime));
+    await cleanupSessionNetworkBindings(env, new Date(controller.scheduledTime));
     await cleanupSamlRequestClaims(env, new Date(controller.scheduledTime));
     await cleanupSwaGrants(env, new Date(controller.scheduledTime));
     await cleanupSessionMfaProofs(env, new Date(controller.scheduledTime));

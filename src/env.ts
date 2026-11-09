@@ -7,6 +7,23 @@ export interface Env extends Partial<WorkerBindings> {
   FINGERPRINT_REGION?: "us" | "eu" | "ap";
   FINGERPRINT_SERVER_API_KEY?: string;
   FINGERPRINT_ALLOWED_ORIGINS?: string;
+  /**
+   * GeoIP login-history policy (authentik GeoIP Policy semantics; requires
+   * FINGERPRINT_MODE != disabled and a position in event/history data).
+   */
+  GEOIP_CHECK_HISTORY_DISTANCE?: string;
+  GEOIP_HISTORY_MAX_DISTANCE_KM?: string;
+  GEOIP_DISTANCE_TOLERANCE_KM?: string;
+  GEOIP_HISTORY_LOGIN_COUNT?: string;
+  GEOIP_CHECK_IMPOSSIBLE_TRAVEL?: string;
+  GEOIP_IMPOSSIBLE_TOLERANCE_KM?: string;
+  /**
+   * Session network/GeoIP binding (authentik hardening; request.cf data).
+   * Violations end the session and write a logout-style audit event.
+   */
+  SESSION_BINDING_MODE?: "disabled" | "observe" | "enforce";
+  SESSION_BINDING_NETWORK?: "off" | "asn" | "asn_and_ip";
+  SESSION_BINDING_GEOIP?: "off" | "country" | "country_and_city";
   FINGERPRINT_MIN_CONFIDENCE?: string;
   FINGERPRINT_SUSPECT_SCORE_THRESHOLD?: string;
   FINGERPRINT_MAX_EVENT_AGE_SECONDS?: string;

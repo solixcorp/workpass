@@ -140,7 +140,18 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     await env.DB.prepare("ALTER TABLE auth_device_observations ADD COLUMN network_digest TEXT").run();
   }
   await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS fingerprint_risk_decisions (
+    `CREATE TABLE IF NOT EXISTS fingerprint_risk_decisions (  // Travel-plausibility coordinates: server-resolved points only (event
+  // geolocation or a country centroid); never raw IP addresses.
+  if (!observationColumns.results.some((column) => column.name === "latitude")) {
+    await env.DB.prepare("ALTER TABLE auth_device_observations ADD COLUMN latitude REAL").run();
+  }
+  if (!observationColumns.results.some((column) => column.name === "longitude")) {
+    await env.DB.prepare("ALTER TABLE auth_device_observations ADD COLUMN longitude REAL").run();
+  }
+  if (!observationColumns.results.some((column) => column.name === "geo_source")) {
+    await env.DB.prepare("ALTER TABLE auth_device_observations ADD COLUMN geo_source TEXT").run();
+  }
+
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT,
       event_id TEXT,
@@ -401,6 +412,42 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   ).run();
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS account_lockdowns_active_idx ON account_lockdowns (user_id) WHERE lifted_at IS NULL",
+  ).run();
+  // Session network/GeoIP binding envelopes (docs/security/session-geo-binding.md):
+  // keyed digests plus country code; the raw IP and city string are never stored.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS session_network_bindings (
+      session_token TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      network_digest TEXT,
+      asn_digest TEXT,
+      country_code TEXT,
+      city_digest TEXT,
+      network_level TEXT NOT NULL CHECK (network_level IN ('off', 'asn', 'asn_and_ip')),
+      geoip_level TEXT NOT NULL CHECK (geoip_level IN ('off', 'country', 'country_and_city')),
+      bound_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS session_network_bindings_user_idx ON session_network_bindings (user_id)",
+  ).run();
+  // Step-up challenge requirements (docs/security/device-risk-and-trust.md):
+  // sessions flagged by a risky decision must complete a second factor before
+  // SSO issuance; a recorded proof satisfies the user's open challenges.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS session_step_up_requirements (
+      session_token TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      reasons TEXT NOT NULL,
+      request_path TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      challenge_expires_at TEXT NOT NULL,
+      satisfied_at TEXT,
+      satisfied_method TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS session_step_up_requirements_user_idx ON session_step_up_requirements (user_id, challenge_expires_at)",
   ).run();
   // Access requests (docs/design/access-requests.md): just-in-time application
   // access with reviewer approval and time-limited temporal grants.

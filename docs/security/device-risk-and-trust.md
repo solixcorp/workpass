@@ -46,7 +46,7 @@ Combine the following as evidence, subject to actual Fingerprint plan/field avai
 - Bot/automation and other enabled Smart Signals, including any provider risk/suspect score.
 - New or changed visitor identifier for the account.
 - Time since the previous successful authentication, recent failed attempts, and frequency of distinct devices or locations.
-- Coarse network/region change and travel-time plausibility, where reliable server-side event data is available.
+- Coarse network/region change and travel-time plausibility, where reliable server-side event data is available. Implemented as the authentik-semantics history distance and impossible-travel checks below.
 - Recent password reset, passkey changes, account recovery, trusted-device changes, or administrator action.
 - Current session age and whether the request is an interactive login, refresh, or sensitive action.
 
@@ -67,7 +67,7 @@ Current initial risk behavior is:
 | Risk case | Current action |
 |---|---|
 | Active trusted device with adequate confidence and no strong signal | Allow normal primary authentication and session issuance. The device never replaces the password/passkey. |
-| New/untrusted device or low confidence | `step_up`; `enforce` withholds the new session. No independent step-up challenge exists yet. |
+| New/untrusted device or low confidence | `step_up`; in `enforce`, the session is issued but a step-up challenge is opened and SSO issuance stays withheld until a second factor is verified (`stepUpChallenge` is added to the sign-in/authorize response). Accounts without any enrollable second factor fail closed; the session is withheld. |
 | Different device plus different country within 30 minutes | `deny`; `enforce` withholds the new session. Existing sessions are not revoked automatically. |
 | Bot=`bad`, tampering, MITM, location spoofing, or configured suspect-score threshold | `deny`; `enforce` withholds the new session. A `good` bot is not enrolled as a trusted device. Existing sessions are not revoked automatically. |
 | Provider/API outage, missing/stale event, replay, invalid event, or rate limit | `observe` records unavailability and permits baseline authentication; `enforce` denies before session issuance. |
@@ -94,6 +94,8 @@ The initial implementation should avoid a hard device-count limit until operatio
 Maintain a compact account security history to compare successful authentication events. Prefer country/region and a keyed digest of a normalized network value over retaining raw IP addresses; retain raw IP only if a documented incident/legal need justifies it, with a short explicit retention period and restricted access.
 
 The initial implementation records a deny decision when a different verified device and country appear within 30 minutes. In `enforce`, it deletes only the newly created D1 session and withholds its response/cookie. It does not revoke existing sessions or trusted devices, and does not send user notifications. A user blocked on a new device needs an existing authenticated device to enroll it or an independently verified recovery path; recovery is not implemented here.
+
+Implemented beyond that initial rule: login-time GeoIP history checks that mirror authentik's GeoIP Policy distance settings (authentik 2025.2+). The current login is compared with the configured number of the user's most recent successful-login observations (`GEOIP_HISTORY_LOGIN_COUNT`, default 5). If `GEOIP_CHECK_HISTORY_DISTANCE` is enabled (default off), any compared observation farther than `GEOIP_HISTORY_MAX_DISTANCE_KM` (default 100) plus `GEOIP_DISTANCE_TOLERANCE_KM` (default 50) yields the reason `history_distance_exceeded`. If `GEOIP_CHECK_IMPOSSIBLE_TRAVEL` is enabled (default on while the pipeline is enabled), any compared observation whose distance is at least the built-in allowance — 1,000 km per elapsed hour, rounded down to whole hours and clamped to one hour, plus `GEOIP_IMPOSSIBLE_TOLERANCE_KM` (default 100) — yields `impossible_travel`. Positions come from Fingerprint event geolocation coordinates when available, otherwise from a country centroid; both are coarse lower bounds. These findings are review-grade evidence, never standalone verdicts: they escalate to `step_up` (in `enforce`, the session is withheld; existing sessions stay alive) and never to `deny`. Distance/VPN false positives from VPNs, carrier NAT, and GeoIP database error are expected; calibrate in observe mode first. The session-side complement — binding an issued session to the network/location that created it — is a separate feature in [Session Network/GeoIP binding](session-geo-binding.md).
 
 The initial risk rules do not revoke existing IdP sessions. Downstream application sessions may not be revocable by the IdP; any future revocation feature must not be described as terminating already-issued downstream sessions.
 

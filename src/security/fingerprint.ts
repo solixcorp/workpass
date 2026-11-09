@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { haversineKm, resolveGeoPoint, type GeoPoint } from "./geo";
 
 export type FingerprintMode = "disabled" | "observe" | "enforce";
 
@@ -14,6 +15,8 @@ export interface FingerprintEvent {
   mitmAttack: boolean;
   locationSpoofing: boolean;
   countryCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
   eventOrigin: string;
   networkAddress: string | null;
 }
@@ -47,6 +50,7 @@ export function fingerprintMode(env: Env): FingerprintMode {
 }
 
 export function validateFingerprintConfig(env: Env): void {
+  validateGeoIpHistoryPolicy(env);
   const mode = fingerprintMode(env);
   const region = env.FINGERPRINT_REGION ?? "us";
   if (!Object.hasOwn(REGION_HOSTS, region)) {
@@ -88,6 +92,106 @@ export function validateFingerprintConfig(env: Env): void {
       throw new Error("FINGERPRINT_ALLOWED_ORIGINS entries must be HTTPS origins");
     }
   }
+}
+
+/**
+ * GeoIP history policy, mirroring authentik's GeoIP Policy distance settings
+ * (docs.goauthentik.io/customize/policies/types/geoip/, introduced 2025.2).
+ * The built-in impossible-travel allowance is authentik's hardcoded
+ * MAX_DISTANCE_HOUR_KM = 1,000 km per hour, rounded DOWN to whole hours and
+ * clamped to at least one hour; `impossibleToleranceKm` is added on top.
+ */
+export interface GeoIpHistoryPolicy {
+  checkHistoryDistance: boolean;
+  historyMaxDistanceKm: number;
+  distanceToleranceKm: number;
+  historyLoginCount: number;
+  checkImpossibleTravel: boolean;
+  impossibleToleranceKm: number;
+}
+
+/** authentik's built-in impossible-travel allowance (km per hour). */
+export const IMPOSSIBLE_TRAVEL_KM_PER_HOUR = 1000;
+
+function configNumber(env: Env, name: string, min: number, max: number, fallback: number): number {
+  const raw = (env as unknown as Record<string, string | undefined>)[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+  return value;
+}
+
+function configBoolean(env: Env, name: string, fallback: boolean): boolean {
+  const raw = (env as unknown as Record<string, string | undefined>)[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new Error(`${name} must be "true" or "false"`);
+}
+
+export function geoIpHistoryPolicy(env: Env): GeoIpHistoryPolicy {
+  // checkImpossibleTravel defaults ON: the detection is the point of the
+  // feature and the pipeline itself is already gated behind FINGERPRINT_MODE.
+  // checkHistoryDistance defaults OFF (authentik's default) because its range
+  // is deployment-specific and must be calibrated in observe mode first.
+  return {
+    checkHistoryDistance: configBoolean(env, "GEOIP_CHECK_HISTORY_DISTANCE", false),
+    historyMaxDistanceKm: configNumber(env, "GEOIP_HISTORY_MAX_DISTANCE_KM", 10, 20_000, 100),
+    distanceToleranceKm: configNumber(env, "GEOIP_DISTANCE_TOLERANCE_KM", 0, 10_000, 50),
+    historyLoginCount: configNumber(env, "GEOIP_HISTORY_LOGIN_COUNT", 1, 50, 5),
+    checkImpossibleTravel: configBoolean(env, "GEOIP_CHECK_IMPOSSIBLE_TRAVEL", true),
+    impossibleToleranceKm: configNumber(env, "GEOIP_IMPOSSIBLE_TOLERANCE_KM", 0, 10_000, 100),
+  };
+}
+
+/** Result of comparing a current login position against login history. */
+export interface GeoIpHistoryFinding {
+  reasons: string[];
+  /** Distances evaluated against history, for observe-mode calibration. */
+  distances: Array<{ distanceKm: number; elapsedHours: number }>;
+}
+
+/**
+ * Compare a current position with the most recent historical observations,
+ * authentik-style: the policy fails if ANY compared login exceeds the allowed
+ * distance or the impossible-travel allowance. Returns the reason codes that
+ * feed the shared risk policy.
+ */
+export function evaluateGeoIpHistory(input: {
+  policy: GeoIpHistoryPolicy;
+  current: GeoPoint;
+  history: Array<{ point: GeoPoint; occurredAt: number }>;
+  now: number;
+}): GeoIpHistoryFinding {
+  const reasons: string[] = [];
+  const distances: GeoIpHistoryFinding["distances"] = [];
+  for (const entry of input.history) {
+    const distanceKm = haversineKm(input.current, entry.point);
+    const elapsedHours = input.now > entry.occurredAt
+      ? (input.now - entry.occurredAt) / 3_600_000
+      : 0;
+    distances.push({ distanceKm, elapsedHours });
+    if (input.policy.checkHistoryDistance &&
+        distanceKm >= input.policy.historyMaxDistanceKm + input.policy.distanceToleranceKm) {
+      reasons.push("history_distance_exceeded");
+      return { reasons, distances };
+    }
+    if (input.policy.checkImpossibleTravel) {
+      // Round down to whole hours, clamped to at least one hour (authentik).
+      const relHours = Math.max(Math.floor(elapsedHours), 1);
+      if (distanceKm >= IMPOSSIBLE_TRAVEL_KM_PER_HOUR * relHours + input.policy.impossibleToleranceKm) {
+        reasons.push("impossible_travel");
+        return { reasons, distances };
+      }
+    }
+  }
+  return { reasons, distances };
+}
+
+function validateGeoIpHistoryPolicy(env: Env): void {
+  geoIpHistoryPolicy(env);
 }
 
 export async function verifyFingerprintEvent(input: {
@@ -303,21 +407,37 @@ export async function evaluateFingerprintRisk(input: {
     reasons.push("untrusted_device");
   }
 
-  const previous = await input.env.DB.prepare(
-    `SELECT visitor_digest, network_digest, country_code, occurred_at FROM auth_device_observations
-     WHERE user_id = ? ORDER BY occurred_at DESC LIMIT 1`,
+  const policy = geoIpHistoryPolicy(input.env);
+  const historyChecksEnabled = policy.checkHistoryDistance || policy.checkImpossibleTravel;
+  // Rapid-change signals only need the most recent observation; the GeoIP
+  // history checks compare the configured number of prior logins.
+  const priorRows = await input.env.DB.prepare(
+    `SELECT visitor_digest, network_digest, country_code, latitude, longitude, geo_source, occurred_at
+     FROM auth_device_observations
+     WHERE user_id = ?
+     ORDER BY occurred_at DESC LIMIT ?`,
   )
-    .bind(input.userId)
-    .first<{
+    .bind(input.userId, historyChecksEnabled ? policy.historyLoginCount : 1)
+    .all<{
       visitor_digest: string;
       network_digest: string | null;
       country_code: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      geo_source: string | null;
       occurred_at: string;
     }>();
+  const previous = priorRows.results[0] ?? null;
 
   const networkDigest = input.event.networkAddress
     ? await digestVisitorId(input.env, `network:${input.event.networkAddress}`)
     : null;
+
+  const currentPoint = resolveGeoPoint({
+    latitude: input.event.latitude,
+    longitude: input.event.longitude,
+    countryCode: input.event.countryCode,
+  });
 
   if (previous) {
     const ageMs = now.getTime() - Date.parse(previous.occurred_at);
@@ -341,6 +461,31 @@ export async function evaluateFingerprintRisk(input: {
     }
   }
 
+  // Login-time GeoIP history checks (authentik GeoIP Policy semantics): the
+  // checks fail when ANY of the compared historical logins is farther than
+  // the allowed distance or the impossible-travel allowance.
+  if (historyChecksEnabled) {
+    if (!currentPoint) {
+      // Authentik fails the policy when no GeoIP data is available for the
+      // client. Here the outcome is a soft failure: step-up, never a deny.
+      reasons.push("geo_position_unavailable");
+    } else {
+      const history = priorRows.results
+        .map((row) => ({ point: resolveGeoPointFromRow(row), occurredAt: Date.parse(row.occurred_at) }))
+        .filter((entry): entry is { point: GeoPoint; occurredAt: number } => entry.point !== null);
+      const finding = evaluateGeoIpHistory({
+        policy,
+        current: currentPoint,
+        history,
+        now: now.getTime(),
+      });
+      reasons.push(...finding.reasons);
+    }
+  }
+
+  // Travel plausibility and distance are review-grade evidence, not proof:
+  // VPNs, carrier NAT, and GeoIP database error cause false positives, so
+  // these findings yield step_up, never deny.
   const hardSignals = new Set([
     "bot_detected",
     "tampering_detected",
@@ -351,6 +496,9 @@ export async function evaluateFingerprintRisk(input: {
   ]);
   if (reasons.some((reason) => hardSignals.has(reason))) action = "deny";
   else if (
+    reasons.includes("impossible_travel") ||
+    reasons.includes("history_distance_exceeded") ||
+    reasons.includes("geo_position_unavailable") ||
     reasons.includes("untrusted_device") ||
     reasons.includes("low_identification_confidence")
   ) {
@@ -367,6 +515,18 @@ export async function evaluateFingerprintRisk(input: {
   };
 }
 
+function resolveGeoPointFromRow(row: {
+  latitude: number | null;
+  longitude: number | null;
+  country_code: string | null;
+}): GeoPoint | null {
+  return resolveGeoPoint({
+    latitude: row.latitude,
+    longitude: row.longitude,
+    countryCode: row.country_code,
+  });
+}
+
 export async function recordFingerprintObservation(input: {
   env: Env;
   userId: string;
@@ -375,19 +535,27 @@ export async function recordFingerprintObservation(input: {
 }): Promise<void> {
   const now = new Date().toISOString();
   const keepSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const geoPoint = resolveGeoPoint({
+    latitude: input.event.latitude,
+    longitude: input.event.longitude,
+    countryCode: input.event.countryCode,
+  });
   await input.env.DB.batch([
     input.env.DB.prepare("DELETE FROM auth_device_observations WHERE occurred_at < ?")
       .bind(keepSince),
     input.env.DB.prepare(
       `INSERT INTO auth_device_observations
-        (id, user_id, visitor_digest, network_digest, country_code, occurred_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        (id, user_id, visitor_digest, network_digest, country_code, latitude, longitude, geo_source, occurred_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       input.userId,
       input.risk.visitorDigest,
       input.risk.networkDigest,
       input.event.countryCode,
+      geoPoint?.latitude ?? null,
+      geoPoint?.longitude ?? null,
+      geoPoint?.source ?? null,
       now,
     ),
     ...(input.risk.trustedDeviceId
@@ -441,6 +609,8 @@ function parseEvent(value: unknown): FingerprintEvent | null {
   }
   const ipInfo = record.ip_info;
   let countryCode: string | null = null;
+  let latitude: number | null = null;
+  let longitude: number | null = null;
   if (ipInfo && typeof ipInfo === "object") {
     const ipRecord = ipInfo as Record<string, unknown>;
     for (const version of ["v4", "v6"]) {
@@ -448,11 +618,14 @@ function parseEvent(value: unknown): FingerprintEvent | null {
       if (!network || typeof network !== "object") continue;
       const geolocation = (network as Record<string, unknown>).geolocation;
       if (!geolocation || typeof geolocation !== "object") continue;
-      const code = (geolocation as Record<string, unknown>).country_code;
+      const locationRecord = geolocation as Record<string, unknown>;
+      const code = locationRecord.country_code;
       if (typeof code === "string" && /^[A-Z]{2}$/.test(code)) {
         countryCode = code;
-        break;
       }
+      latitude = parseCoordinate(locationRecord.latitude, 90);
+      longitude = parseCoordinate(locationRecord.longitude, 180);
+      if (countryCode) break;
     }
   }
   const suspectScore = typeof record.suspect_score === "number"
@@ -486,7 +659,17 @@ function parseEvent(value: unknown): FingerprintEvent | null {
     mitmAttack: record.mitm_attack === true,
     locationSpoofing: record.location_spoofing === true,
     countryCode,
+    latitude,
+    longitude,
     eventOrigin,
     networkAddress: ipAddress,
   };
+}
+
+/** Accept a plausible coordinate or reject it entirely — coordinates are either trusted or absent. */
+function parseCoordinate(value: unknown, range: number): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > range) {
+    return null;
+  }
+  return value;
 }

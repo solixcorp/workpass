@@ -10,6 +10,8 @@ import { verifyPassword, hashPassword } from "./password";
 import { constantTimeTokenMatches } from "../security/tokens";
 import { validateFingerprintConfig } from "../security/fingerprint";
 import { revokeTrustedDevices } from "../security/trusted-device-store";
+import { bindSessionNetwork, validateSessionBindingConfig } from "../security/session-geo-binding";
+import { validateStepUpConfig } from "../security/step-up";
 import { tokenExchangeExtension } from "../token/grant";
 import { backchannelFailureEvent } from "../oidc/logout-logging";
 import { jwtPayloadRelease } from "../claims/protocol-claims";
@@ -41,6 +43,39 @@ export function createAuth(env: Env) {
     },
     database: env.DB,
     disabledPaths: ["/token"],
+    // Session network/GeoIP binding: every freshly created session is bound to
+    // the edge-derived network/location it was created in (best-effort; see
+    // src/security/session-geo-binding.ts). Rotation on 2FA verification re-binds.
+    databaseHooks: {
+      session: {
+        create: {
+          after: async (session, context) => {
+            try {
+              const sessionToken = (session as { token?: unknown }).token;
+              const sessionUserId = (session as { userId?: unknown }).userId;
+              if (
+                typeof sessionToken !== "string" ||
+                typeof sessionUserId !== "string" ||
+                sessionToken.length === 0 ||
+                sessionUserId.length === 0
+              ) {
+                return;
+              }
+              await bindSessionNetwork({
+                env,
+                sessionToken,
+                userId: sessionUserId,
+                request: (context?.request as Request | undefined) ?? null,
+              });
+            } catch (error) {
+              console.warn("Session network binding hook failed", {
+                name: error instanceof Error ? error.name : "UnknownError",
+              });
+            }
+          },
+        },
+      },
+    },
     trustedOrigins: [baseURL],
     advanced: {
       useSecureCookies: authBaseUrl.protocol === "https:",
@@ -194,6 +229,8 @@ function resourceSeedIdentifiers(seed: Array<string | OAuthResourceInput> | unde
 
 function validateAuthEnvironment(env: Env): void {
   validateFingerprintConfig(env);
+  validateSessionBindingConfig(env);
+  validateStepUpConfig(env);
   if (!env.AUTH_SECRET || !env.AUTH_BASE_URL) {
     throw new Error("AUTH_SECRET and AUTH_BASE_URL must be configured");
   }
