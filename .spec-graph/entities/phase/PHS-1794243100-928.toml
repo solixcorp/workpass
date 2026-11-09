@@ -3,9 +3,9 @@ id = "PHS-1794243100-928"
 type = "phase"
 title = "Phase 8: Access requests (just-in-time application access)"
 description = "Backend access-request authority: rules and bindings, request/review lifecycle, temporal grants wired into the policy engine, audit events, webhook notification and tests."
-status = "active"
+status = "resolved"
 created_at = 2026-11-10T01:51:40+09:00
-updated_at = 2026-11-10T01:52:12+09:00
+updated_at = 2026-11-10T01:59:08+09:00
 
 [metadata]
 exit_criteria = ["Rules/bindings CRUD and request lifecycle APIs pass tests", "Temporal grants are honored by the policy engine and expire automatically", "Lifecycle events are recorded in the tamper-evident audit stream", "typecheck and full test suite pass"]

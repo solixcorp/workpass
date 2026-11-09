@@ -3,9 +3,9 @@ id = "API-1794243100-3t8"
 type = "interface"
 title = "Access request HTTP API (admin rules/bindings + user/reviewer queue)"
 description = "Admin: /api/admin/access-request-rules, /api/admin/access-request-bindings, /api/admin/access-requests (list, revoke). User: /api/access-requests requestable, create, me, cancel, reviews, review."
-status = "draft"
+status = "active"
 created_at = 2026-11-10T01:51:40+09:00
-updated_at = 2026-11-10T01:51:40+09:00
+updated_at = 2026-11-10T01:59:04+09:00
 
 [metadata]
 auth = "session+same-origin (user) / requireAdministrator (admin)"

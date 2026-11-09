@@ -3,9 +3,9 @@ id = "DEC-1794243100-kcv"
 type = "decision"
 title = "Request flow is simplified to a mandatory justification prompt"
 description = "No flow engine exists in this platform; stages, per-group minimum reviewers and MFA re-auth elevation are out of scope. Notifications are best-effort via one webhook URL."
-status = "draft"
+status = "active"
 created_at = 2026-11-10T01:51:40+09:00
-updated_at = 2026-11-10T01:51:40+09:00
+updated_at = 2026-11-10T01:59:04+09:00
 
 [metadata]
 status = "accepted"
