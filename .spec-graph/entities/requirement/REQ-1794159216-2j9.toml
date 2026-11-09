@@ -16,6 +16,10 @@ to = "DEC-1794160956-ns2"
 type = "constrained_by"
 
 [[relations]]
+to = "ACT-1794210200-47r"
+type = "has_criterion"
+
+[[relations]]
 to = "QST-1794159222-njc"
 type = "references"
 

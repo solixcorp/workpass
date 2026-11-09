@@ -10,3 +10,7 @@ updated_at = 2026-11-09T16:41:33+09:00
 [metadata]
 kind = "functional"
 priority = "must"
+
+[[relations]]
+to = "ACT-1794210202-y21"
+type = "has_criterion"

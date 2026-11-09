@@ -1,0 +1,16 @@
+schema = 1
+id = "API-1794210200-ja8"
+type = "interface"
+title = "SAML identity-provider endpoints"
+description = "GET /saml/sso runs the gated chain (enabled registration, certificate-derived trusted key, redirect-binding RSA-SHA256 signature over received octets, allowlisted request validation, freshness, destination, ACS, one-time claim) and delivers a canonically signed Response via POST binding; GET /saml/metadata publishes the IdP metadata document."
+status = "active"
+created_at = 2026-11-09T16:43:20+09:00
+updated_at = 2026-11-09T16:43:20+09:00
+
+[metadata]
+description_of_interface = "src/saml/protocol-routes.ts, src/saml/redirect-signature.ts, src/saml/request-binding.ts, src/saml/assertion.ts, src/saml/metadata.ts."
+kind = "api_contract"
+
+[[relations]]
+to = "REQ-1794159216-8c1"
+type = "implements"

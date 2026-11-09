@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794210200-b3k"
+type = "criterion"
+title = "A signed round trip verifies against published metadata only"
+status = "draft"
+created_at = 2026-11-09T16:43:20+09:00
+updated_at = 2026-11-09T16:43:20+09:00
+
+[metadata]
+given = "A local workerd instance with a generated IdP signing key and an enabled SP registration"
+then = "SignatureValue and DigestValue verify, replay, tampering and unregistered issuers are rejected, and the issuance is audited"
+when = "scripts/saml-sso-smoke.ts signs an AuthnRequest and verifies the returned POST-bound Response"

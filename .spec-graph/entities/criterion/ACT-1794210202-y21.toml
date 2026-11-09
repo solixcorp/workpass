@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794210202-y21"
+type = "criterion"
+title = "No duplicate downstream mutation without reconciliation"
+status = "draft"
+created_at = 2026-11-09T16:43:22+09:00
+updated_at = 2026-11-09T16:43:22+09:00
+
+[metadata]
+given = "One target and user with a pending, in-progress or outcome-unknown operation"
+then = "The attempt is refused by the atomic journal constraint"
+when = "Another operation is attempted for the same pair"

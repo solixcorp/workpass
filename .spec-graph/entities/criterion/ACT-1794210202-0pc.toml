@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794210202-0pc"
+type = "criterion"
+title = "Password verification performs identical work on both outcomes"
+status = "draft"
+created_at = 2026-11-09T16:43:22+09:00
+updated_at = 2026-11-09T16:43:22+09:00
+
+[metadata]
+given = "One stored password record"
+then = "Both paths derive the same 600,000-iteration PBKDF2 work and complete in comparable time"
+when = "Sign-in is attempted with a wrong and with the correct password"

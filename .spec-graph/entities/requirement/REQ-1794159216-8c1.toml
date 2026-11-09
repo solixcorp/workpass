@@ -12,6 +12,10 @@ kind = "functional"
 priority = "must"
 
 [[relations]]
+to = "ACT-1794210200-b3k"
+type = "has_criterion"
+
+[[relations]]
 to = "QST-1794159221-myn"
 type = "references"
 

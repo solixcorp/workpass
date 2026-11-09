@@ -1,0 +1,16 @@
+schema = 1
+id = "API-1794210201-w7d"
+type = "interface"
+title = "Outbound SCIM connector endpoints"
+description = "POST /api/admin/scim-operations executes a single targeted create, update or deactivate through the HTTPS transport (no redirects, server-side scoped credentials) and journals the operation atomically with a single-active-operation constraint per target and user."
+status = "active"
+created_at = 2026-11-09T16:43:21+09:00
+updated_at = 2026-11-09T16:43:21+09:00
+
+[metadata]
+description_of_interface = "src/scim/client.ts, src/scim/operations.ts and src/scim/routes.ts."
+kind = "api_contract"
+
+[[relations]]
+to = "REQ-1794159216-c4h"
+type = "implements"

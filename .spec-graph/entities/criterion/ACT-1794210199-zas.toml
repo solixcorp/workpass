@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794210199-zas"
+type = "criterion"
+title = "Privileged surfaces reject calls without the admin gate"
+status = "draft"
+created_at = 2026-11-09T16:43:19+09:00
+updated_at = 2026-11-09T16:43:19+09:00
+
+[metadata]
+given = "The administrator surfaces under /api/admin"
+then = "The calls are rejected with 401 or 403 respectively, matching scripts/directory-smoke.ts checks"
+when = "An anonymous caller reads, or an administrator mutates without the exact Origin, or a non-admin queries"

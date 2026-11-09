@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794210199-ydd"
+type = "criterion"
+title = "A passkey ceremonies pass headlessly with challenge and origin checks"
+status = "draft"
+created_at = 2026-11-09T16:43:19+09:00
+updated_at = 2026-11-09T16:43:19+09:00
+
+[metadata]
+given = "A running local workerd instance with a generated database"
+then = "Both verification endpoints return 200 and a tampered or unrelated credential is rejected"
+when = "scripts/passkey-smoke.ts performs registration and authentication with a synthetic ES256 authenticator"

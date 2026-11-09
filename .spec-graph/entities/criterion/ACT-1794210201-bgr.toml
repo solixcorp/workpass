@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794210201-bgr"
+type = "criterion"
+title = "Outbound operations are single-active and reconciled"
+status = "draft"
+created_at = 2026-11-09T16:43:21+09:00
+updated_at = 2026-11-09T16:43:21+09:00
+
+[metadata]
+given = "An enabled SCIM target configured server-side"
+then = "The journal records the outcome class and further operations block until reconciliation"
+when = "An operation runs or its outcome is unknown after a timeout or server error"

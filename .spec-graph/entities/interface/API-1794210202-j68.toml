@@ -1,0 +1,16 @@
+schema = 1
+id = "API-1794210202-j68"
+type = "interface"
+title = "Username and password sign-in endpoints"
+description = "POST /api/auth/sign-in/email and /sign-in/username verify passwords with the version-tagged PBKDF2-SHA-256 scheme (600,000 iterations, per-password salt) under per-endpoint rate limits with enumeration-resistant responses."
+status = "active"
+created_at = 2026-11-09T16:43:22+09:00
+updated_at = 2026-11-09T16:43:22+09:00
+
+[metadata]
+description_of_interface = "emailAndPassword configuration and custom hash/verify in src/auth/config.ts and src/auth/password.ts; latency evidence in scripts/session-revocation-smoke.ts runs and docs/feasibility/phase-0-workers-auth-engine.md."
+kind = "api_contract"
+
+[[relations]]
+to = "REQ-1794159886-as9"
+type = "implements"
