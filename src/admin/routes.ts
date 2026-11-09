@@ -4,6 +4,7 @@ import { auditRoutes } from "../audit/routes";
 import { samlAdminRoutes } from "../saml/routes";
 import { scimAdminRoutes } from "../scim/routes";
 import { directoryRoutes } from "./directory";
+import { wsfedAdminRoutes } from "../wsfed/routes";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -11,3 +12,4 @@ adminRoutes.route("/", auditRoutes);
 adminRoutes.route("/", samlAdminRoutes);
 adminRoutes.route("/", scimAdminRoutes);
 adminRoutes.route("/", directoryRoutes);
+adminRoutes.route("/", wsfedAdminRoutes);

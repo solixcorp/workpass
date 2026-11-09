@@ -3,9 +3,9 @@ id = "REQ-1794159886-m3c"
 type = "requirement"
 title = "WS-Federation identity provider compatibility"
 description = "Support WS-Federation for legacy web applications that require it, using a vetted implementation, narrowly documented supported profiles, signed responses, audience and expiry validation, secure key management and real service-provider interoperability tests."
-status = "draft"
+status = "active"
 created_at = 2026-11-09T02:44:46+09:00
-updated_at = 2026-11-09T02:44:46+09:00
+updated_at = 2026-11-09T16:52:41+09:00
 
 [metadata]
 kind = "functional"

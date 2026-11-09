@@ -220,9 +220,16 @@ export async function loadSamlIdpSigningMaterial(env: Env): Promise<SamlSigningM
     const publicKey = await importSamlServiceProviderTrustedKey(certificate);
     const probe = new TextEncoder().encode("SAML IdP signing key check");
     const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, probe);
-    if (!await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signature, probe)) return null;
+    if (!await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signature, probe)) {
+      console.error("SAML IdP signing material failed the private-key/certificate match check");
+      return null;
+    }
     return { entityId, certificate, privateKey };
-  } catch {
+  } catch (error) {
+    console.error("SAML IdP signing material is configured but unusable", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : "no message",
+    });
     return null;
   }
 }
