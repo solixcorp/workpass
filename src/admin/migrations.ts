@@ -35,7 +35,12 @@ migrationRoutes.post("/migrate", async (context) => {
     await ensureApplicationTables(context.env);
 
     return context.json({ status: "migrated" });
-  } catch {
+  } catch (error) {
+    // Server-side only: the operator needs the failure reason in the logs.
+    console.error("Migration failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : "no message",
+    });
     return context.json({ error: "Migration failed" }, 500);
   }
 });
