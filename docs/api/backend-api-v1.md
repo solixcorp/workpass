@@ -138,6 +138,10 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 
 ## Database initialization
 
+### OIDC sign-in handoff page
+
+- `GET /sign-in?<signed oauth query>` completes the login half of the OIDC authorization-code flow. The authorization endpoint redirects unauthenticated users here; the page signs the user in and posts the tamper-proofed signed query back to the authorization endpoint to continue (consent or code). A visit without the signed continuation responds 400. Same category as the SAML/WS-Federation handoff pages: a protocol completion page, not a portal dashboard.
+
 ### Usage snapshot
 
 - `GET /api/admin/usage-snapshot` reports row counts per bounded surface (users, sessions, audit events, OAuth clients and tokens, SWA applications and grants, SAML providers, WS-Federation relying parties, directory groups, SCIM operations) captured at the call time. Administrator session required; read-only numbers only. This is the input for the plan's budget and service-minimization review.

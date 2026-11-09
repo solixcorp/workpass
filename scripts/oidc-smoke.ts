@@ -86,6 +86,51 @@ if (options.adminToken) {
 const signIn = await call("/api/auth/sign-in/username", { method: "POST", origin: true, body: { username: options.username, password: options.password } });
 expect("sign-in", signIn.status === 200, signIn.status);
 
+// Unauthenticated flow: authorize redirects to the login handoff page with
+// the signed oauth query; the page contract is GET 200 + the query echoed,
+// and the client re-posts it to the authorization endpoint after sign-in.
+const anonClient = await fetch(`${base}/api/auth/oauth2/register`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${options.dcrToken}`, "Content-Type": "application/json", "Origin": base },
+  body: JSON.stringify({ client_name: "anon-flow", redirect_uris: ["https://oidc-rp-smoke.test/cb"], token_endpoint_auth_method: "none", grant_types: ["authorization_code"], response_types: ["code"], scope: "openid profile email" }),
+});
+const anonBody = await anonClient.json() as { client_id?: string };
+const rawPkce = new Uint8Array(32);
+crypto.getRandomValues(rawPkce);
+const b64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+const anonVerifier = b64url(rawPkce);
+const anonChallenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(anonVerifier))));
+const anonAuthorize = await fetch(`${base}/api/auth/oauth2/authorize?${new URLSearchParams({
+  client_id: anonBody.client_id ?? "",
+  redirect_uri: "https://oidc-rp-smoke.test/cb",
+  response_type: "code",
+  scope: "openid profile email",
+  state: "anon-state",
+  nonce: "anon-nonce",
+  code_challenge: anonChallenge,
+  code_challenge_method: "S256",
+}).toString()}`, { redirect: "manual" });
+const signinLocation = anonAuthorize.headers.get("location") ?? "";
+expect("unauthenticated authorize reaches /sign-in", anonAuthorize.status === 302 && signinLocation.includes("/sign-in?"), { status: anonAuthorize.status, location: signinLocation.slice(0, 90) });
+const signinPage = await fetch(`${base}${signinLocation.startsWith("/") ? signinLocation : `/${signinLocation}`}`);
+const signinHtml = await signinPage.text();
+const oauthQuerySigned = ((signinHtml.split('id="q" value="')[1] ?? "").split('"')[0] ?? "").replace(/&amp;/g, "&");
+expect("handoff page renders with the signed query", signinPage.status === 200 && oauthQuerySigned.includes("sig="), signinPage.status);
+// After signing in, re-posting the signed query continues the flow.
+const anonSignIn = await fetch(`${base}/api/auth/sign-in/username`, { method: "POST", headers: { "Content-Type": "application/json", "Origin": base }, body: JSON.stringify({ username: options.username, password: options.password }) });
+absorb(anonSignIn);
+expect("handoff sign-in", anonSignIn.status === 200, anonSignIn.status);
+// The authorize POST takes form-urlencoded parameters, per OAuth 2.0.
+const continueAuthorize = await fetch(`${base}/api/auth/oauth2/authorize`, {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "Origin": base, Cookie: cookiePair() },
+  body: new URLSearchParams({ oauth_query: oauthQuerySigned, post_login: "true" }).toString(),
+  redirect: "manual",
+});
+const continueBody = await continueAuthorize.json().catch(() => ({})) as { redirectURI?: string; url?: string; consentPage?: string };
+const continueTarget = continueBody.redirectURI ?? continueBody.url ?? continueBody.consentPage ?? "";
+expect("signed query continues the flow", continueAuthorize.status === 200 && continueTarget.length > 0, { status: continueAuthorize.status, body: JSON.stringify(continueBody).slice(0, 260) });
+
 // Dynamic client registration with the operator-provisioned access token.
 const register = await call("/api/auth/oauth2/register", {
   method: "POST",
