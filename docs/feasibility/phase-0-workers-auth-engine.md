@@ -84,6 +84,8 @@ bun run build:check
 
 `build:check` invokes Wrangler through its Node shebang. Do not add test code unless asked.
 
+The full Phase 0 exit review, including the blocked gate output and the closing options, is recorded in the [Phase 0 exit review](phase-0-exit-review.md).
+
 ## Decision status
 
 The product-owner-confirmed Workers + Bun + TypeScript stack is mandatory. Better Auth is wired as the initial candidate for username/password, passkeys, account lifecycle, and OIDC/OAuth. Local username/password login and a synthetic OIDC authorization-code exchange succeeded, and passkey server-side ceremonies are verified headlessly on workerd; the browser-side ceremony and actual relying-party integration remain unverified. The SAML IdP path is no longer a feasibility blocker: dependency-free Workers primitives are implemented and checked (17 automated checks plus a local workerd metadata smoke), while real service-provider interoperability, enablement review, D1 single-use semantics under cross-request concurrency, password-hash CPU cost, OIDC profile/key lifecycle compatibility, audit backups, account recovery, and revocation propagation remain unresolved. Phase 0 must remain active.
