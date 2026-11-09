@@ -163,6 +163,18 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 - `DELETE /api/admin/directory-groups/{id}` removes the group and its memberships in one atomic D1 batch.
 - Groups are claim-release candidates only: protocol assertions do not carry groups until an application binding and release policy exist (see docs/design/directory-groups.md for the open list).
 
+### Access requests (just-in-time application access)
+
+Requests let a user ask for time-limited access to an application instead of an administrator editing access-policy groups; approval grants expire automatically (see docs/design/access-requests.md). Policy subjects are the same protocol-qualified strings as app-access policies.
+
+- `POST /api/admin/access-request-rules` creates a rule `{name, minReviewers?, notifyMode?, reviewerUsers?, reviewerGroups?}` (reviewers decide; an empty set leaves the request with nobody who can approve). Administrator session, audited.
+- `GET /api/admin/access-request-rules` lists rules; `DELETE /api/admin/access-request-rules/{id}` removes an unbound rule (409 while still bound).
+- `POST /api/admin/access-request-bindings` makes an application requestable: `{subject, ruleId, pendingExpirySeconds?, maxGrantedExpirySeconds?, requesterUsers?, requesterGroups?}` — an empty requester set is open to every user, the subject is unique, and granted access can never outlive `maxGrantedExpirySeconds`. Audited.
+- `GET /api/admin/access-request-bindings` lists bindings; `DELETE /api/admin/access-request-bindings/{id}` removes one.
+- `GET /api/admin/access-requests?status=` lists requests (filter pending/approved/denied/cancelled/lapsed/revoked); `POST /api/admin/access-requests/{id}/revoke` ends that request's active grant early.
+- User surface (session, same-origin on mutation): `GET /api/access-requests/requestable` (Discover list), `POST /api/access-requests` `{subject, justification, requestedExpirySeconds?}` (one pending request per user and subject), `GET /api/access-requests/me`, `POST /api/access-requests/{id}/cancel`, `GET /api/access-requests/reviews` (reviewer queue), `POST /api/access-requests/{id}/review` `{decision: approved|denied, note?}`. The requester can never review their own request; denial is immediate, approval accumulates until the rule's minimum-approver count.
+- Lifecycle events (`access_request.created/approved/denied/cancelled/revoked`) are tamper-evident audit rows; reviewer notification is a best-effort webhook (`ACCESS_REQUEST_WEBHOOK_URL`) and the review queue stays authoritative.
+
 ### SAML and SCIM preparation
 
 - `POST /api/admin/saml-service-providers` registers an SP configuration in a disabled state; administrators supply `entityId`, `acsUrl` and `signingCertificate`. Requires an administrator session, exact configured `Origin`, and application schema migration. This does not enable SAML sign-in.

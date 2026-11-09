@@ -61,4 +61,6 @@ export interface Env extends Partial<WorkerBindings> {
   DUO_IKEY?: string;
   DUO_SKEY?: string;
   DUO_API_HOSTNAME?: string;
+  /** Access requests (docs/design/access-requests.md): best-effort reviewer notification webhook. */
+  ACCESS_REQUEST_WEBHOOK_URL?: string;
 }

@@ -138,7 +138,9 @@ describe("security regressions", () => {
         ? { subject: "oidc:client", allowedMethods: "password,passkey", sessionTtlSeconds: null, bypassWindowSeconds: 0, enforcementMode: "enforce", requireMfa }
         : sql.includes("FROM session_mfa_proofs")
           ? proof
-          : { count: member },
+          : sql.includes("FROM app_temporal_grants")
+            ? null
+            : { count: member },
       all: async () => ({ results: [{ group_id: "group" }] }),
     }) }) } } as unknown as Env;
     const request = new Request("https://idp.test/api/auth/oauth2/authorize?client_id=client");

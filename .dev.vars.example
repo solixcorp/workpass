@@ -71,3 +71,7 @@ SSF_MANAGEMENT_TOKEN=
 #   "event_types":["https://schemas.openid.net/secevent/caep/event-type/session-revoked"],
 #   "delivery_token":"shared-secret"}
 SSF_STREAMS=
+# Access requests (just-in-time application access; docs/design/access-requests.md).
+# The webhook receives best-effort reviewer notifications (creation, decisions);
+# reviewer queues in the API remain authoritative without it.
+ACCESS_REQUEST_WEBHOOK_URL=

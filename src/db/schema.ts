@@ -318,4 +318,111 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS session_mfa_proofs_time_idx ON session_mfa_proofs (verified_at)",
   ).run();
+  // Access requests (docs/design/access-requests.md): just-in-time application
+  // access with reviewer approval and time-limited temporal grants.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS request_rules (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      min_reviewers INTEGER NOT NULL DEFAULT 1 CHECK (min_reviewers BETWEEN 1 AND 5),
+      notify_mode TEXT NOT NULL DEFAULT 'all' CHECK (notify_mode IN ('all', 'random')),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS request_rule_reviewers (
+      rule_id TEXT NOT NULL REFERENCES request_rules (id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      PRIMARY KEY (rule_id, user_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS request_rule_reviewer_groups (
+      rule_id TEXT NOT NULL REFERENCES request_rules (id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES directory_groups (id) ON DELETE CASCADE,
+      PRIMARY KEY (rule_id, group_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS request_rule_bindings (
+      id TEXT PRIMARY KEY NOT NULL,
+      subject TEXT NOT NULL UNIQUE,
+      rule_id TEXT NOT NULL REFERENCES request_rules (id) ON DELETE CASCADE,
+      pending_expiry_seconds INTEGER NOT NULL CHECK (pending_expiry_seconds BETWEEN 60 AND 7776000),
+      max_granted_expiry_seconds INTEGER NOT NULL CHECK (max_granted_expiry_seconds BETWEEN 3600 AND 2592000),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS request_binding_requesters (
+      binding_id TEXT NOT NULL REFERENCES request_rule_bindings (id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      PRIMARY KEY (binding_id, user_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS request_binding_requester_groups (
+      binding_id TEXT NOT NULL REFERENCES request_rule_bindings (id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES directory_groups (id) ON DELETE CASCADE,
+      PRIMARY KEY (binding_id, group_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS access_requests (
+      id TEXT PRIMARY KEY NOT NULL,
+      subject TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      binding_id TEXT NOT NULL REFERENCES request_rule_bindings (id) ON DELETE CASCADE,
+      justification TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'denied', 'cancelled', 'lapsed', 'revoked')),
+      requested_expiry_seconds INTEGER NOT NULL,
+      granted_expires_at TEXT,
+      pending_expires_at TEXT NOT NULL,
+      decided_at TEXT,
+      decided_by TEXT,
+      decision_note TEXT,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS access_requests_subject_idx ON access_requests (subject, status)",
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS access_requests_user_idx ON access_requests (user_id, created_at)",
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS access_requests_pending_idx ON access_requests (status, pending_expires_at) WHERE status = 'pending'",
+  ).run();
+  // One pending request per user and subject, enforced by the database itself.
+  await env.DB.prepare(
+    `CREATE UNIQUE INDEX IF NOT EXISTS access_requests_one_pending_idx
+      ON access_requests (user_id, subject) WHERE status = 'pending'`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS access_request_approvals (
+      request_id TEXT NOT NULL REFERENCES access_requests (id) ON DELETE CASCADE,
+      reviewer_id TEXT NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN ('approved', 'denied')),
+      note TEXT,
+      decided_at TEXT NOT NULL,
+      PRIMARY KEY (request_id, reviewer_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS app_temporal_grants (
+      request_id TEXT PRIMARY KEY NOT NULL REFERENCES access_requests (id) ON DELETE CASCADE,
+      subject TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      granted_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      approved_by TEXT NOT NULL,
+      revoked_at TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS app_temporal_grants_user_idx ON app_temporal_grants (user_id, subject)",
+  ).run();
 }

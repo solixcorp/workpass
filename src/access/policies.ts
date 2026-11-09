@@ -12,6 +12,7 @@
  */
 
 import type { Env } from "../env";
+import { hasActiveTemporalGrant } from "./requests";
 
 export interface AppAccessPolicy {
   subject: string;
@@ -147,6 +148,12 @@ export async function userFulfillsGroupGate(env: Env, policy: AppAccessPolicy, u
 export async function evaluateAppAccess(env: Env, policy: AppAccessPolicy, userId: string): Promise<PolicyEvaluation> {
   const allowed = await userFulfillsGroupGate(env, policy, userId);
   if (allowed) return { allowed: true, observedOnly: false, reason: null };
+  // An approved, unexpired access request satisfies the group gate; the grant
+  // never widens the policy beyond the user's own group membership, and
+  // require_mfa / method constraints continue to gate at the call site.
+  if (await hasActiveTemporalGrant(env, policy.subject, userId)) {
+    return { allowed: true, observedOnly: false, reason: null };
+  }
   if (policy.enforcementMode === "observe") {
     return { allowed: true, observedOnly: true, reason: "group gate would reject (observe mode)" };
   }

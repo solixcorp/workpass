@@ -2,6 +2,7 @@ import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import type { Env } from "../env";
 import type { AuthInstance } from "../auth/config";
 import { evaluateAppAccess, loadAppAccessPolicy } from "./policies";
+import { hasActiveTemporalGrant } from "./requests";
 import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
 
 /** Check every external authorization continuation, not just the consent UI. */
