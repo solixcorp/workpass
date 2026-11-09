@@ -1,0 +1,28 @@
+schema = 1
+id = "TSK-1794243106-507"
+type = "task"
+title = "Expose the access-request API and mount it"
+description = "Admin rules/bindings/requests management and user requestable/create/me/cancel/reviews/review routes with audited mutations; mount in index.ts and register scheduled lapse cleanup."
+status = "draft"
+created_at = 2026-11-10T01:51:46+09:00
+updated_at = 2026-11-10T01:51:46+09:00
+
+[metadata]
+acceptance = ["All routes gate on requireAdministrator or a same-origin session."]
+instructions = ["Add src/access/request-routes.ts and mount it."]
+must_not = []
+order = 3.0
+qa = [{command = "bun run typecheck", evidence = "", expected = "exit 0"}]
+references = ["docs/design/access-requests.md"]
+
+[[relations]]
+to = "PHS-1794243100-928"
+type = "belongs_to"
+
+[[relations]]
+to = "API-1794243100-3t8"
+type = "covers"
+
+[[relations]]
+to = "TSK-1794243106-3q4"
+type = "task_depends_on"

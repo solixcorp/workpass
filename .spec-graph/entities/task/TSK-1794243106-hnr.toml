@@ -1,0 +1,24 @@
+schema = 1
+id = "TSK-1794243106-hnr"
+type = "task"
+title = "Extend the schema with the access-request tables"
+description = "Add request_rules, reviewer/requester bindings, request_rule_bindings, access_requests, approvals and app_temporal_grants to ensureApplicationTables, including the partial unique index enforcing one pending request per user and subject."
+status = "draft"
+created_at = 2026-11-10T01:51:46+09:00
+updated_at = 2026-11-10T01:51:46+09:00
+
+[metadata]
+acceptance = ["Tables are created by the existing migration path."]
+instructions = ["Add the DDL to src/db/schema.ts following the existing in-place pattern."]
+must_not = []
+order = 1.0
+qa = [{command = "bun run typecheck", evidence = "", expected = "exit 0"}]
+references = ["docs/design/access-requests.md"]
+
+[[relations]]
+to = "PHS-1794243100-928"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794243099-z0e"
+type = "covers"

@@ -1,0 +1,11 @@
+schema = 1
+id = "DEC-1794243100-rk6"
+type = "decision"
+title = "Approved access is granted as a temporal grant consulted by the policy engine"
+description = "Approval inserts one app_temporal_grants row; evaluateAppAccess resolves an active grant only after the group gate fails. require_mfa and app registries are untouched."
+status = "draft"
+created_at = 2026-11-10T01:51:40+09:00
+updated_at = 2026-11-10T01:51:40+09:00
+
+[metadata]
+status = "accepted"

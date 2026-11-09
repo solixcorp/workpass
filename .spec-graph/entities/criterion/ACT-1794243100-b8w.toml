@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794243100-b8w"
+type = "criterion"
+title = "Requester cannot review their own request and cannot request twice"
+status = "draft"
+created_at = 2026-11-10T01:51:40+09:00
+updated_at = 2026-11-10T01:51:40+09:00
+
+[metadata]
+given = "A user who submitted an access request"
+then = "Both actions are rejected and audited"
+when = "They attempt to approve their own request or submit a second pending request for the same subject"

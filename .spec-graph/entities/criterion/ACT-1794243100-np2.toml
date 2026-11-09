@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794243100-np2"
+type = "criterion"
+title = "Approved request grants access only until the capped expiry"
+status = "draft"
+created_at = 2026-11-10T01:51:40+09:00
+updated_at = 2026-11-10T01:51:40+09:00
+
+[metadata]
+given = "A request approved by at least the minimum number of reviewers"
+then = "The temporal grant no longer satisfies the group gate without any manual cleanup and no standing policy was modified"
+when = "The granted expiry passes or the grant is revoked"
