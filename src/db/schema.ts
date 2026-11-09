@@ -117,4 +117,13 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       UNIQUE (target_id, external_user_id)
     )`,
   ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS saml_service_providers (
+      id TEXT PRIMARY KEY NOT NULL,
+      entity_id TEXT NOT NULL UNIQUE,
+      acs_url TEXT NOT NULL,
+      signing_certificate TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1))
+    )`,
+  ).run();
 }
