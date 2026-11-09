@@ -20,18 +20,26 @@ accessPolicyRoutes.get("/app-access-policies", async (context) => {
             require_mfa AS requireMfaRaw, updated_at AS updatedAt
      FROM app_access_policies ORDER BY subject ASC LIMIT 200`,
   ).all<{ subject: string; allowedMethods: string; sessionTtlSeconds: number | null; bypassWindowSeconds: number; enforcementMode: string; updatedAt: string }>();
-  const policies = [];
-  for (const row of rows.results) {
+  const subjects = rows.results.map((row) => row.subject);
+  const groupIdsBySubject = new Map<string, string[]>();
+  for (const subject of subjects) groupIdsBySubject.set(subject, []);
+  if (subjects.length > 0) {
     const groups = await context.env.DB.prepare(
-      "SELECT group_id FROM app_policy_groups WHERE subject = ?",
-    ).bind(row.subject).all<{ group_id: string }>();
-    policies.push({
-      ...row,
-      requireMfa: (row as { requireMfaRaw?: number }).requireMfaRaw === 1,
-      groups: groups.results.map((g) => g.group_id),
-      enforcementMode: row.enforcementMode,
-    });
+      `SELECT subject, group_id FROM app_policy_groups
+       WHERE subject IN (
+         SELECT subject FROM app_access_policies ORDER BY subject ASC LIMIT 200
+       )`,
+    ).all<{ subject: string; group_id: string }>();
+    for (const group of groups.results) {
+      groupIdsBySubject.get(group.subject)?.push(group.group_id);
+    }
   }
+  const policies = rows.results.map((row) => ({
+    ...row,
+    requireMfa: (row as { requireMfaRaw?: number }).requireMfaRaw === 1,
+    groups: groupIdsBySubject.get(row.subject) ?? [],
+    enforcementMode: row.enforcementMode,
+  }));
   return context.json({ policies });
 });
 

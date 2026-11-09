@@ -42,3 +42,5 @@ SAML_IDP_SIGNING_PRIVATE_KEY=
 # tokens signed by either key until the rollover completes.
 SAML_IDP_PREVIOUS_SIGNING_CERTIFICATE=
 SAML_IDP_PREVIOUS_SIGNING_PRIVATE_KEY=
+# OPAQUE (RFC 9807) zero-password authentication: server master key, 32 bytes base64.
+# OPAQUE_MASTER_KEY=

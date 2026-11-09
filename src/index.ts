@@ -16,6 +16,7 @@ import { consentRoutes } from "./pages/consent";
 import { oidcSignInRoutes } from "./pages/sign-in";
 import { swaUserRoutes } from "./swa/routes";
 import { mfaRoutes } from "./mfa/duo-routes";
+import { opaqueRoutes } from "./auth/opaque-routes";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -50,6 +51,7 @@ app.route("/", swaUserRoutes);
 // The MFA sub-router declares /mfa/... paths; the public surface is /api/mfa/...,
 // matching every caller, audit record, and document.
 app.route("/api", mfaRoutes);
+app.route("/", opaqueRoutes);
 app.route("/.well-known", webfingerRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin", bootstrapRoutes);

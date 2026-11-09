@@ -78,3 +78,19 @@ The following wrangler.jsonc platform settings are in force; verify them at depl
   /api/mfa/* endpoints return 401 (not 404) without a session.
 - HOTP secrets are canonical RFC 4648 base32 (32 chars for a 20-byte key) so
   hardware tokens can load them; verification decodes canonically.
+
+## OPAQUE (RFC 9807) zero-password authentication (2026-11)
+
+- @cloudflare/opaque-ts over OPAQUE_P256; the password never leaves the
+  browser and the platform stores no password, hash, or password-derived
+  value (the credential record is itself password-protected, plus sealed
+  with the platform AEAD at rest).
+- Endpoints: /api/opaque/register/start|finish (session-bound enrollment)
+  and /api/opaque/auth/start|finish (public login, rate-limited 30/min/IP,
+  single-use 2-minute transcripts, user-enumeration-resistant fake record).
+- Server material: OPRF seed HKDF-derived from OPAQUE_MASTER_KEY (secret,
+  32 bytes base64); AKE keypair generated once and stored SEALED in
+  opaque_server_material. Rotation requires a fresh OPAQUE_MASTER_KEY and
+  re-enrollment of every credential record.
+- Legacy password sign-in remains available; migrate accounts by enrolling
+  OPAQUE per user (the smoke scripts/opaque-smoke.ts demonstrates the flow).

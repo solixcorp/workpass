@@ -2,6 +2,35 @@ import type { Env } from "../env";
 
 export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS opaque_server_material (
+      id TEXT PRIMARY KEY NOT NULL,
+      material TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS opaque_credential_records (
+      user_id TEXT PRIMARY KEY NOT NULL,
+      record TEXT NOT NULL,
+      credential_identifier TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS opaque_login_transcripts (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT,
+      client_identity TEXT,
+      expected TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS opaque_transcript_expiry_idx ON opaque_login_transcripts (expires_at)",
+  ).run();
+  await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS audit_events (
       id TEXT PRIMARY KEY NOT NULL,
       occurred_at TEXT NOT NULL,

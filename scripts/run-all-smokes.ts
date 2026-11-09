@@ -15,6 +15,7 @@ const smokes = [
   "scripts/swa-smoke.ts",
   "scripts/wsfed-smoke.ts",
   "scripts/scim-inbound-smoke.ts",
+  "scripts/opaque-smoke.ts",
 ];
 
 for (const smoke of smokes) {
