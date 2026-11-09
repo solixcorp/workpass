@@ -96,4 +96,6 @@ export interface Env extends Partial<WorkerBindings> {
   DUO_API_HOSTNAME?: string;
   /** Access requests (docs/design/access-requests.md): best-effort reviewer notification webhook. */
   ACCESS_REQUEST_WEBHOOK_URL?: string;
+  /** Independent audit backup (docs/security/audit-backup.md): dated JSONL export target. */
+  AUDIT_BACKUP?: R2Bucket;
 }
