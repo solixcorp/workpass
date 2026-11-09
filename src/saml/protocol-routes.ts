@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "../env";
 import { createAuth } from "../auth/config";
+import { auditStandaloneOperation } from "../audit/store";
 import { verifySamlRedirectSignature } from "./redirect-signature";
 import { inflateSamlMessage, parseSamlAuthnRequest } from "./request-binding";
 import { claimVerifiedSamlRequest } from "./request-claims";
@@ -101,33 +102,44 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
       return reject(context, "invalid-session-time");
     }
 
-    // Stage 6: one-time claim prevents replay of this request ID per SP.
-    const claimed = await claimVerifiedSamlRequest({
-      env: context.env,
-      providerId: provider.id,
-      requestId: request.id,
-      // Keep the claim for the entire period in which this request is accepted.
-      expiresAt: new Date(request.issueInstant.getTime() + ISSUE_INSTANT_MAX_AGE_MS + ISSUE_INSTANT_SKEW_MS + 1000),
+    // Stages 6 and 7 are one audited unit: the claim, the signing and the
+    // delivered POST page either all happen behind one audit event or none of
+    // them run.
+    return auditStandaloneOperation(context.env, "saml.assertion.issue", SAML_SSO_PATH, async () => {
+      const claimed = await claimVerifiedSamlRequest({
+        env: context.env,
+        providerId: provider.id,
+        requestId: request.id,
+        // Keep the claim for the entire period in which this request is accepted.
+        expiresAt: new Date(request.issueInstant.getTime() + ISSUE_INSTANT_MAX_AGE_MS + ISSUE_INSTANT_SKEW_MS + 1000),
+      });
+      if (!claimed) {
+        console.error("SAML SSO rejected", { stage: "replayed-request" });
+        return { response: Response.json({ error: GENERIC_REJECTION }, { status: 400 }), actorUserId: session.user.id, targetUserId: provider.id };
+      }
+      const issued = await buildSignedSamlResponse({
+        requestId: request.id,
+        acsUrl: provider.acsUrl,
+        serviceProviderEntityId: provider.entityId,
+        relayState: verified.relayState,
+        subject: { nameId: email, sessionId: sessionUserId(session), authenticatedAt },
+        signing,
+      });
+      const acsOrigin = new URL(provider.acsUrl).origin;
+      return {
+        response: new Response(issued.postPage, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": `default-src 'none'; script-src 'unsafe-inline'; form-action ${acsOrigin}; frame-ancestors 'none'; base-uri 'none'`,
+          },
+        }),
+        actorUserId: session.user.id,
+        targetUserId: provider.id,
+      };
     });
-    if (!claimed) return reject(context, "replayed-request");
-
-    // Stage 7: issue and deliver the signed response via POST binding.
-    const issued = await buildSignedSamlResponse({
-      requestId: request.id,
-      acsUrl: provider.acsUrl,
-      serviceProviderEntityId: provider.entityId,
-      relayState: verified.relayState,
-      subject: { nameId: email, sessionId: sessionUserId(session), authenticatedAt },
-      signing,
-    });
-    context.header("Cache-Control", "no-store");
-    context.header("Referrer-Policy", "no-referrer");
-    const acsOrigin = new URL(provider.acsUrl).origin;
-    context.header(
-      "Content-Security-Policy",
-      `default-src 'none'; script-src 'unsafe-inline'; form-action ${acsOrigin}; frame-ancestors 'none'; base-uri 'none'`,
-    );
-    return context.body(issued.postPage, 200, { "Content-Type": "text/html; charset=utf-8" });
   } catch (error) {
     console.error("SAML SSO rejected: unexpected failure", {
       stage: "unexpected",

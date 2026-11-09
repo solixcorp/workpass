@@ -51,7 +51,8 @@ export async function verifySamlRedirectSignature(
   const signed = `SAMLRequest=${message.raw}${relay ? `&RelayState=${relay.raw}` : ""}&SigAlg=${algorithm.raw}`;
   try {
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(signature.value)) return null;
-    const bytes = Uint8Array.from(atob(signature.value), (char) => char.charCodeAt(0));
+    const padded = signature.value.padEnd(Math.ceil(signature.value.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
     const ok = await crypto.subtle.verify(
       "RSASSA-PKCS1-v1_5", trustedKey, bytes, new TextEncoder().encode(signed),
     );

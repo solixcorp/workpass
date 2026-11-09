@@ -52,9 +52,12 @@ function toArrayBufferStrict(bytes: Uint8Array): ArrayBuffer {
 /** Inflate a base64 encoded SAML message with a hard output bound. */
 export async function inflateSamlMessage(encoded: string): Promise<string> {
   if (encoded.length === 0 || encoded.length > MAX_ENCODED_LENGTH) throw new SamlRequestError();
+  // Accept padding-less base64url as well as standard base64 with padding.
+  const base64 = encoded.replace(/=+$/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
   let binary: string;
   try {
-    binary = atob(encoded);
+    binary = atob(padded);
   } catch {
     throw new SamlRequestError();
   }

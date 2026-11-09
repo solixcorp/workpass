@@ -122,3 +122,18 @@ export function derToPem(der: number[]): string {
   const lines = (btoa(binary).match(/.{1,64}/g) ?? []).join("\n");
   return `-----BEGIN CERTIFICATE-----\n${lines}\n-----END CERTIFICATE-----\n`;
 }
+
+/** Standard unpadded base64url over UTF-8 or raw bytes. */
+export function toBase64Url(value: string | Uint8Array): string {
+  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+/** Unpadded base64url decoder; tolerates trailing '=' and corrects pad length. */
+export function fromBase64Url(value: string): Uint8Array {
+  const base64 = value.replace(/=+$/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+}
