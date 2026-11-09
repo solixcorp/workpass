@@ -158,7 +158,7 @@ See [SAML status](../feasibility/saml-backend-status.md) and [SCIM status](../fe
 
 ### `POST /_internal/migrate`
 
-Not found unless `ENABLE_MIGRATIONS=true` and `MIGRATION_TOKEN` are configured. Requires `Authorization: Bearer <MIGRATION_TOKEN>`. Runs Better Auth D1 schema migrations and creates the application audit, Fingerprint event-claim, trusted-device, risk-decision, and lookup-budget tables/indexes. Prefer a one-time operator-controlled deployment window; disable and remove the token afterward. Do not expose the route publicly or place its token in a repository.
+Not found unless `ENABLE_MIGRATIONS=true` and `MIGRATION_TOKEN` are configured. The run is audited as `admin.migration.executed` (no session actor, token-protected route); a first-run migration writes the audit after creating the schema, so a missing audit row only applies to the very first run. Requires `Authorization: Bearer <MIGRATION_TOKEN>`. Runs Better Auth D1 schema migrations and creates the application audit, Fingerprint event-claim, trusted-device, risk-decision, and lookup-budget tables/indexes. Prefer a one-time operator-controlled deployment window; disable and remove the token afterward. Do not expose the route publicly or place its token in a repository.
 
 ## Backend implementation notes
 

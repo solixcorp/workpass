@@ -4,6 +4,7 @@ import type { Env } from "../env";
 import { createAuth } from "../auth/config";
 import { constantTimeTokenMatches } from "../security/tokens";
 import { ensureApplicationTables } from "../db/schema";
+import { insertAuditEvent } from "../audit/store";
 
 export const migrationRoutes = new Hono<{ Bindings: Env }>();
 
@@ -21,6 +22,10 @@ migrationRoutes.post("/migrate", async (context) => {
     return context.json({ error: "Unauthorized" }, 401);
   }
 
+  // The migration mutates the schema and creates the audit table itself, so a
+  // first-run migration cannot have a preceding audit row; the completed event
+  // is written after the application tables exist. Every later migration run
+  // is audited the same way, without a session actor (token-protected route).
   try {
     const auth = createAuth(context.env);
     const migrations = await getMigrations(auth.options, { throwOnUnsafe: false });
@@ -33,6 +38,21 @@ migrationRoutes.post("/migrate", async (context) => {
 
     await migrations.runMigrations();
     await ensureApplicationTables(context.env);
+
+    try {
+      await insertAuditEvent(context.env, {
+        id: crypto.randomUUID(),
+        actor_user_id: null,
+        target_user_id: null,
+        event_type: "admin.migration.executed",
+        outcome: "success",
+        request_path: "/_internal/migrate",
+      });
+    } catch {
+      // The schema mutation already applied; surface the audit gap loudly for
+      // operator reconciliation instead of falsely reporting a failed migration.
+      console.error("Migration succeeded but the audit event could not be recorded");
+    }
 
     return context.json({ status: "migrated" });
   } catch (error) {
