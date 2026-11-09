@@ -7,6 +7,9 @@ export interface Env extends Partial<WorkerBindings> {
   FINGERPRINT_REGION?: "us" | "eu" | "ap";
   FINGERPRINT_SERVER_API_KEY?: string;
   FINGERPRINT_ALLOWED_ORIGINS?: string;
+  FINGERPRINT_MIN_CONFIDENCE?: string;
+  FINGERPRINT_SUSPECT_SCORE_THRESHOLD?: string;
+  FINGERPRINT_MAX_EVENT_AGE_SECONDS?: string;
   /**
    * GeoIP login-history policy (authentik GeoIP Policy semantics; requires
    * FINGERPRINT_MODE != disabled and a position in event/history data).
@@ -24,9 +27,8 @@ export interface Env extends Partial<WorkerBindings> {
   SESSION_BINDING_MODE?: "disabled" | "observe" | "enforce";
   SESSION_BINDING_NETWORK?: "off" | "asn" | "asn_and_ip";
   SESSION_BINDING_GEOIP?: "off" | "country" | "country_and_city";
-  FINGERPRINT_MIN_CONFIDENCE?: string;
-  FINGERPRINT_SUSPECT_SCORE_THRESHOLD?: string;
-  FINGERPRINT_MAX_EVENT_AGE_SECONDS?: string;
+  /** Step-up challenge window in seconds after a step_up risk decision (default 900). */
+  STEP_UP_CHALLENGE_TTL_SECONDS?: string;
   ENABLE_ADMIN_BOOTSTRAP?: string;
   ADMIN_BOOTSTRAP_TOKEN?: string;
   ENABLE_MIGRATIONS?: string;

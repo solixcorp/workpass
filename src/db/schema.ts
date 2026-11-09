@@ -139,8 +139,7 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   if (!observationColumns.results.some((column) => column.name === "network_digest")) {
     await env.DB.prepare("ALTER TABLE auth_device_observations ADD COLUMN network_digest TEXT").run();
   }
-  await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS fingerprint_risk_decisions (  // Travel-plausibility coordinates: server-resolved points only (event
+  // Travel-plausibility coordinates: server-resolved points only (event
   // geolocation or a country centroid); never raw IP addresses.
   if (!observationColumns.results.some((column) => column.name === "latitude")) {
     await env.DB.prepare("ALTER TABLE auth_device_observations ADD COLUMN latitude REAL").run();
@@ -151,7 +150,8 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   if (!observationColumns.results.some((column) => column.name === "geo_source")) {
     await env.DB.prepare("ALTER TABLE auth_device_observations ADD COLUMN geo_source TEXT").run();
   }
-
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS fingerprint_risk_decisions (
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT,
       event_id TEXT,
@@ -326,8 +326,7 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       verified_at TEXT NOT NULL
     )`,
   ).run();
-  await env.DB.prepare(
-    "CREATE INDEX IF NOT EXISTS session_mfa_proofs_time_idx  // Multi-account switching: tenant-like accounts a user may belong to and
+  // Multi-account switching: tenant-like accounts a user may belong to and
   // switch between (see docs/design/multi-accounts.md).
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS accounts (
@@ -378,6 +377,22 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS account_session_contexts_session_idx ON account_session_contexts (session_id)",
   ).run();
+  // Account invitations: opaque single-use join tokens created by the admin
+  // surface and redeemed by a signed-in user (see docs/design/multi-accounts.md).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS account_invitations (
+      token TEXT PRIMARY KEY NOT NULL,
+      account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS account_invitations_expiry_idx ON account_invitations (expires_at)",
+  ).run();
   // Custom object attributes: one flat JSON object per (object_type, object_id)
   // (see docs/design/object-attributes.md).
   await env.DB.prepare(
@@ -391,7 +406,7 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     )`,
   ).run();
   await env.DB.prepare(
- ON session_mfa_proofs (verified_at)",
+    "CREATE INDEX IF NOT EXISTS session_mfa_proofs_time_idx ON session_mfa_proofs (verified_at)",
   ).run();
   // Account Lockdown (docs/security/account-lockdown.md): one row per lockdown
   // action, including the recorded reason; a lifted row keeps history.

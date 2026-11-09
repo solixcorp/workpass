@@ -46,6 +46,14 @@ export async function recordSessionMfaProof(env: Env, sessionToken: string, user
          user_id = excluded.user_id,
          verified_at = excluded.verified_at`,
     ).bind(sessionToken, userId, new Date().toISOString()).run();
+    // A durable proof also completes any open step-up challenge for the user
+    // (verification may rotate the session, leaving the flagged token behind).
+    try {
+      const { satisfyPendingStepUpChallenges } = await import("../security/step-up");
+      await satisfyPendingStepUpChallenges(env, userId);
+    } catch {
+      // Record-keeping only; the proof itself remains the durable evidence.
+    }
     return true;
   } catch {
     return false;

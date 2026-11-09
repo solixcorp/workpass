@@ -1,6 +1,13 @@
 import type { Env } from "../env";
 import type { AuthInstance } from "../auth/config";
 import { updateAuditEvent, insertAuditEvent } from "../audit/store";
+import { getSessionMfaProof } from "../mfa/second-factor";
+import {
+  getStepUpChallenge,
+  openStepUpChallenge,
+  stepUpChallengeTtlSeconds,
+  usableSecondFactors,
+} from "./step-up";
 import {
   claimAndConsumeFingerprintEvent,
   consumeFingerprintLookupBudget,
@@ -15,6 +22,112 @@ const riskLoginPaths = new Set([
   "/api/auth/sign-in/username",
   "/api/auth/passkey/verify-authentication",
 ]);
+
+// --- Step-up challenge (docs/security/device-risk-and-trust.md) -----------
+/**
+ * Second-factor verification points record session-bound proofs and satisfy
+ * open challenges; the SSO issuance gate below refuses a flagged session
+ * until then.
+ *
+ * Gate order (fail closed):
+ * 1. the acting session carries a durable MFA proof → the risk decision was
+ *    answered; never challenge a verified session twice,
+ * 2. an open, unexpired challenge exists → re-present it,
+ * 3. a challenge was satisfied within the retention window → allow,
+ * 4. no requirement yet → issue one only when the account can complete it;
+ *    otherwise fail closed as before.
+ */
+type StepUpGate =
+  | { action: "allow" }
+  | { action: "challenge"; methods: string[] }
+  | { action: "deny"; methods: string[] };
+
+interface ActingSession {
+  user: { id: string };
+  session?: { token?: unknown } | null;
+}
+
+function actingSessionToken(session: ActingSession | null): string | null {
+  const token = session?.session?.token;
+  return typeof token === "string" && token.length > 0 && token.length <= 512 ? token : null;
+}
+
+async function evaluateStepUpGate(env: Env, session: ActingSession): Promise<StepUpGate> {
+  const sessionToken = actingSessionToken(session);
+  if (sessionToken) {
+    const proof = await getSessionMfaProof(env, sessionToken).catch(() => null);
+    if (proof) return { action: "allow" };
+    const challenge = await getStepUpChallenge(env, sessionToken);
+    if (challenge.state === "satisfied") return { action: "allow" };
+    if (challenge.state === "pending" || challenge.state === "expired") {
+      return { action: "challenge", methods: await usableSecondFactors(env, session.user.id) };
+    }
+  }
+  // No requirement bound to this session: challenge only when the account can
+  // actually complete the second factor.
+  const methods = await usableSecondFactors(env, session.user.id);
+  if (methods.length === 0) return { action: "deny", methods: [] };
+  return { action: "challenge", methods };
+}
+
+/** 403 body presenting the challenge; fail closed when it cannot be recorded. */
+async function stepUpChallengeResponseForSession(input: {
+  env: Env;
+  session: ActingSession;
+  reasons: string[];
+  requestPath: string;
+  gate: StepUpGate;
+}): Promise<Response> {
+  const sessionToken = actingSessionToken(input.session);
+  if (input.gate.action === "deny" || !sessionToken) {
+    return Response.json(
+      { error: "Additional verification is required before continuing" },
+      { status: 403 },
+    );
+  }
+  const methods = input.gate.action === "challenge" ? input.gate.methods : [];
+  const opened = await openStepUpChallenge({
+    env: input.env,
+    sessionToken,
+    userId: input.session.user.id,
+    reasons: input.reasons,
+    requestPath: input.requestPath,
+  }).catch(() => false);
+  if (!opened) {
+    return Response.json({ error: "Step-up verification is unavailable" }, { status: 503 });
+  }
+  const challenge = await getStepUpChallenge(input.env, sessionToken);
+  return Response.json(
+    {
+      error: "Additional verification is required before continuing",
+      challenge: { required: true, methods, expiresAt: challenge.expiresAt },
+    },
+    { status: 403 },
+  );
+}
+
+/** Attach `stepUpChallenge` to a JSON response; non-JSON bodies pass through. */
+async function annotateStepUpChallenge(
+  response: Response,
+  annotation: { methods: string[]; expiresAt: string | null },
+): Promise<Response> {
+  try {
+    const body = await response.clone().json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return response;
+    const headers = new Headers(response.headers);
+    headers.delete("content-length");
+    return new Response(
+      JSON.stringify({
+        ...(body as Record<string, unknown>),
+        stepUpChallenge: { required: true, ...annotation },
+      }),
+      { status: response.status, statusText: response.statusText, headers },
+    );
+  } catch {
+    return response;
+  }
+}
+
 
 export function isFingerprintRiskLogin(path: string): boolean {
   return riskLoginPaths.has(path);
@@ -145,14 +258,20 @@ async function handleFingerprintRiskAuthorizationEnabled(
     return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
   }
   if (mode === "enforce" && effectiveAction !== "allow") {
-    return Response.json(
-      {
-        error: effectiveAction === "step_up"
-          ? "Additional verification is required before continuing"
-          : "Authentication could not be completed",
-      },
-      { status: 403 },
-    );
+    if (effectiveAction === "deny") {
+      return Response.json({ error: "Authentication could not be completed" }, { status: 403 });
+    }
+    // step_up: the session continues after a second factor is verified; SSO
+    // issuance stays withheld until then.
+    const gate = await evaluateStepUpGate(input.env, session);
+    if (gate.action === "allow") return null;
+    return stepUpChallengeResponseForSession({
+      env: input.env,
+      session,
+      reasons: risk.reasons,
+      requestPath: url.pathname,
+      gate,
+    });
   }
   return null;
 }
@@ -203,6 +322,9 @@ export async function handleFingerprintRiskLogin(
   let verifiedEvent = null;
   let signalError: string | null = null;
   let eventClaimed = false;
+  // Step-up challenge opened in enforce mode for this login, annotated onto
+  // the final response when the audit finalizes successfully.
+  let pendingStepUpAnnotation: { methods: string[]; expiresAt: string | null } | null = null;
   if (mode !== "disabled") {
     let withinBudget = false;
     try {
@@ -353,17 +475,34 @@ export async function handleFingerprintRiskLogin(
         return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
       }
 
-      if (mode === "enforce" && effectiveAction !== "allow") {
+      if (mode === "enforce" && effectiveAction === "deny") {
         if (sessionToken) await revokeNewSession(env, sessionToken);
         await finalizeAudit(env, auditId, userId, null, "failure");
-        return Response.json(
-          {
-            error: effectiveAction === "step_up"
-              ? "Additional verification is required before signing in"
-              : "Authentication could not be completed",
-          },
-          { status: 403 },
-        );
+        return Response.json({ error: "Authentication could not be completed" }, { status: 403 });
+      }
+      if (mode === "enforce" && effectiveAction === "step_up" && sessionToken) {
+        // The session is issued, but SSO issuance stays withheld until the
+        // user completes a second factor (gate lives at the authorize path).
+        const methods = await usableSecondFactors(env, userId!);
+        if (methods.length === 0) {
+          await revokeNewSession(env, sessionToken);
+          await finalizeAudit(env, auditId, userId, null, "failure");
+          return Response.json({ error: "Additional verification is required before signing in" }, { status: 403 });
+        }
+        const opened = await openStepUpChallenge({
+          env,
+          sessionToken,
+          userId: userId!,
+          reasons: risk.reasons,
+          requestPath: path,
+        }).catch(() => false);
+        if (!opened) {
+          await revokeNewSession(env, sessionToken);
+          await finalizeAudit(env, auditId, userId, null, "failure");
+          return Response.json({ error: "Step-up verification is unavailable" }, { status: 503 });
+        }
+        const challenge = await getStepUpChallenge(env, sessionToken);
+        pendingStepUpAnnotation = { methods, expiresAt: challenge.expiresAt };
       }
       if (mode === "observe") {
         try {
@@ -414,6 +553,9 @@ export async function handleFingerprintRiskLogin(
   if (!auditFinalized) {
     if (sessionToken) await revokeNewSession(env, sessionToken);
     return Response.json({ error: "Authentication audit could not be finalized" }, { status: 503 });
+  }
+  if (pendingStepUpAnnotation) {
+    return annotateStepUpChallenge(authResponse, pendingStepUpAnnotation);
   }
   return authResponse;
 }
