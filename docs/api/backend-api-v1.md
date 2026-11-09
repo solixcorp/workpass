@@ -133,6 +133,20 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 
 ## Database initialization
 
+### SAML and SCIM preparation
+
+- `POST /api/admin/saml-service-providers` registers an SP configuration in a disabled state; administrators supply `entityId`, `acsUrl` and `signingCertificate`. Requires an administrator session, exact configured `Origin`, and application schema migration. This does not enable SAML sign-in.
+- `GET /api/admin/saml-service-providers/{id}` retrieves an SP registration for an administrator. Certificate syntax is checked but X.509 validity and interoperability are not yet verified.
+- `GET /api/admin/saml-service-providers` lists registrations with optional `limit` (1–100) and `cursor`; the list omits certificates.
+- `GET /api/admin/scim-operations/{id}` retrieves one outbound operation journal entry for an administrator.
+- `POST /api/admin/scim-operations` manually executes `create`, `update`, or `deactivate` for an existing local `userId`. Requires an administrator session, exact configured `Origin`, application migration, and `ENABLE_SCIM_PROVISIONING=true` with a single `SCIM_TARGET_ID`, HTTPS `SCIM_BASE_URL`, and secret `SCIM_BEARER_TOKEN`. The request cannot select a URL or credential. A returned `operationId` supports reconciliation; unknown results block subsequent operations for that target/user and must not be blindly retried. No automatic lifecycle trigger or reconciliation endpoint is provided yet.
+
+- `POST /api/admin/saml-service-providers/{id}/enable` enables a verified registration: the stored certificate must import into a usable RSA verify key. Requires an administrator session, the exact configured `Origin`, and is audited. `POST /api/admin/saml-service-providers/{id}/disable` always disables.
+- `GET /saml/metadata` publishes IdP metadata (entityID, signing certificate, SSO endpoints) from the configured signing material, or 503 when it is not configured.
+- `GET /saml/sso` runs the gated chain: enabled registration → certificate-derived key → redirect binding signature over received bytes → full revalidation → user session (an unauthenticated visitor gets a same-origin sign-in page that reloads the original request after success) → one-time replay claim → signed Response delivered by an auto-submitting POST form to the registered ACS. It responds 503 without IdP signing material and 401 for issuers without an enabled registration.
+
+See [SAML status](../feasibility/saml-backend-status.md) and [SCIM status](../feasibility/scim-connector-status.md). No SAML login is reachable in practice: `GET /saml/sso` exists but requires an enabled registration, configured IdP signing material, and a verifiable signed request; sign-in ends in an error response until those deliberate decisions are made. No automatic SCIM provisioning is enabled. Do not enable outbound provisioning against a production target before target-specific mapping, privacy and security review.
+
 ### `POST /_internal/migrate`
 
 Not found unless `ENABLE_MIGRATIONS=true` and `MIGRATION_TOKEN` are configured. Requires `Authorization: Bearer <MIGRATION_TOKEN>`. Runs Better Auth D1 schema migrations and creates the application audit, Fingerprint event-claim, trusted-device, risk-decision, and lookup-budget tables/indexes. Prefer a one-time operator-controlled deployment window; disable and remove the token afterward. Do not expose the route publicly or place its token in a repository.

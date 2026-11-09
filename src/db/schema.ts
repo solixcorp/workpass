@@ -143,5 +143,16 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1))
     )`,
   ).run();
-
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS saml_request_claims (
+      provider_id TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      claimed_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      PRIMARY KEY (provider_id, request_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS saml_request_claims_expiry_idx ON saml_request_claims (expires_at)",
+  ).run();
 }

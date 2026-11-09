@@ -7,6 +7,8 @@ import { authRoutes } from "./auth/routes";
 import { webfingerRoutes } from "./oidc/webfinger";
 import { trustedDeviceRoutes } from "./security/trusted-device-routes";
 import { cleanupFingerprintData } from "./security/fingerprint-retention";
+import { cleanupSamlRequestClaims } from "./saml/request-claims";
+import { samlProtocolRoutes } from "./saml/protocol-routes";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -33,6 +35,7 @@ app.get("/", (context) =>
 );
 
 app.route("/", authRoutes);
+app.route("/", samlProtocolRoutes);
 app.route("/.well-known", webfingerRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin", bootstrapRoutes);
@@ -45,10 +48,11 @@ async function scheduled(
   _context: ExecutionContext,
 ): Promise<void> {
   try {
-    // Cleanup runs even while risk evaluation is disabled so old records expire.
+    // Cleanup runs even while the related features are disabled.
     await cleanupFingerprintData(env, new Date(controller.scheduledTime));
+    await cleanupSamlRequestClaims(env, new Date(controller.scheduledTime));
   } catch (error) {
-    console.error("Fingerprint retention cleanup failed", {
+    console.error("Scheduled security cleanup failed", {
       cron: controller.cron,
       name: error instanceof Error ? error.name : "UnknownError",
     });

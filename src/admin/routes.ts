@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { auditRoutes } from "../audit/routes";
+import { samlAdminRoutes } from "../saml/routes";
 import { scimAdminRoutes } from "../scim/routes";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
 adminRoutes.route("/", auditRoutes);
+adminRoutes.route("/", samlAdminRoutes);
 adminRoutes.route("/", scimAdminRoutes);

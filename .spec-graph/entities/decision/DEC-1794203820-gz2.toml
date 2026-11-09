@@ -1,0 +1,20 @@
+schema = 1
+id = "DEC-1794203820-gz2"
+type = "decision"
+title = "Validate dependency-free SAML primitives on Workers for phase 0"
+description = "Samlify and Node-only SAML stacks are blocked on Workers, so phase 0 validates dependency-free WebCrypto-based SAML primitives instead: HTTP-Redirect binding signature verification against the certificate-derived trusted key, bounded raw/zlib inflation, an allowlisted AuthnRequest parser, and a canonically constructed RSA-SHA256 signed response with replay claiming. Covered by tests/saml-verification.test.ts and documented in docs/feasibility/saml-backend-status.md. Certificate chain/revocation validation, SP interoperability, enablement and key lifecycle remain open; no login path is reachable today."
+status = "draft"
+created_at = 2026-11-09T14:57:00+09:00
+updated_at = 2026-11-09T14:57:00+09:00
+
+[metadata]
+date = "2026-11-09"
+rationale = "The product owner confirmed the implementation direction by adding the redirect binding verifier; the hand-rolled primitive path is now the validated phase 0 alternative to Samlify."
+
+[[relations]]
+to = "QST-1794159221-myn"
+type = "answers"
+
+[[relations]]
+to = "RSK-1794159223-caw"
+type = "mitigates"

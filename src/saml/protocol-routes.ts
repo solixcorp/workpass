@@ -1,0 +1,208 @@
+/**
+ * SAML SSO protocol route: verify, claim, authenticate, issue a signed
+ * Response. No stage is skippable; a provider that is not enabled or an IdP
+ * that has no signing key configured can never produce an assertion, so no
+ * partially verified login path exists.
+ */
+
+import { Hono } from "hono";
+import type { Context } from "hono";
+import type { Env } from "../env";
+import { createAuth } from "../auth/config";
+import { verifySamlRedirectSignature } from "./redirect-signature";
+import { inflateSamlMessage, parseSamlAuthnRequest } from "./request-binding";
+import { claimVerifiedSamlRequest } from "./request-claims";
+import { getEnabledSamlServiceProviderByEntityId } from "./service-providers";
+import { importSamlIdpPrivateKey, importSamlServiceProviderTrustedKey } from "./certificates";
+import { buildSignedSamlResponse, type SamlSigningMaterial } from "./assertion";
+import { buildSamlIdpMetadata } from "./metadata";
+import { buildSsoLoginPage } from "./sso-login";
+
+export const SAML_SSO_PATH = "/saml/sso";
+
+/** Maximum age of an AuthnRequest IssueInstant once clock skew is allowed. */
+const ISSUE_INSTANT_MAX_AGE_MS = 5 * 60_000;
+/** Allowed clock skew between us and the SP. */
+const ISSUE_INSTANT_SKEW_MS = 2 * 60_000;
+
+const GENERIC_REJECTION = "The authentication request cannot be processed";
+const UNAVAILABLE = "SAML single sign-on is not available";
+
+export const samlProtocolRoutes = new Hono<{ Bindings: Env }>();
+
+samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
+  const now = new Date();
+  try {
+    // Stage 0: the IdP must be able to sign at all before anything else.
+    const signing = await loadSamlIdpSigningMaterial(context.env);
+    if (!signing) {
+      console.error("SAML SSO rejected: signing material is not configured");
+      return context.json({ error: UNAVAILABLE }, 503);
+    }
+
+    // Stage 1: decode and parse untrusted bytes to find a candidate issuer.
+    const query = new URL(context.req.url).searchParams;
+    const encodedRequest = query.get("SAMLRequest");
+    if (!encodedRequest) return reject(context, "missing-message");
+    let provisional;
+    try {
+      provisional = parseSamlAuthnRequest(await inflateSamlMessage(encodedRequest));
+    } catch {
+      return reject(context, "invalid-message");
+    }
+
+    // Stage 2: select the trusted key of the registered, enabled SP.
+    const provider = await getEnabledSamlServiceProviderByEntityId(context.env, provisional.issuer);
+    if (!provider) {
+      console.error("SAML SSO rejected: issuer is not an enabled registration", { stage: "unregistered-issuer" });
+      return context.json({ error: GENERIC_REJECTION }, 401);
+    }
+    const trustedKey = await importSamlServiceProviderTrustedKey(provider.signingCertificate);
+
+    // Stage 3: verify the redirect binding signature over the received bytes.
+    const verified = await verifySamlRedirectSignature(context.req.url, trustedKey);
+    if (!verified || verified.samlRequest !== encodedRequest) {
+      return reject(context, "binding-signature");
+    }
+
+    // Stage 4: revalidate the verified bytes fully.
+    const request = parseSamlAuthnRequest(await inflateSamlMessage(verified.samlRequest));
+    if (request.id.length === 0 || request.issuer !== provider.entityId) {
+      return reject(context, "verified-mismatch");
+    }
+    if (
+      now.getTime() - request.issueInstant.getTime() > ISSUE_INSTANT_MAX_AGE_MS + ISSUE_INSTANT_SKEW_MS ||
+      request.issueInstant.getTime() - now.getTime() > ISSUE_INSTANT_SKEW_MS
+    ) {
+      return reject(context, "stale-request");
+    }
+    const expectedDestination = expectedSsoDestination(context.env);
+    if (request.destination !== null && request.destination !== expectedDestination) {
+      return reject(context, "destination");
+    }
+    if (request.acsUrl !== null && request.acsUrl !== provider.acsUrl) {
+      return reject(context, "acs-mismatch");
+    }
+    // We cannot assert fresh authentication until a reauthentication flow exists.
+    if (request.forceAuthn) return reject(context, "force-authn-unsupported");
+
+    // Stage 5: an Issuer-visible user session is mandatory before claiming.
+    // With no session the login page is rendered for this verified request;
+    // after sign-in the same URL reloads and the full chain runs again.
+    const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
+    if (!session) {
+      if (request.isPassive) return reject(context, "passive-session-unavailable");
+      return renderLoginPage(context);
+    }
+    const email = session.user.email;
+    if (!email || email.length > 256) return reject(context, "no-nameid");
+
+    // Stage 6: one-time claim prevents replay of this request ID per SP.
+    const claimed = await claimVerifiedSamlRequest({
+      env: context.env,
+      providerId: provider.id,
+      requestId: request.id,
+      // Keep the claim for the entire period in which this request is accepted.
+      expiresAt: new Date(request.issueInstant.getTime() + ISSUE_INSTANT_MAX_AGE_MS + ISSUE_INSTANT_SKEW_MS + 1000),
+    });
+    if (!claimed) return reject(context, "replayed-request");
+
+    // Stage 7: issue and deliver the signed response via POST binding.
+    const issued = await buildSignedSamlResponse({
+      requestId: request.id,
+      acsUrl: provider.acsUrl,
+      serviceProviderEntityId: provider.entityId,
+      relayState: verified.relayState,
+      subject: { nameId: email, sessionId: sessionUserId(session) },
+      signing,
+    });
+    context.header("Cache-Control", "no-store");
+    context.header("Referrer-Policy", "no-referrer");
+    const acsOrigin = new URL(provider.acsUrl).origin;
+    context.header(
+      "Content-Security-Policy",
+      `default-src 'none'; script-src 'unsafe-inline'; form-action ${acsOrigin}; frame-ancestors 'none'; base-uri 'none'`,
+    );
+    return context.body(issued.postPage, 200, { "Content-Type": "text/html; charset=utf-8" });
+  } catch (error) {
+    console.error("SAML SSO rejected: unexpected failure", {
+      stage: "unexpected",
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    return context.json({ error: GENERIC_REJECTION }, 500);
+  }
+});
+
+/** Render the login page only for a fully verified, unauthenticated request. */
+function renderLoginPage(context: Context<{ Bindings: Env }>) {
+  context.header("Cache-Control", "no-store");
+  context.header("Referrer-Policy", "no-referrer");
+  context.header(
+    "Content-Security-Policy",
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+  );
+  return context.body(
+    buildSsoLoginPage({
+      title: "Sign in to continue",
+      hint: "This application sent you here to sign in. Authenticate to continue to it.",
+    }),
+    200,
+    { "Content-Type": "text/html; charset=utf-8" },
+  );
+}
+
+/** Public, unsigned protocol metadata for service provider configuration. */
+samlProtocolRoutes.get("/saml/metadata", async (context) => {
+  const signing = await loadSamlIdpSigningMaterial(context.env);
+  if (!signing) {
+    return context.json({ error: UNAVAILABLE }, 503);
+  }
+  context.header("Cache-Control", "no-store");
+  context.header("Content-Type", "application/samlmetadata+xml; charset=utf-8");
+  return context.body(
+    buildSamlIdpMetadata({
+      entityId: signing.entityId,
+      certificate: signing.certificate,
+      ssoUrl: expectedSsoDestination(context.env),
+    }),
+    200,
+  );
+});
+
+function reject(
+  context: Context<{ Bindings: Env }>,
+  stage: string,
+  status: 400 | 401 = 400,
+) {
+  console.error("SAML SSO rejected", { stage });
+  return context.json({ error: GENERIC_REJECTION }, status);
+}
+
+type SamlSession = Awaited<ReturnType<ReturnType<typeof createAuth>["api"]["getSession"]>>;
+
+function sessionUserId(session: NonNullable<SamlSession>): string {
+  const inner = (session as { session?: { id?: unknown } }).session;
+  return typeof inner?.id === "string" && inner.id.length > 0 ? inner.id : crypto.randomUUID();
+}
+
+export function expectedSsoDestination(env: Env): string {
+  const base = new URL(env.AUTH_BASE_URL);
+  return `${base.origin}${SAML_SSO_PATH}`;
+}
+
+/**
+ * Load the IdP signing pair from configuration. Private material is kept in
+ * WebCrypto only; rotation and secure provisioning remain open work.
+ */
+export async function loadSamlIdpSigningMaterial(env: Env): Promise<SamlSigningMaterial | null> {
+  const entityId = env.SAML_IDP_ENTITY_ID;
+  const certificate = env.SAML_IDP_SIGNING_CERTIFICATE;
+  const privateKeyPem = env.SAML_IDP_SIGNING_PRIVATE_KEY;
+  if (!entityId || !certificate || !privateKeyPem) return null;
+  try {
+    const privateKey = await importSamlIdpPrivateKey(privateKeyPem);
+    return { entityId, certificate, privateKey };
+  } catch {
+    return null;
+  }
+}

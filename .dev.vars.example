@@ -19,3 +19,8 @@ ENABLE_SCIM_PROVISIONING=false
 SCIM_TARGET_ID=
 SCIM_BASE_URL=
 SCIM_BEARER_TOKEN=
+# SAML identity provider signing material (required only for issuing signed
+# SAML responses). Generate with: bun run scripts/generate-saml-key.ts
+SAML_IDP_ENTITY_ID=
+SAML_IDP_SIGNING_CERTIFICATE=
+SAML_IDP_SIGNING_PRIVATE_KEY=
