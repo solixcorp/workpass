@@ -316,7 +316,20 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     )`,
   ).run();
   await env.DB.prepare(
-    "CREATE INDEX IF NOT EXISTS session_mfa_proofs_time_idx ON session_mfa_proofs (verified_at)",
+    "CREATE INDEX IF NOT EXISTS session_mfa_proofs_time_idx  // Custom object attributes: one flat JSON object per (object_type, object_id)
+  // (see docs/design/object-attributes.md).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS object_attributes (
+      object_type TEXT NOT NULL CHECK (object_type IN ('user', 'group', 'account')),
+      object_id TEXT NOT NULL,
+      attributes TEXT NOT NULL,
+      updated_by TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (object_type, object_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+ ON session_mfa_proofs (verified_at)",
   ).run();
   // Access requests (docs/design/access-requests.md): just-in-time application
   // access with reviewer approval and time-limited temporal grants.

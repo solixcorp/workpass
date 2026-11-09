@@ -8,6 +8,7 @@ import { wsfedAdminRoutes } from "../wsfed/routes";
 import { swaAdminRoutes } from "../swa/routes";
 import { accessPolicyRoutes } from "../access/routes";
 import { usageRoutes } from "./usage";
+import { objectAttributeRoutes } from "../objects/attribute-routes";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -19,3 +20,4 @@ adminRoutes.route("/", wsfedAdminRoutes);
 adminRoutes.route("/", swaAdminRoutes);
 adminRoutes.route("/", accessPolicyRoutes);
 adminRoutes.route("/", usageRoutes);
+adminRoutes.route("/", objectAttributeRoutes);
