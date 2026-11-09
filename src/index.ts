@@ -7,6 +7,7 @@ import { inboundScimRoutes } from "./scim/server";
 import { authRoutes } from "./auth/routes";
 import { webfingerRoutes } from "./oidc/webfinger";
 import { trustedDeviceRoutes } from "./security/trusted-device-routes";
+import { lockdownRoutes } from "./security/lockdown-routes";
 import { cleanupFingerprintData } from "./security/fingerprint-retention";
 import { cleanupSamlRequestClaims } from "./saml/request-claims";
 import { cleanupSwaGrants } from "./swa/applications";
@@ -68,6 +69,9 @@ app.route("/.well-known", webfingerRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin", bootstrapRoutes);
 app.route("/api/security", trustedDeviceRoutes);
+// Account lockdown: self-service and administrator emergency actions at
+// /api/security/account-lockdown; see src/security/account-lockdown.ts.
+app.route("/api/security", lockdownRoutes);
 app.route("/_internal", migrationRoutes);
 app.route("/", inboundScimRoutes);
 // OAuth 1.0a and SSF routers fail closed on every request; they are reachable

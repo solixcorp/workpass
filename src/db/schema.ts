@@ -382,6 +382,26 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
  ON session_mfa_proofs (verified_at)",
   ).run();
+  // Account Lockdown (docs/security/account-lockdown.md): one row per lockdown
+  // action, including the recorded reason; a lifted row keeps history.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS account_lockdowns (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      actor_user_id TEXT NOT NULL,
+      source TEXT NOT NULL CHECK (source IN ('admin', 'self_service')),
+      reason TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      lifted_at TEXT,
+      lifted_by TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS account_lockdowns_user_idx ON account_lockdowns (user_id, created_at)",
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS account_lockdowns_active_idx ON account_lockdowns (user_id) WHERE lifted_at IS NULL",
+  ).run();
   // Access requests (docs/design/access-requests.md): just-in-time application
   // access with reviewer approval and time-limited temporal grants.
   await env.DB.prepare(
