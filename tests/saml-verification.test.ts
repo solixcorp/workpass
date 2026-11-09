@@ -317,6 +317,7 @@ describe("SP-side response verification from published metadata", () => {
       now: NOW,
     });
     const responseXml = atob(issued.samlResponse);
+    expect(responseXml).toContain(`NotOnOrAfter="${new Date(NOW.getTime() + 300_000).toISOString().replace(/\.\d{3}Z$/, "Z")}"`);
     const signedInfo = responseXml.slice(
       responseXml.indexOf("<ds:SignedInfo"),
       responseXml.indexOf("</ds:SignedInfo>") + "</ds:SignedInfo>".length,

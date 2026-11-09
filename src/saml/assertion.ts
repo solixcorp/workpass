@@ -81,7 +81,7 @@ export async function buildSignedSamlResponse(
   const now = params.now ?? new Date();
   const issueInstant = formatSamlInstant(now);
   const notBefore = formatSamlInstant(new Date(now.getTime() - 30_000));
-  const notOnOrAfter = formatSamlInstant(new Date(now.getTime() + (params.lifetimeSeconds ?? 5 * 60_000) * 1000));
+  const notOnOrAfter = formatSamlInstant(new Date(now.getTime() + (params.lifetimeSeconds ?? 5 * 60) * 1000));
   const responseId = generateXmlId();
   const assertionId = generateXmlId();
   const authnClass = params.authnClass ?? UNSPECIFIED_AUTHN_CONTEXT;

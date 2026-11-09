@@ -102,7 +102,7 @@ export async function issueSwaGrant(env: Env, input: {
   const nonce = btoa(binary).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
   const now = new Date();
   const createdAt = now.toISOString();
-  const expiresAt = new Date(now.getTime() + (input.ttlSeconds ?? 5 * 60_000) * 1000).toISOString();
+  const expiresAt = new Date(now.getTime() + (input.ttlSeconds ?? 5 * 60) * 1000).toISOString();
   const result = await env.DB.prepare(
     `INSERT INTO swa_grants (nonce, application_id, user_id, created_at, expires_at)
      VALUES (?, ?, ?, ?, ?)`,
