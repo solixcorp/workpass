@@ -98,6 +98,30 @@ const beforeEnable = await call("/api/swa/grants", { method: "POST", origin: tru
 expect("disabled application rejects grants", beforeEnable.status === 401, beforeEnable.status);
 await call(`/api/admin/swa-applications/${applicationId}/enable`, { method: "POST", origin: true });
 
+// A group-gated policy in enforce mode blocks grant issuance for users outside
+// the configured groups; removal restores issuance. Policy groups reference
+// real directory groups, so create one the acting user is NOT enrolled in.
+const policySubject = `swa:${origin}`;
+const gateGroup = await call("/api/admin/directory-groups", {
+  method: "POST",
+  origin: true,
+  body: { name: `swa-gate-${crypto.randomUUID().slice(0, 8)}` },
+});
+const gateGroupBody = await gateGroup.json().catch(() => ({})) as { group?: { id?: string } };
+expect("gate directory group created", gateGroup.status === 201 && !!gateGroupBody.group?.id, { status: gateGroup.status, body: gateGroupBody });
+const policyPut = await call("/api/admin/app-access-policies", {
+  method: "PUT",
+  origin: true,
+  body: { subject: policySubject, enforcementMode: "enforce", groups: [gateGroupBody.group?.id ?? ""] },
+});
+expect("group-gated policy stored", policyPut.status === 200, policyPut.status);
+const gateBlocked = await call("/api/swa/grants", { method: "POST", origin: true, body: { origin } });
+expect("group gate violation rejected (403)", gateBlocked.status === 403, gateBlocked.status);
+const policyDelete = await call(`/api/admin/app-access-policies/${encodeURIComponent(policySubject)}`, { method: "DELETE", origin: true });
+expect("policy removed", policyDelete.status === 200 || policyDelete.status === 204, policyDelete.status);
+const gateGroupDelete = await call(`/api/admin/directory-groups/${gateGroupBody.group?.id ?? ""}`, { method: "DELETE", origin: true });
+expect("gate directory group removed", gateGroupDelete.status === 200 || gateGroupDelete.status === 204, gateGroupDelete.status);
+
 // Grant issuance for the acting user.
 const grant = await call("/api/swa/grants", { method: "POST", origin: true, body: { origin } });
 const grantBody = await grant.json().catch(() => ({})) as { nonce?: string; expiresAt?: string };
@@ -112,13 +136,13 @@ expect("grant exchanged", exchange.status === 200 && exchangeBody.attestation?.a
 const replay = await call("/api/swa/exchange", { method: "POST", origin: true, body: { nonce: grantBody.nonce } });
 expect("replayed nonce rejected", replay.status === 401, replay.status);
 
-// Grants are single-acting-user: a foreign user's session rejects.
-const foreignSignIn = await fetch(`${base}/api/auth/sign-in/username`, {
+// Grants are session-bound: a foreign (unauthenticated) client cannot mint one.
+const grantUnauthed = await fetch(`${base}/api/swa/grants`, {
   method: "POST",
   headers: { "Content-Type": "application/json", "Origin": base },
-  body: JSON.stringify({ username: options.username, password: options.password }),
+  body: JSON.stringify({ origin }),
 });
-void foreignSignIn;
+expect("unauthenticated grant request rejected", grantUnauthed.status === 401, grantUnauthed.status);
 const grantAgain = await call("/api/swa/grants", { method: "POST", origin: true, body: { origin } });
 const grantAgainBody = await grantAgain.json().catch(() => ({})) as { nonce?: string };
 expect("second grant issued for the same user", grantAgain.status === 201 && !!grantAgainBody.nonce, grantAgain.status);

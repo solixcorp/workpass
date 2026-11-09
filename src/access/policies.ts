@@ -85,6 +85,21 @@ export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, u
       new Date().toISOString(),
     )
     .run();
+  // The configured group set is the gate itself: rewrite it wholesale so an
+  // update replaces the previous membership and a dropped group un-gates.
+  await env.DB.prepare("DELETE FROM app_policy_groups WHERE subject = ?")
+    .bind(policy.subject)
+    .run();
+  if (policy.groups.length > 0) {
+    const statements = [];
+    for (const groupId of policy.groups) {
+      statements.push(
+        env.DB.prepare("INSERT INTO app_policy_groups (subject, group_id) VALUES (?, ?)")
+          .bind(policy.subject, groupId),
+      );
+    }
+    await env.DB.batch(statements);
+  }
 }
 
 export async function loadAppAccessPolicy(env: Env, subject: string): Promise<AppAccessPolicy | null> {

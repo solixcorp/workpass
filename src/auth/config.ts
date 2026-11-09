@@ -68,6 +68,7 @@ export function createAuth(env: Env) {
         jwt: { issuer: `${baseURL}/api/auth` },
         jwks: { keyPairConfig: { alg: "ES256" } },
       }),
+      passkey({ rpID: authBaseUrl.hostname, rpName: "Internal Auth" }),
       phoneNumber({
         // sms OTP delivery: the dev/mock webhook records the code; production
         // gateways are wired through env credentials per deployment decision.
