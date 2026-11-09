@@ -17,7 +17,7 @@ accessPolicyRoutes.get("/app-access-policies", async (context) => {
   const rows = await context.env.DB.prepare(
     `SELECT subject, allowed_methods AS allowedMethods, session_ttl_seconds AS sessionTtlSeconds,
             bypass_window_seconds AS bypassWindowSeconds, enforcement_mode AS enforcementMode,
-            updated_at AS updatedAt
+            require_mfa AS requireMfaRaw, updated_at AS updatedAt
      FROM app_access_policies ORDER BY subject ASC LIMIT 200`,
   ).all<{ subject: string; allowedMethods: string; sessionTtlSeconds: number | null; bypassWindowSeconds: number; enforcementMode: string; updatedAt: string }>();
   const policies = [];
@@ -27,6 +27,7 @@ accessPolicyRoutes.get("/app-access-policies", async (context) => {
     ).bind(row.subject).all<{ group_id: string }>();
     policies.push({
       ...row,
+      requireMfa: (row as { requireMfaRaw?: number }).requireMfaRaw === 1,
       groups: groups.results.map((g) => g.group_id),
       enforcementMode: row.enforcementMode,
     });
@@ -73,7 +74,7 @@ accessPolicyRoutes.put("/app-access-policies", async (context) => {
   }));
 });
 
-accessPolicyRoutes.delete("/app-access-policies/{subject}", async (context) => {
+accessPolicyRoutes.delete("/app-access-policies/:subject", async (context) => {
   const admin = await requireAdministrator(context);
   if (admin instanceof Response) return admin;
   const subject = context.req.param("subject");
@@ -98,11 +99,10 @@ accessPolicyRoutes.delete("/app-access-policies/{subject}", async (context) => {
 });
 
 /** The issuance activity for one subject (admin; visibility + review). */
-accessPolicyRoutes.get("/app-access-policies/{subject}/activity", async (context) => {
+accessPolicyRoutes.get("/app-access-policies/:subject/activity", async (context) => {
   const admin = await requireAdministrator(context);
   if (admin instanceof Response) return admin;
-  const subjectRaw = context.req.param("subject") ?? "";
-  const subject = decodeURIComponent(subjectRaw);
+  const subject = context.req.param("subject");
   const rows = await context.env.DB.prepare(
     `SELECT user_id AS userId, issued_at AS issuedAt, enforcement_mode AS enforcementMode, method
      FROM app_issuance_history WHERE subject = ? ORDER BY issued_at DESC LIMIT 500`,
