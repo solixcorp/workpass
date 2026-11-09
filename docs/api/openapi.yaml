@@ -1,0 +1,298 @@
+openapi: 3.1.0
+info:
+  title: Internal Auth Backend API
+  version: 1.0.0-draft
+  description: >-
+    Partial OpenAPI contract for application-owned endpoints. Better Auth plugin
+    routes and OIDC discovery metadata are also served by the Worker; see
+    backend-api-v1.md and the runtime discovery document for those contracts.
+servers:
+  - url: https://{idpHost}
+    variables:
+      idpHost:
+        default: id.example.com
+security:
+  - sessionCookie: []
+paths:
+  /:
+    get:
+      operationId: getServiceInfo
+      security: []
+      summary: Service metadata and protocol documentation pointers
+      responses:
+        "200":
+          description: Public service metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [service, status, documentation, openidConfiguration]
+                properties:
+                  service: { type: string }
+                  status: { type: string }
+                  documentation: { type: string }
+                  openidConfiguration: { type: string }
+  /health:
+    get:
+      operationId: getHealth
+      security: []
+      summary: Worker liveness
+      responses:
+        "200":
+          description: Worker is responding.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, runtime]
+                properties:
+                  status:
+                    const: ok
+                  runtime:
+                    const: cloudflare-workers
+  /_internal/migrate:
+    post:
+      operationId: migrateDatabase
+      security:
+        - migrationBearer: []
+      summary: Run Better Auth and audit D1 migrations
+      description: >-
+        Only available while ENABLE_MIGRATIONS is true and MIGRATION_TOKEN is
+        configured. Disable both immediately after controlled initialization.
+      responses:
+        "200":
+          description: Migrations applied.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: migrated
+        "401":
+          description: Missing or invalid migration token.
+        "404":
+          description: Migration route disabled.
+        "500":
+          description: Migration failed.
+  /api/admin/bootstrap:
+    post:
+      operationId: bootstrapFirstAdmin
+      security:
+        - bootstrapBearer: []
+      summary: Create the first administrator (temporarily enabled only)
+      description: >-
+        Available only while ENABLE_ADMIN_BOOTSTRAP is true and only before
+        any user exists. The bearer token is a temporary secret. The operation
+        assigns the admin role and is audited in D1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, username, password]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                username: { type: string }
+                password: { type: string, format: password }
+      responses:
+        "201":
+          description: The first administrator was created.
+        "404":
+          description: Bootstrap is disabled or token is invalid.
+        "409":
+          description: A user exists or bootstrap has already been claimed.
+        "503":
+          description: Audit persistence failed; inspect the event record before retrying.
+        "400":
+          description: Malformed body or missing required fields.
+  /api/admin/audit-events:
+    get:
+      operationId: listAuditEvents
+      summary: Query security audit events (admin only)
+      parameters:
+        - in: query
+          name: actorUserId
+          schema: { type: string }
+        - in: query
+          name: targetUserId
+          schema: { type: string }
+        - in: query
+          name: eventType
+          schema: { type: string }
+        - in: query
+          name: outcome
+          schema:
+            type: string
+            enum: [started, success, failure]
+        - in: query
+          name: from
+          description: Inclusive ISO-8601 timestamp.
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          description: Inclusive ISO-8601 timestamp.
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - in: query
+          name: cursor
+          description: Opaque event ID from the prior response's nextCursor field.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Matching events. Secrets and request bodies are excluded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, limit, nextCursor]
+                properties:
+                  limit: { type: integer }
+                  nextCursor:
+                    type: [string, "null"]
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditEvent"
+        "401":
+          description: No valid IdP session.
+        "403":
+          description: Authenticated user is not an administrator.
+  /api/auth/sign-in/email:
+    post:
+      operationId: signInWithEmail
+      security: []
+      summary: Start a username-independent email/password session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+                rememberMe: { type: boolean }
+                callbackURL: { type: string, format: uri }
+      responses:
+        "200":
+          description: Authenticated; Worker sets an HttpOnly session cookie.
+          headers:
+            Set-Cookie:
+              description: Secure, HttpOnly, SameSite IdP session cookie.
+              schema: { type: string }
+        "401":
+          description: Invalid credentials.
+  /api/auth/sign-up/email:
+    post:
+      operationId: denyPublicSignup
+      security: []
+      summary: Public signup is disabled
+      responses:
+        "404":
+          description: Registration is not available.
+        "503":
+          description: Denial audit event could not be persisted.
+  /api/auth/sign-in/username:
+    post:
+      operationId: signInWithUsername
+      security: []
+      summary: Start a username/password session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+                rememberMe: { type: boolean }
+                callbackURL: { type: string, format: uri }
+      responses:
+        "200":
+          description: Authenticated; Worker sets an HttpOnly session cookie.
+          headers:
+            Set-Cookie:
+              description: Secure, HttpOnly, SameSite IdP session cookie.
+              schema: { type: string }
+        "401":
+          description: Invalid credentials.
+  /api/auth/admin/create-user:
+    post:
+      operationId: createEmployee
+      summary: Create an employee account (administrator only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password, data]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                password: { type: string, format: password }
+                role:
+                  type: string
+                  default: user
+                data:
+                  type: object
+                  required: [username]
+                  properties:
+                    username: { type: string }
+      responses:
+        "200":
+          description: Employee created. Response does not return the password.
+        "401":
+          description: No valid IdP session.
+        "403":
+          description: Authenticated user is not permitted to create users.
+        "404":
+          description: Public signup route remains unavailable.
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+      description: >-
+        Better Auth cookie name may be prefixed in HTTPS environments. Treat as
+        an opaque HttpOnly browser cookie.
+    migrationBearer:
+      type: http
+      scheme: bearer
+      description: Short-lived operator-controlled migration token.
+    bootstrapBearer:
+      type: http
+      scheme: bearer
+      description: Short-lived first-administrator bootstrap token.
+  schemas:
+    AuditEvent:
+      type: object
+      required:
+        - id
+        - occurred_at
+        - event_type
+        - outcome
+        - request_path
+      properties:
+        id: { type: string, format: uuid }
+        occurred_at: { type: string, format: date-time }
+        actor_user_id: { type: [string, "null"] }
+        target_user_id: { type: [string, "null"] }
+        event_type: { type: string }
+        outcome:
+          type: string
+          enum: [started, success, failure]
+        request_path: { type: string }

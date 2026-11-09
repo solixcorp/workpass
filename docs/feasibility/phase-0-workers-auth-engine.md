@@ -1,0 +1,84 @@
+# Phase 0: Workers Authentication Engine Feasibility
+
+**Status:** in progress; this is a documented candidate assessment, not an architecture sign-off.
+
+## Mandatory implementation stack
+
+- **Application runtime:** Cloudflare Workers (`workerd`).
+- **Application language:** TypeScript.
+- **Required JavaScript toolchain:** Bun for dependency management, `bun.lock`, and project scripts.
+- **Wrangler:** development/deployment CLI, not an application runtime. The installed Wrangler release requires Node.js 22 or newer and explicitly does not support being run by the Bun runtime. Bun scripts must therefore execute Wrangler by its Node shebang; do not use `bun --bun` for Wrangler.
+- **Worker compatibility:** use Workers Web APIs; Better Auth's async-context requirement is currently configured with the narrower `nodejs_als` compatibility flag. Re-check this against the pinned Better Auth release in the runtime PoC.
+- **Runtime validation:** Cloudflare's `@cloudflare/vitest-plugin` can run Worker tests in `workerd`. Per product direction, do not add or maintain test code in this PoC; continue backend implementation and keep verification lightweight and non-test-based unless a test is explicitly requested.
+
+## Candidate findings
+
+| Concern | Candidate/evidence | Finding and remaining verification |
+|---|---|---|
+| TypeScript HTTP layer | Hono 4.11.5 | Uses standard Request/Response APIs and has a Workers adapter. |
+| Username/password and passkeys | Better Auth 1.7.18 and `@better-auth/passkey` 1.7.18 | Official docs show username/password and passkey plugins. Better Auth defaults to scrypt; its own docs warn that the default may exceed Workers CPU limits. The Worker uses a version-tagged WebCrypto PBKDF2-SHA-256 hash (600,000 iterations) for new passwords and retains legacy scrypt verification for existing records. This is an initial choice requiring security review and CPU/latency validation on the selected Workers plan before production. |
+| OAuth/OIDC IdP | Better Auth OAuth Provider 1.7.18 plus JWT plugin | The pinned dependency and app configuration expose OIDC and authorization-server discovery, JWT/JWKS, userinfo, consent and OAuth routes; PKCE is required for public clients by the plugin docs and the registration defaults require it. This establishes a plausible candidate, not a conformance result. The configured `/sign-in` and `/consent` pages are not implemented in this Worker, so a client UI and real RP flow remain prerequisites. |
+| D1 | Better Auth built-in D1 adapter | D1 `batch()` is atomic, but interactive transactions are unavailable. Better Auth's single-use verification flow documents transaction/mutex behavior. Confirm that the actual D1 adapter path retains cross-request, single-use semantics under simultaneous redemption; do not infer this from in-memory locking. |
+| WebAuthn primitives | `@simplewebauthn/server` current documentation | WebCrypto-based portions document Workers support, but current installation docs state Node.js LTS 22+ and do not establish a complete current-version Workers deployment. Better Auth's passkey plugin is the preferred first candidate; confirm its full ceremony behavior on Workers before production. |
+| SAML 2.0 IdP | Samlify 2.15.1 is the reviewed candidate; Node-SAML 5.2.0 is not an IdP | Samlify docs show IdP response generation and signed responses, but the package describes itself as a Node.js library; neither that documentation nor this repo demonstrates complete Workers compatibility for its XML signature/encryption dependency tree. Node-SAML describes the SP half, so it does not meet this IdP requirement. SAML IdP remains a feasibility blocker pending a workerd-compatible implementation and signed-response interoperability PoC. |
+| Alternative OIDC server candidates | `panva/node-oidc-provider`, Auth.js | The reviewed `node-oidc-provider` documentation is for a Node.js authorization server and did not establish Workers runtime support. Auth.js documentation describes an application authenticating users against OAuth/OIDC providers (client/RP use), not an OIDC IdP server. Better Auth remains the current integrated candidate; no alternative found here removes the need for runtime and protocol PoCs. |
+| Bun/Workers CLI | Bun 1.4.2, Wrangler 4.158.0 | Bun is used as the package manager and script runner. Wrangler is launched by Node 24 through its package shebang. No test suite is maintained at the product owner's direction. |
+| Rate limiting | Better Auth D1-backed rate-limit storage | Password/passkey limits are configured with database storage, with D1 serving shared counters across Worker isolates. Measure write contention, CPU, and quota cost before production; per-isolate memory limits are intentionally avoided. |
+| Operational logs | Workers Logs | Current published docs report 3-day Free and 7-day Paid retention; this does not meet the one-year security-audit requirement. Continue using structured D1 audit events for the required one-year minimum. Long-term operational-log export/retention remains a separate decision. |
+
+The Tailscale custom OIDC documentation requires WebFinger at `https://<email-domain>/.well-known/webfinger`, a JRD issuer exactly matching OIDC discovery, `openid profile email` scopes, and ES256 or RSA (minimum 2048-bit) signing. The repository has a configurable WebFinger handler and ES256 JWKS wiring, but has no company-domain routing, configured tenant, or live Tailscale login proof. Source: [Tailscale custom OIDC](https://tailscale.com/docs/integrations/identity/custom-oidc).
+
+### Tailscale deferred-validation handoff
+
+- **Status:** prerequisite documentation complete; actual Tailscale sign-in and offboarding remain unverified and are not delivered by this assessment.
+- Obtain the company email domain, confirm control of its HTTPS `/.well-known/webfinger` route, and provide a disposable Tailscale test tenant with permission to configure a custom identity provider. Do not configure a tenant before those prerequisites are supplied.
+- Configure the OIDC client callback as `https://login.tailscale.com/a/oauth_response`. The email domain used for setup must match the domain serving WebFinger; the JRD issuer must exactly match the issuer advertised by OIDC discovery. Confirm `openid profile email` scopes and ES256 or RSA signing with an RSA key of at least 2048 bits.
+- The Worker has a configurable WebFinger handler and ES256 configuration, but an actual domain route, issuer/client configuration, callback registration, and an end-to-end relying-party login are still needed. Confirm user offboarding and its effects separately; this is not evidence that downstream sessions have been revoked.
+- Resume work through `TSK-1794159219-fby` when the domain, HTTPS routing, and disposable tenant are available. `QST-1794159222-jq6` remains open until those prerequisites are supplied.
+
+## Runtime limits and persistence notes
+
+- Cloudflare documents configurable CPU limits up to 300,000 ms on the Standard Usage Model; the actual account plan, per-request CPU budget, and current pricing must be checked before production.
+- D1 `batch()` executes prepared statements sequentially in one transaction and rolls back the batch on statement failure. Validate multi-statement read/consume behavior using D1 itself, not Bun's SQLite or mocks.
+- D1 Time Travel documentation currently describes point-in-time recovery within the last 30 days. That is not a one-year independent audit backup and does not itself prove tamper-evidence.
+- Workers Logs documented retention is diagnostic-only and is not a substitute for durable, complete audit events.
+
+The pinned Better Auth D1 dialect explicitly rejects interactive `BEGIN`/`COMMIT`/`ROLLBACK` and relies on `D1Database.batch()`. Cloudflare documents batches as sequential SQL transactions that roll back together on statement failure. This supports atomic multi-statement batches, but does not prove that every Better Auth single-use code path is concurrency-safe across separate simultaneous requests; that still needs a deployed D1 proof. See the [D1 dialect implementation](https://github.com/better-auth/better-auth/blob/v1.7.18/packages/kysely-adapter/src/d1-sqlite-dialect.ts) and [Cloudflare D1 batch documentation](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch).
+
+The code pins username and passkey plugins, sets WebAuthn RP ID from the configured auth host, and uses a version-tagged WebCrypto PBKDF2-SHA-256 hash for new passwords while retaining Better Auth's legacy verifier. A local Workers/D1 smoke check exercised bootstrap and username/password sign-in; passkey ceremonies, PBKDF2 latency/CPU budget, security work-factor review, and recovery-channel flow remain unverified. Local OIDC discovery, an authorization-code exchange with S256 PKCE, selected ID-token claims and signature, and one concurrent redemption probe succeeded; key rotation, session revocation propagation, deployed D1 concurrency, and third-party compatibility still need further validation. See the [Better Auth OAuth Provider documentation](https://www.better-auth.com/docs/plugins/oauth-provider) and [D1 dialect documentation](https://www.better-auth.com/docs/concepts/database).
+
+## Current backend scope
+
+The Worker exposes a health endpoint, Better Auth username/password and passkey APIs, OIDC discovery, an optional domain-gated WebFinger route, admin account lifecycle APIs, an opt-in first-admin bootstrap route, and an opt-in token-protected migration route. D1 holds identity data and structured authentication/admin audit events. UI screens are explicitly out of scope; the sign-in and consent paths are protocol endpoints for a future client, not a frontend implementation. The local Wrangler D1 binding is configured for development; no remote database, zone, domain, Tailscale tenant, or deployed Worker has been created.
+
+Backend code is split by responsibility: `src/auth` owns Better Auth configuration, password hashing, and auth/protocol routes; `src/admin` owns restricted bootstrap and migration routes; `src/audit` owns event persistence, auth-event middleware, and the audit query API; `src/db` owns application tables; `src/security` owns token comparison, Fingerprint risk and trusted-device routes, and retention; and `src/index.ts` composes HTTP routes and the scheduled cleanup handler. Apply the protected application migration endpoint before turning Fingerprint out of `disabled`; scheduled cleanup is not a migration mechanism, runs in every mode to honor deletion windows, and processes tables that already exist even if the schema is incomplete.
+
+Fingerprint Server API event verification, login risk decisions, D1 event claims, expiring/revocable trusted-device records, and scheduled data cleanup are implemented behind `FINGERPRINT_MODE=disabled` by default. The browser must provide event correlation. Independent step-up/recovery, provider credentials, production privacy review, concurrency verification, and cost/false-positive calibration remain prerequisites for enforcement. Fingerprint is not an authentication factor. See [Fingerprint backend open items](fingerprint-backend-open-items.md).
+
+## Reproducible repository evidence
+
+- `bun install --frozen-lockfile` succeeded with the checked-in lockfile; installed candidate versions are pinned in `package.json`.
+- `bun run typecheck` and `bun run build:check` succeeded; the latter is a Wrangler deploy dry run against the local D1 binding, not a deployed Worker or protocol test.
+- `git diff --check` succeeded for tracked edits. Project files were untracked in this workspace at inspection time, so this command is not a full review of all untracked-file whitespace.
+- Source inspection confirms Better Auth D1 binding, username/admin/JWT/passkey/OAuth-provider plugins, OIDC discovery handlers, and a domain-gated WebFinger route. The OAuth plugin is configured with ES256 JWKS, `openid profile email offline_access`, and client registration disabled unless explicitly enabled. Login and consent locations are external routes and have not been supplied by a browser client.
+- Wrangler local `workerd` smoke check: an isolated local D1 database with expired and retained observation rows was seeded; invoking `/cdn-cgi/local/scheduled` returned HTTP 200, removed the expired row and retained the other row. This confirms the local scheduled-handler dispatch and that cleanup case only, not deployed Cron execution or D1 concurrency behavior.
+- A second isolated local D1 smoke check with only the observations table present also removed the expired row and kept the retained row. This checks cleanup after partial schema initialization, not the remaining tables or the deployed database.
+- In a fresh isolated local Wrangler `workerd` and D1 instance, the protected migration returned 200, a disposable initial admin bootstrap returned 201, username/password sign-in returned 200, and OIDC discovery returned the configured local `/api/auth` issuer, authorization/token/JWKS URLs and S256. Temporary local-only credentials were used; no real tenant or production database was involved. Password failures and passkeys were not exercised.
+- In the same isolated local environment, enabled token-protected dynamic registration for a disposable public client with an HTTPS placeholder callback; registration returned 201. An authenticated authorization request redirected to the consent path, consent returned 200, and a cookie-free token request with the correct S256 verifier returned access and ID tokens. A subsequent sequential reuse of that authorization code returned 400. This does not establish real callback delivery or production interoperability.
+- A separate local authorization request included a nonce and state. Eight parallel token requests for the same code produced one HTTP 200 and seven HTTP 400 responses. The returned ID token's ES256 signature was verified against the local JWKS, with issuer, audience, expiration, subject, issued-at, and nonce checked; returned state matched. This is one local probe, not proof of cross-isolate or deployed D1 concurrency safety, complete OIDC conformance, or external service interoperability.
+- D1 schema and application-table initialization are performed by the protected `/_internal/migrate` route. `build:check` does not run migrations against D1, and no live D1 was available for concurrency verification.
+- No remote Worker, production D1, custom company-domain route, Tailscale tenant, SAML service provider, recovery channel, or app integration credentials are present in this workspace.
+
+## Reproduction
+
+```sh
+bun install --frozen-lockfile
+bun run typecheck
+bun run build:check
+```
+
+`build:check` invokes Wrangler through its Node shebang. Do not add test code unless asked.
+
+## Decision status
+
+The product-owner-confirmed Workers + Bun + TypeScript stack is mandatory. Better Auth is wired as the initial candidate for username/password, passkeys, account lifecycle, and OIDC/OAuth. Local username/password login and a synthetic OIDC authorization-code exchange succeeded, but passkey ceremonies and actual relying-party integration remain unverified. SAML IdP support, D1 single-use semantics under cross-request concurrency, password-hash CPU cost, OIDC profile/key lifecycle compatibility, audit backups, account recovery, and revocation propagation remain unresolved. Phase 0 must remain active.
