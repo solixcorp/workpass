@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
-import { createAuth } from "../auth/config";
-import type { AuditEvent } from "./store";
+import { requireAdministrator } from "../security/authorization";
+import { verifyAuditEventChain, type AuditEvent } from "./store";
 
 export const auditRoutes = new Hono<{ Bindings: Env }>();
 
@@ -15,15 +15,18 @@ auditRoutes.use("/audit-events", async (context, next) => {
   await next();
 });
 
-auditRoutes.get("/audit-events/:eventId", async (context) => {
-  const auth = createAuth(context.env);
-  const session = await auth.api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
+// The verification route is declared before the :eventId route so "verify"
+// is not swallowed as an event identifier.
+auditRoutes.get("/audit-events/verify", async (context) => {
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
+  const verification = await verifyAuditEventChain(context.env);
+  return context.json({ verification });
+});
 
-  const role = (session.user as typeof session.user & { role?: unknown }).role;
-  if (!(typeof role === "string" && role.split(",").includes("admin"))) {
-    return context.json({ error: "Forbidden" }, 403);
-  }
+auditRoutes.get("/audit-events/:eventId", async (context) => {
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
 
   const event = await context.env.DB.prepare(
     `SELECT id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path
@@ -36,14 +39,8 @@ auditRoutes.get("/audit-events/:eventId", async (context) => {
 });
 
 auditRoutes.get("/audit-events", async (context) => {
-  const auth = createAuth(context.env);
-  const session = await auth.api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
-
-  const role = (session.user as typeof session.user & { role?: unknown }).role;
-  if (!(typeof role === "string" && role.split(",").includes("admin"))) {
-    return context.json({ error: "Forbidden" }, 403);
-  }
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
 
   const query = new URL(context.req.url).searchParams;
   const rawLimit = query.get("limit");

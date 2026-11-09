@@ -20,13 +20,5 @@ to = "PHS-1794159217-f8q"
 type = "belongs_to"
 
 [[relations]]
-to = "REQ-1794159215-t17"
-type = "covers"
-
-[[relations]]
 to = "REQ-1794159215-xps"
-type = "covers"
-
-[[relations]]
-to = "REQ-1794159886-wya"
 type = "covers"

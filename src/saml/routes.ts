@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "../env";
-import { createAuth } from "../auth/config";
 import { auditStandaloneOperation } from "../audit/store";
 import {
   createSamlServiceProvider,
@@ -10,6 +9,7 @@ import {
   validateSamlServiceProvider,
 } from "./service-providers";
 import { importSamlServiceProviderTrustedKey } from "./certificates";
+import { requireAdministrator } from "../security/authorization";
 
 export const samlAdminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -24,10 +24,8 @@ samlAdminRoutes.use("/saml-service-providers", async (context, next) => {
 });
 
 samlAdminRoutes.get("/saml-service-providers", async (context) => {
-  const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
-  const role = (session.user as typeof session.user & { role?: unknown }).role;
-  if (!(typeof role === "string" && role.split(",").includes("admin"))) return context.json({ error: "Forbidden" }, 403);
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
   const query = new URL(context.req.url).searchParams;
   const rawLimit = query.get("limit");
   if (rawLimit !== null && (!/^[0-9]+$/.test(rawLimit) || Number(rawLimit) < 1 || Number(rawLimit) > 100)) {
@@ -48,10 +46,8 @@ samlAdminRoutes.get("/saml-service-providers", async (context) => {
 });
 
 samlAdminRoutes.get("/saml-service-providers/:id", async (context) => {
-  const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
-  const role = (session.user as typeof session.user & { role?: unknown }).role;
-  if (!(typeof role === "string" && role.split(",").includes("admin"))) return context.json({ error: "Forbidden" }, 403);
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
   const provider = await getSamlServiceProvider(context.env, context.req.param("id"));
   if (!provider) return context.json({ error: "Service provider not found" }, 404);
   return context.json({ provider });
@@ -68,22 +64,15 @@ samlAdminRoutes.post("/saml-service-providers/:id/disable", async (context) => {
 samlAdminRoutes.delete("/saml-service-providers/:id", async (context) => {
   const id = context.req.param("id");
   if (!id || id.length > 128) return context.json({ error: "Invalid service provider" }, 400);
-  const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
-  const role = (session.user as typeof session.user & { role?: unknown }).role;
-  if (!(typeof role === "string" && role.split(",").includes("admin"))) {
-    return context.json({ error: "Forbidden" }, 403);
-  }
-  if (context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
-    return context.json({ error: "Invalid origin" }, 403);
-  }
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
   return auditStandaloneOperation(context.env, "saml.service_provider.delete", `/api/admin/saml-service-providers/${id}/delete`, async () => {
     // A disabled registration can be removed outright; an enabled one must be
     // disabled first so its retirement is a deliberate two-step action.
     const provider = await getSamlServiceProvider(context.env, id);
-    if (!provider) return { response: Response.json({ error: "Service provider not found" }, { status: 404 }), actorUserId: session.user.id };
+    if (!provider) return { response: Response.json({ error: "Service provider not found" }, { status: 404 }), actorUserId: adminSession.userId };
     if (provider.enabled) {
-      return { response: Response.json({ error: "Disable the service provider before deleting it" }, { status: 409 }), actorUserId: session.user.id, targetUserId: id };
+      return { response: Response.json({ error: "Disable the service provider before deleting it" }, { status: 409 }), actorUserId: adminSession.userId, targetUserId: id };
     }
     const removed = await context.env.DB.prepare(
       "DELETE FROM saml_service_providers WHERE id = ? AND enabled = 0",
@@ -92,21 +81,15 @@ samlAdminRoutes.delete("/saml-service-providers/:id", async (context) => {
       response: removed.meta.changes === 1
         ? Response.json({ deleted: true })
         : Response.json({ error: "Service provider not found or enabled" }, { status: 409 }),
-      actorUserId: session.user.id,
+      actorUserId: adminSession.userId,
       targetUserId: id,
     };
   });
 });
 
 samlAdminRoutes.post("/saml-service-providers", async (context) => {
-  const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
-  const role = (session.user as typeof session.user & { role?: unknown }).role;
-  if (!(typeof role === "string" && role.split(",").includes("admin"))) return context.json({ error: "Forbidden" }, 403);
-  // Cookie-authenticated mutations require an exact trusted browser origin.
-  if (context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
-    return context.json({ error: "Invalid origin" }, 403);
-  }
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
   let body: unknown;
   try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON" }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid request" }, 400);
@@ -122,7 +105,7 @@ samlAdminRoutes.post("/saml-service-providers", async (context) => {
       response: inserted
         ? Response.json({ provider: { ...provider, enabled: false } }, { status: 201 })
         : Response.json({ error: "Service provider already exists" }, { status: 409 }),
-      actorUserId: session.user.id,
+      actorUserId: adminSession.userId,
     };
   });
 });
@@ -139,15 +122,8 @@ async function setProviderEnabled(
 ): Promise<Response> {
   const id = context.req.param("id");
   if (!id || id.length > 128) return context.json({ error: "Invalid service provider" }, 400);
-  const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
-  const role = (session.user as typeof session.user & { role?: unknown }).role;
-  if (!(typeof role === "string" && role.split(",").includes("admin"))) {
-    return context.json({ error: "Forbidden" }, 403);
-  }
-  if (context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
-    return context.json({ error: "Invalid origin" }, 403);
-  }
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
   const provider = await getSamlServiceProvider(context.env, id);
   if (!provider) return context.json({ error: "Service provider not found" }, 404);
   if (enabled) {
@@ -166,7 +142,7 @@ async function setProviderEnabled(
       response: changed
         ? Response.json({ provider: { id: provider.id, entityId: provider.entityId, enabled } })
         : Response.json({ error: "Service provider not found" }, { status: 404 }),
-      actorUserId: session.user.id,
+      actorUserId: adminSession.userId,
       targetUserId: id,
     };
   });

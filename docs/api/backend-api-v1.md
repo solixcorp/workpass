@@ -106,6 +106,10 @@ IdP session revocation does not guarantee immediate termination of an applicatio
 
 Admin-only query endpoint. Supports optional `actorUserId`, `targetUserId`, `eventType`, `outcome=started|success|failure`, ISO-8601 `from`, `to`, `limit` (1–100; default 50), and an opaque `cursor` (the last event ID returned). Timestamps require a time and explicit timezone (for example `2026-11-09T00:00:00Z`); invalid timestamps, an invalid limit, or a `from` later than `to` return 400. Results contain event ID/time, actor/target IDs, event type, outcome, and route path only. Never include request body, password, token, cookie, assertion, or secret. Pagination is ordered by timestamp and event ID descending; `nextCursor` is null when there is no additional row.
 
+### `GET /api/admin/audit-events/verify`
+
+Walks the positioned audit log and recomputes every entry hash, reporting contiguity and content-hash verification plus the count of legacy (pre-tamper-evidence) entries. Administrator session required. Detection only: D1 is not immutable, and retained entries are not deleted before one year.
+
 ### `GET /api/admin/audit-events/{eventId}`
 
 Admin-only lookup for a single audit event, including an event ID returned after an audit finalization failure. Returns `{ "event": { ... } }` or 404; the list and detail responses use `Cache-Control: no-store`.

@@ -9,8 +9,25 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       target_user_id TEXT,
       event_type TEXT NOT NULL,
       outcome TEXT NOT NULL,
-      request_path TEXT NOT NULL
+      request_path TEXT NOT NULL,
+      log_pos INTEGER,
+      content_hash TEXT
     )`,
+  ).run();
+  // Databases created before tamper-evidence columns existed are altered in
+  // place; a missing column raises and is retried by re-running migration.
+  try {
+    await env.DB.prepare("ALTER TABLE audit_events ADD COLUMN log_pos INTEGER").run();
+  } catch {
+    // Column already present.
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE audit_events ADD COLUMN content_hash TEXT").run();
+  } catch {
+    // Column already present.
+  }
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS audit_events_log_pos_idx ON audit_events (log_pos)",
   ).run();
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS audit_events_occurred_at_idx ON audit_events (occurred_at)",

@@ -8,7 +8,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "../env";
-import { createAuth } from "../auth/config";
+import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
 
 export const directoryRoutes = new Hono<{ Bindings: Env }>();
@@ -17,20 +17,6 @@ const GROUP_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
 const DESCRIPTION_LIMIT = 512;
 const ID_LIMIT = 128;
 
-async function guard(context: Context<{ Bindings: Env }>): Promise<{ userId: string } | Response> {
-  const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
-  const role = (session.user as typeof session.user & { role?: unknown }).role;
-  if (typeof role !== "string" || !role.split(",").includes("admin")) {
-    return context.json({ error: "Forbidden" }, 403);
-  }
-  // Origin is checked only for state-changing requests; browsers do not send
-  // an Origin header on ordinary same-origin GET navigations.
-  if (context.req.method !== "GET" && context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
-    return context.json({ error: "Invalid origin" }, 403);
-  }
-  return { userId: session.user.id };
-}
 
 function badRequest(context: Context<{ Bindings: Env }>, message: string): Response {
   return context.json({ error: message }, 400);
@@ -46,7 +32,7 @@ directoryRoutes.use("/directory-groups/*", async (context, next) => {
 });
 
 directoryRoutes.get("/directory-groups", async (context) => {
-  const actor = await guard(context);
+  const actor = await requireAdministrator(context);
   if (actor instanceof Response) return actor;
   const query = new URL(context.req.url).searchParams;
   const rawLimit = query.get("limit");
@@ -72,7 +58,7 @@ directoryRoutes.get("/directory-groups", async (context) => {
 });
 
 directoryRoutes.post("/directory-groups", async (context) => {
-  const actor = await guard(context);
+  const actor = await requireAdministrator(context);
   if (actor instanceof Response) return actor;
   let body: unknown;
   try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON body" }, 400); }
@@ -110,7 +96,7 @@ directoryRoutes.post("/directory-groups", async (context) => {
 });
 
 directoryRoutes.get("/directory-groups/:id", async (context) => {
-  const admin = await guard(context);
+  const admin = await requireAdministrator(context);
   if (admin instanceof Response) return admin;
   const id = context.req.param("id");
   if (!id || id.length > ID_LIMIT) return context.json({ error: "Group not found" }, 404);
@@ -127,7 +113,7 @@ directoryRoutes.get("/directory-groups/:id", async (context) => {
 });
 
 directoryRoutes.delete("/directory-groups/:id", async (context) => {
-  const actor = await guard(context);
+  const actor = await requireAdministrator(context);
   if (actor instanceof Response) return actor;
   const id = context.req.param("id");
   if (!id || id.length > ID_LIMIT) return context.json({ error: "Group not found" }, 404);
@@ -144,7 +130,7 @@ directoryRoutes.delete("/directory-groups/:id", async (context) => {
 });
 
 directoryRoutes.post("/directory-groups/:id/members", async (context) => {
-  const actor = await guard(context);
+  const actor = await requireAdministrator(context);
   if (actor instanceof Response) return actor;
   const groupId = context.req.param("id");
   if (!groupId || groupId.length > ID_LIMIT) return context.json({ error: "Group not found" }, 404);
@@ -177,7 +163,7 @@ directoryRoutes.post("/directory-groups/:id/members", async (context) => {
 });
 
 directoryRoutes.delete("/directory-groups/:id/members/:userId", async (context) => {
-  const actor = await guard(context);
+  const actor = await requireAdministrator(context);
   if (actor instanceof Response) return actor;
   const groupId = context.req.param("id");
   const userId = context.req.param("userId");
