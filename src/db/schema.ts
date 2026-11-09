@@ -27,6 +27,13 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       expires_at TEXT NOT NULL
     )`,
   ).run();
+  // Fingerprint event ids travel through the two-phase login on the
+  // transcript row (added in place for existing databases).
+  try {
+    await env.DB.prepare("ALTER TABLE opaque_login_transcripts ADD COLUMN fingerprint_event_id TEXT").run();
+  } catch {
+    // Column already present.
+  }
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS opaque_transcript_expiry_idx ON opaque_login_transcripts (expires_at)",
   ).run();
@@ -300,5 +307,15 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   ).run();
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS saml_request_claims_expiry_idx ON saml_request_claims (expires_at)",
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS session_mfa_proofs (
+      session_token TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      verified_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS session_mfa_proofs_time_idx ON session_mfa_proofs (verified_at)",
   ).run();
 }

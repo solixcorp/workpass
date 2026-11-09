@@ -25,6 +25,7 @@ import {
 import { sealString, unsealString } from "../crypto/sealed";
 import { insertAuditEvent } from "../audit/store";
 import { auditStandaloneOperation } from "../audit/store";
+import { evaluateOpaqueLoginGate } from "./opaque-login";
 
 export const opaqueRoutes = new Hono<{ Bindings: Env }>();
 
@@ -243,6 +244,18 @@ opaqueRoutes.post("/api/opaque/auth/start", async (context) => {
   const username = typeof value.username === "string" ? value.username : "";
   let ke1Wire: string;
   try { ke1Wire = wireToBase64(value.ke1); } catch { return opaqueBadRequest(context, "The OPAQUE authentication could not be processed"); }
+  // Device-risk contract: event ids only; a sealed result is explicitly
+  // rejected, matching the password/username/passkey login endpoints.
+  let fingerprintEventId: string | null = null;
+  if (value.fingerprint !== undefined) {
+    const fingerprint = (value.fingerprint ?? {}) as Record<string, unknown>;
+    if (typeof fingerprint !== "object" || fingerprint.sealed_result !== undefined || value.sealed_result !== undefined) {
+      return context.json({ error: "Sealed Fingerprint results are not configured; use event_id" }, { status: 400 });
+    }
+    if (typeof fingerprint.event_id === "string" && fingerprint.event_id.length >= 1 && fingerprint.event_id.length <= 256) {
+      fingerprintEventId = fingerprint.event_id;
+    }
+  }
   if (!(await rateBucket(context.env, clientIp(context)))) {
     return context.json({ error: "Too many authentication attempts; retry later" }, 429);
   }
@@ -268,8 +281,8 @@ opaqueRoutes.post("/api/opaque/auth/start", async (context) => {
   const transcriptId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + TRANSCRIPT_TTL_MS).toISOString();
   await context.env.DB.prepare(
-    `INSERT INTO opaque_login_transcripts (id, user_id, client_identity, expected, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO opaque_login_transcripts (id, user_id, client_identity, expected, created_at, expires_at, fingerprint_event_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     transcriptId,
     user?.id ?? null,
@@ -277,6 +290,7 @@ opaqueRoutes.post("/api/opaque/auth/start", async (context) => {
     JSON.stringify(Array.from(init.expected.serialize())),
     new Date().toISOString(),
     expiresAt,
+    fingerprintEventId,
   ).run();
 
   return Response.json({
@@ -307,8 +321,8 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   if (!transcriptId || !username) return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 401);
   const transcriptRow = await context.env.DB.prepare(
     `DELETE FROM opaque_login_transcripts WHERE id = ? AND expires_at > ?
-     RETURNING user_id, client_identity, expected`,
-  ).bind(transcriptId, new Date().toISOString()).first<{ user_id: string; client_identity: string; expected: string }>().catch(() => null);
+     RETURNING user_id, client_identity, expected, fingerprint_event_id`,
+  ).bind(transcriptId, new Date().toISOString()).first<{ user_id: string; client_identity: string; expected: string; fingerprint_event_id: string | null }>().catch(() => null);
   if (!transcriptRow || !transcriptRow.user_id) {
     return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 401);
   }
@@ -320,6 +334,31 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   const finish = server.authFinish(KE3.deserialize(config, Array.from(ke3Bytes)), expected);
   if (finish instanceof Error) {
     return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 401);
+  }
+
+  // The login gate: account state plus the shared device-risk pipeline, run
+  // after the cryptography succeeds and before any session issues. Denials
+  // are indistinguishable to the caller.
+  const gate = await evaluateOpaqueLoginGate(context.env, {
+    userId: transcriptRow.user_id,
+    eventId: transcriptRow.fingerprint_event_id,
+    request: context.req.raw,
+    contextPath: "/api/opaque/auth/finish",
+  });
+  if (!gate.allowed) {
+    try {
+      await insertAuditEvent(context.env, {
+        id: crypto.randomUUID(),
+        actor_user_id: transcriptRow.user_id,
+        target_user_id: transcriptRow.user_id,
+        event_type: "authentication.opaque.login",
+        outcome: "failure",
+        request_path: "/api/opaque/auth/finish",
+      });
+    } catch {
+      // The denial stands regardless; the audit gap is visible in logs.
+    }
+    return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 403);
   }
 
   const auth = await authContext(context.env);

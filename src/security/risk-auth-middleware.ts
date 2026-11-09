@@ -431,7 +431,7 @@ async function bindFingerprintEventUser(env: Env, eventId: string, userId: strin
     .run();
 }
 
-async function findNewSessionFromResponse(
+export async function findNewSessionFromResponse(
   env: Env,
   response: Response,
 ): Promise<{ token: string; userId: string } | null> {
@@ -488,15 +488,14 @@ async function finalizeAudit(
   }
 }
 
-async function writeRiskDecision(
+export async function writeRiskDecision(
   env: Env,
   userId: string | null,
   _providerEventId: string | null,
   action: "allow" | "step_up" | "deny" | "observe",
   reasons: string[],
   requestPath: string,
-): Promise<boolean> {
-  const id = crypto.randomUUID();
+): Promise<boolean> {  const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const safeReasons = JSON.stringify(reasons.slice(0, 12));
   try {

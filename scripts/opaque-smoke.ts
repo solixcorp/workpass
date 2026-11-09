@@ -1,6 +1,7 @@
 import { getOpaqueConfig, OpaqueID, OpaqueClient, ScryptMemHardFn } from "@cloudflare/opaque-ts";
 
-const base = "http://127.0.0.1:8787";
+const rawArgs = Bun.argv.slice(2);
+const base = rawArgs.includes("--base") ? rawArgs[rawArgs.indexOf("--base") + 1]! : "http://127.0.0.1:8787";
 const config = getOpaqueConfig(OpaqueID.OPAQUE_P256);
 const toWire = (bytes: number[]): string => {
   let binary = "";
