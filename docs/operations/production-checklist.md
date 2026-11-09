@@ -68,12 +68,20 @@ The following wrangler.jsonc platform settings are in force; verify them at depl
   the Worker must not be served without HTTPS routes.
 - Passwords: hashed scrypt via Better Auth — never stored or logged plaintext
   and never reversible.
-- Material at rest in D1 is XChaCha20-Poly1305 sealed (`src/crypto/sealed.ts`
-  via @noble/ciphers, audited dependency-free, workerd-verified): currently
-  hardware OTP token secrets (envelope `v1.<nonce>.<payload>`). Requires
-  `AEAD_SEALING_KEY` (32 bytes, base64) + `SEALED_STORAGE_CIPHER`
-  (xchacha20poly1305). Fail-closed: without the key, sealing operations abort
-  instead of storing plaintext. Legacy plaintext rows lazily re-seal on first successful use.
+- Material at rest in D1 is AEAD-sealed (`src/crypto/sealed.ts`):
+  `SEALED_STORAGE_CIPHER` selects the write cipher — `xchacha20poly1305`
+  (default, @noble/ciphers, audited, workerd-verified) or `aes256gcm`
+  (AES-256-GCM via WebCrypto, 96-bit IV + 128-bit tag per NIST SP 800-38D;
+  the FIPS-aligned selection for approved-algorithm deployments). Requires
+  `AEAD_SEALING_KEY` (32 bytes, base64). Fail-closed: without the key,
+  sealing operations abort instead of storing plaintext. Envelope reads are
+  version-driven (`v1` XChaCha, `v2` AES-GCM), so switching ciphers never
+  strands existing rows; rows re-seal lazily on first successful use while
+  legacy plaintext rows migrate on first read.
+- Documented exceptions to the approved-algorithm profile: HOTP (RFC 4226)
+  HMAC-SHA-1 is mandated by the token standard, and the Duo Auth API signing
+  contract is SHA-1 by vendor specification (the platform's own tokens use
+  SHA-256).
 - MFA sub-router is mounted under /api (`app.route("/api", mfaRoutes)`);
   /api/mfa/* endpoints return 401 (not 404) without a session.
 - HOTP secrets are canonical RFC 4648 base32 (32 chars for a 20-byte key) so

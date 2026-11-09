@@ -119,7 +119,7 @@ For interactive sign-in and passkey verification, the browser-to-Worker request 
 }
 ```
 
-Login endpoints accept `fingerprint: { event_id }`; `sealed_result` is explicitly rejected. Interactive OAuth authorization accepts a `fingerprint_event_id` query parameter only when an authenticated session is already present. A request without a session proceeds to the normal login flow; after login, the authorization request must be continued with a current event in enforce mode. Responses do not reveal provider details or risk rules. A missing event never grants trust or bypasses primary authentication.
+Login endpoints accept `fingerprint: { event_id }`; `sealed_result` is explicitly rejected. This includes the OPAQUE two-phase login: `/api/opaque/auth/start` carries the event id on the login transcript and `/api/opaque/auth/finish` verifies, claims and evaluates it through the shared gate before issuing a session. Interactive OAuth authorization accepts a `fingerprint_event_id` query parameter only when an authenticated session is already present. A request without a session proceeds to the normal login flow; after login, the authorization request must be continued with a current event in enforce mode. Responses do not reveal provider details or risk rules. A missing event never grants trust or bypasses primary authentication.
 
 Event claims are retained for 24 hours for replay prevention, device/network observations for 30 days, and risk-decision records for 90 days. These are initial technical defaults and still require privacy-owner approval and a deletion policy.
 
