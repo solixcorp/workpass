@@ -16,4 +16,8 @@ export interface Env {
   MIGRATION_TOKEN?: string;
   ENABLE_DYNAMIC_CLIENT_REGISTRATION?: string;
   CLIENT_REGISTRATION_TOKEN?: string;
+  SCIM_TARGET_ID?: string;
+  SCIM_BASE_URL?: string;
+  SCIM_BEARER_TOKEN?: string;
+  ENABLE_SCIM_PROVISIONING?: string;
 }

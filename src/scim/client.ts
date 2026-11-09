@@ -62,7 +62,9 @@ async function send(target: ScimTarget, url: URL, method: "POST" | "PATCH", body
       // A server error may follow a committed mutation; do not blindly retry it.
       return {
         ok: false,
-        kind: response.status >= 500 ? "outcome_unknown" : "remote_error",
+        kind: response.status >= 500 || response.status === 408 || response.status === 409
+          ? "outcome_unknown"
+          : "remote_error",
         status: response.status,
       };
     }

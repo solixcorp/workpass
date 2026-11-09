@@ -118,6 +118,23 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     )`,
   ).run();
   await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS scim_operations (
+      id TEXT PRIMARY KEY NOT NULL,
+      target_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      operation TEXT NOT NULL CHECK (operation IN ('create', 'update', 'deactivate')),
+      status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'succeeded', 'failed', 'outcome_unknown')),
+      remote_status INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE UNIQUE INDEX IF NOT EXISTS scim_operations_active_idx
+     ON scim_operations (target_id, user_id)
+     WHERE status IN ('pending', 'in_progress', 'outcome_unknown')`,
+  ).run();
+  await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS saml_service_providers (
       id TEXT PRIMARY KEY NOT NULL,
       entity_id TEXT NOT NULL UNIQUE,
@@ -126,4 +143,5 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1))
     )`,
   ).run();
+
 }
