@@ -792,6 +792,10 @@ paths:
 
 components:
   securitySchemes:
+    inboundScimBearer:
+      type: http
+      scheme: bearer
+      description: Static inbound-SCIM bearer token (INBOUND_SCIM_BEARER_TOKEN).
     sessionCookie:
       type: apiKey
       in: cookie
