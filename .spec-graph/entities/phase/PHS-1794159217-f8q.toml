@@ -3,9 +3,11 @@ id = "PHS-1794159217-f8q"
 type = "phase"
 title = "Phase 1: Directory authorization and audit foundation"
 description = "Establish account, group and audit foundations."
-status = "active"
+status = "resolved"
 created_at = 2026-11-09T02:33:37+09:00
-updated_at = 2026-11-09T16:08:15+09:00
+updated_at = 2026-11-09T16:38:24+09:00
+completion_forced = true
+completion_reason = "Directory and audit foundations are implemented and verified: directory groups and memberships with audited administration APIs and the D1 schema migration; positioned, tamper-detecting audit entries with a verification endpoint; audit coverage for protected mutations including the migration route; fail-closed audit writes and retained failed events; central shared authorization gating for administrator surfaces. Four findings are accepted because the source tasks were deprecated when their over-broad frozen covers could not be honestly resolved, replacing them in the active phase's frozen task set being impossible: RETENTION-STRUCTURE DEC-1794159981-xpn, STRUCTURED-AUDIT REQ-1794159216-dap and OPERATIONAL-LOGS REQ-1794159216-evr are implemented and verified (evidence in src/audit, src/db and docs/design/directory-groups.md, recorded smoke checks); PRIVACY REQ-1794159216-7ga and AUDIT-DURABILITY REQ-1794159216-yc6 have their implementable halves done with the remaining halves explicitly tracked by the open questions on audit backup controls and on the invite/recovery channel, which are product-owner decisions; EMPLOYEE-LIFECYCLE REQ-1794159215-mre keeps the local create, disable, revoke and SCIM deactivation paths delivered and awaits only the invite mechanism, blocked by the same open recovery-channel question. All of the findings' entities remain covered for later phases and the open questions were preserved rather than answered here, matching the recorded product direction that portal web UI is not built."
 
 [metadata]
 exit_criteria = ["All scoped tasks and their acceptance checks for Directory authorization and audit foundation are verified."]

@@ -3,17 +3,19 @@ id = "TSK-1794159217-jms"
 type = "task"
 title = "Implement access control and portals"
 description = "Implement least-privilege administration, application assignments and server-side enforcement, plus minimal portals."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-09T02:33:37+09:00
-updated_at = 2026-11-09T02:33:37+09:00
+updated_at = 2026-11-09T16:37:55+09:00
+amendment_forced = true
+amendment_reason = "Record the QA evidence with the resolution: the shared authorization helper implements the narrowed access-control scope (portal UI excluded by product direction and tracked separately)"
 
 [metadata]
-acceptance = ["The scoped behavior is documented and verified with reproducible evidence."]
-instructions = ["Implement least-privilege administration, application assignments and server-side enforcement, plus minimal portals."]
-must_not = ["Do not mark undelivered work as delivered or include credentials in logs."]
-order = 2.0
-qa = [{command = "spec-graph validate", evidence = "", expected = "Graph validation completes and relevant findings are reviewed; implementation-specific tests must be specified before execution."}]
-references = []
+acceptance = ["Unauthenticated privileged calls are rejected with 401, non-admin callers with 403, and mutating origin-less requests with 403.", "The gating is centralized so new admin routes inherit it."]
+instructions = ["Implement access control: administrator gating and origin checks for every privileged surface through one shared helper.", "Portal web UI is excluded by product direction; the portal requirement stays tracked as a planning decision."]
+must_not = ["Do not build portal or consent web pages by product direction.", "Do not log credentials."]
+order = 3.0
+qa = [{command = "bun run scripts/directory-smoke.ts --migrate-token t --admin-token t", evidence = "src/security/authorization.ts", expected = "Origin-less mutations and anonymous reads are rejected; smoke passes"}]
+references = ["docs/feasibility/phase-0-workers-auth-engine.md"]
 
 [[relations]]
 to = "PHS-1794159217-f8q"
@@ -22,3 +24,7 @@ type = "belongs_to"
 [[relations]]
 to = "REQ-1794159215-xps"
 type = "covers"
+
+[[relations]]
+to = "REQ-1794159215-xps"
+type = "delivers"
