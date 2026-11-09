@@ -27,6 +27,8 @@ export interface SamlSigningMaterial {
   certificate: string;
   /** RSA private key imported with RSASSA-PKCS1-v1_5 / SHA-256 sign usage. */
   privateKey: CryptoKey;
+  /** Published during a rotation overlap window; verifies both key pairs. */
+  previousCertificate?: string;
 }
 
 export interface SamlResponseSubject {

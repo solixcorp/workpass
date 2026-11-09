@@ -180,6 +180,7 @@ samlProtocolRoutes.get("/saml/metadata", async (context) => {
       entityId: signing.entityId,
       certificate: signing.certificate,
       ssoUrl: expectedSsoDestination(context.env),
+      previousCertificate: signing.previousCertificate,
     }),
     200,
   );
@@ -207,14 +208,29 @@ export function expectedSsoDestination(env: Env): string {
 }
 
 /**
- * Load the IdP signing pair from configuration. Private material is kept in
- * WebCrypto only; rotation and secure provisioning remain open work.
+ * Load the IdP signing pair from configuration, with rotation support: the
+ * previous key pair stays valid during the overlap window, so tokens signed
+ * by either key verify against the published pair set. Private material is
+ * kept in WebCrypto only. SAML_IDP_PREVIOUS_SIGNING_CERTIFICATE and
+ * SAML_IDP_PREVIOUS_SIGNING_PRIVATE_KEY are optional during a rotation.
  */
 export async function loadSamlIdpSigningMaterial(env: Env): Promise<SamlSigningMaterial | null> {
   const entityId = env.SAML_IDP_ENTITY_ID;
-  const certificate = env.SAML_IDP_SIGNING_CERTIFICATE;
-  const privateKeyPem = env.SAML_IDP_SIGNING_PRIVATE_KEY;
-  if (!entityId || !certificate || !privateKeyPem) return null;
+  if (!entityId) {
+    console.error("SAML IdP signing material cannot be used without SAML_IDP_ENTITY_ID");
+    return null;
+  }
+  const active = await loadKeyPair(env, env.SAML_IDP_SIGNING_CERTIFICATE, env.SAML_IDP_SIGNING_PRIVATE_KEY);
+  if (!active) return null;
+  const previous = await loadKeyPair(env, env.SAML_IDP_PREVIOUS_SIGNING_CERTIFICATE, env.SAML_IDP_PREVIOUS_SIGNING_PRIVATE_KEY);
+  if (previous) {
+    return { entityId, certificate: active.certificate, privateKey: active.privateKey, previousCertificate: previous.certificate };
+  }
+  return { entityId, certificate: active.certificate, privateKey: active.privateKey };
+}
+
+async function loadKeyPair(env: Env, certificate: string | undefined, privateKeyPem: string | undefined): Promise<SamlSigningMaterial | null> {
+  if (!certificate || !privateKeyPem) return null;
   try {
     const privateKey = await importSamlIdpPrivateKey(privateKeyPem);
     const publicKey = await importSamlServiceProviderTrustedKey(certificate);
@@ -224,7 +240,7 @@ export async function loadSamlIdpSigningMaterial(env: Env): Promise<SamlSigningM
       console.error("SAML IdP signing material failed the private-key/certificate match check");
       return null;
     }
-    return { entityId, certificate, privateKey };
+    return { entityId: "", certificate, privateKey };
   } catch (error) {
     console.error("SAML IdP signing material is configured but unusable", {
       name: error instanceof Error ? error.name : "UnknownError",

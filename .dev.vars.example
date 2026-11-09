@@ -24,3 +24,7 @@ SCIM_BEARER_TOKEN=
 SAML_IDP_ENTITY_ID=
 SAML_IDP_SIGNING_CERTIFICATE=
 SAML_IDP_SIGNING_PRIVATE_KEY=
+# During a rotation overlap window, keep the previous pair published; SPs verify
+# tokens signed by either key until the rollover completes.
+SAML_IDP_PREVIOUS_SIGNING_CERTIFICATE=
+SAML_IDP_PREVIOUS_SIGNING_PRIVATE_KEY=

@@ -234,6 +234,7 @@ wsfedProtocolRoutes.get(WSFED_METADATA_PATH, async (context) => {
 
 function buildFederationMetadata(env: Env, signing: NonNullable<Awaited<ReturnType<typeof loadSamlIdpSigningMaterial>>>): string {
   const certificateBase64 = pemCertificateBody(signing.certificate);
+  const previousBase64 = signing.previousCertificate ? pemCertificateBody(signing.previousCertificate) : null;
   const baseUrl = new URL(env.AUTH_BASE_URL);
   const metadataEntity = `${baseUrl.origin}${WSFED_METADATA_PATH}`;
   return [
@@ -245,6 +246,13 @@ function buildFederationMetadata(env: Env, signing: NonNullable<Awaited<ReturnTy
     '<ds:X509Data><ds:X509Certificate>' + certificateBase64 + '</ds:X509Certificate></ds:X509Data>',
     '</ds:KeyInfo>',
     '</md:KeyDescriptor>',
+    ...(previousBase64
+      ? ['<md:KeyDescriptor use="signing">',
+         '<ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">',
+         '<ds:X509Data><ds:X509Certificate>' + previousBase64 + '</ds:X509Certificate></ds:X509Data>',
+         '</ds:KeyInfo>',
+         '</md:KeyDescriptor>']
+      : []),
     '<md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>',
     '<md:PassiveRequestorEndpoint>',
     `<wsa:EndpointReference xmlns:wsa="http://www.w3.org/2005/08/addressing"><wsa:Address>${baseUrl.origin}${WSFED_SIGNIN_PATH}</wsa:Address></wsa:EndpointReference>`,

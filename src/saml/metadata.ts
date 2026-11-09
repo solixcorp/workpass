@@ -17,6 +17,8 @@ export function buildSamlIdpMetadata(options: {
   entityId: string;
   certificate: string;
   ssoUrl: string;
+  /** Published during a rotation overlap window. */
+  previousCertificate?: string;
 }): string {
   const certificateBase64 = pemCertificateDerBase64(options.certificate);
   const entityId = xmlEscape(options.entityId);
@@ -29,6 +31,13 @@ export function buildSamlIdpMetadata(options: {
     `<ds:X509Data><ds:X509Certificate>${certificateBase64}</ds:X509Certificate></ds:X509Data>` +
     `</ds:KeyInfo>` +
     `</md:KeyDescriptor>` +
+    `${options.previousCertificate
+      ? `<md:KeyDescriptor use="signing">` +
+        `<ds:KeyInfo xmlns:ds="${DS_URN}">` +
+        `<ds:X509Data><ds:X509Certificate>${pemCertificateDerBase64(options.previousCertificate)}</ds:X509Certificate></ds:X509Data>` +
+        `</ds:KeyInfo>` +
+        `</md:KeyDescriptor>`
+      : ""}` +
     `<md:NameIDFormat>${NAMEID_EMAIL_URN}</md:NameIDFormat>` +
     `<md:SingleSignOnService Binding="${REDIRECT_BINDING_URN}" Location="${ssoUrl}"/>` +
     `</md:IDPSSODescriptor>` +
