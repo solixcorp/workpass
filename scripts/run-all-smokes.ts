@@ -14,6 +14,7 @@ const smokes = [
   "scripts/session-revocation-smoke.ts",
   "scripts/swa-smoke.ts",
   "scripts/wsfed-smoke.ts",
+  "scripts/scim-inbound-smoke.ts",
 ];
 
 for (const smoke of smokes) {

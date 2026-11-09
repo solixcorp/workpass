@@ -3,6 +3,7 @@ import type { Env } from "./env";
 import { adminRoutes } from "./admin/routes";
 import { bootstrapRoutes } from "./admin/bootstrap";
 import { migrationRoutes } from "./admin/migrations";
+import { inboundScimRoutes } from "./scim/server";
 import { authRoutes } from "./auth/routes";
 import { webfingerRoutes } from "./oidc/webfinger";
 import { trustedDeviceRoutes } from "./security/trusted-device-routes";
@@ -52,6 +53,7 @@ app.route("/api/admin", adminRoutes);
 app.route("/api/admin", bootstrapRoutes);
 app.route("/api/security", trustedDeviceRoutes);
 app.route("/_internal", migrationRoutes);
+app.route("/", inboundScimRoutes);
 
 async function scheduled(
   controller: ScheduledController,

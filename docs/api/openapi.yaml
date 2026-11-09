@@ -405,6 +405,47 @@ paths:
         "200":
           description: application/samlmetadata+xml entity descriptor.
         "503": { description: Signing material not configured. }
+  /scim/v2/Users:
+    post:
+      operationId: scimInboundCreateUser
+      summary: Inbound SCIM — provision a user (no credential attached)
+      security: [{ inboundScimBearer: [] }]
+      responses: { "201": { description: Created } }
+    get:
+      operationId: scimInboundListUsers
+      summary: Inbound SCIM — list/filter users
+      security: [{ inboundScimBearer: [] }]
+      responses: { "200": { description: ListResponse } }
+  /scim/v2/Users/{id}:
+    get:
+      operationId: scimInboundGetUser
+      summary: Inbound SCIM — get a user
+      security: [{ inboundScimBearer: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: User }, "404": { description: Not found } }
+    put:
+      operationId: scimInboundReplaceUser
+      summary: Inbound SCIM — replace a user
+      security: [{ inboundScimBearer: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: User } }
+    patch:
+      operationId: scimInboundPatchUser
+      summary: Inbound SCIM — patch active/deactivation
+      security: [{ inboundScimBearer: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: User } }
+    delete:
+      operationId: scimInboundDeleteUser
+      summary: Inbound SCIM — delete deactivates (ban), never destroys
+      security: [{ inboundScimBearer: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "204": { description: Deactivated } }
+  /scim/v2/ServiceProviderConfig:
+    get:
+      operationId: scimInboundServiceProviderConfig
+      summary: Inbound SCIM — service provider configuration (unauthenticated)
+      responses: { "200": { description: Configuration } }
   /api/admin/scim-operations:
     post:
       operationId: runScimOperation

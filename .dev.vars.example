@@ -18,6 +18,11 @@ CLIENT_REGISTRATION_TOKEN=
 ENABLE_SCIM_PROVISIONING=false
 # Dev-only: permits an http://127.0.0.1|localhost SCIM target for local transport
 # verification. Never enable in production; production targets stay https-only.
+# Inbound SCIM (RFC 7644): workforce systems provision users INTO this
+# platform over bearer-token-protected /scim/v2 endpoints. Token must be
+# >= 32 bytes; provisioned users carry no credential.
+ENABLE_INBOUND_SCIM=false
+INBOUND_SCIM_BEARER_TOKEN=
 # SCIM_DEV_LOOPBACK_TARGET=false
 SCIM_TARGET_ID=
 SCIM_BASE_URL=
