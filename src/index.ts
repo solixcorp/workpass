@@ -17,9 +17,15 @@ import { oidcSignInRoutes } from "./pages/sign-in";
 import { swaUserRoutes } from "./swa/routes";
 import { mfaRoutes } from "./mfa/duo-routes";
 import { opaqueRoutes } from "./auth/opaque-routes";
+import { cleanupSessionMfaProofs } from "./mfa/second-factor";
+import { oauth1Routes } from "./oauth1/routes";
+import { cleanupOAuth1Temporaries } from "./oauth1/store";
+import { ssfReceiverRoutes } from "./ssf/routes";
+import { ssfSenderRoutes, cleanupSsfDeliveries } from "./ssf/sender-routes";
+import { cleanupSsfInbox } from "./ssf/inbox";
+import { attemptPendingSSFDispatch } from "./ssf/dispatch";
 
 const app = new Hono<{ Bindings: Env }>();
-
 app.onError((error, context) => {
   console.error("Unhandled Worker request error", {
     name: error.name,
@@ -51,6 +57,8 @@ app.route("/", swaUserRoutes);
 // The MFA sub-router declares /mfa/... paths; the public surface is /api/mfa/...,
 // matching every caller, audit record, and document.
 app.route("/api", mfaRoutes);
+// OPAQUE sessions issue only after the login gate (banned accounts and the
+// shared device-risk pipeline) passes; see src/auth/opaque-login.ts.
 app.route("/", opaqueRoutes);
 app.route("/.well-known", webfingerRoutes);
 app.route("/api/admin", adminRoutes);
@@ -58,6 +66,11 @@ app.route("/api/admin", bootstrapRoutes);
 app.route("/api/security", trustedDeviceRoutes);
 app.route("/_internal", migrationRoutes);
 app.route("/", inboundScimRoutes);
+// OAuth 1.0a and SSF routers fail closed on every request; they are reachable
+// only when their feature flags are set.
+app.route("/", oauth1Routes);
+app.route("/", ssfReceiverRoutes);
+app.route("/", ssfSenderRoutes);
 
 async function scheduled(
   controller: ScheduledController,
@@ -69,6 +82,11 @@ async function scheduled(
     await cleanupFingerprintData(env, new Date(controller.scheduledTime));
     await cleanupSamlRequestClaims(env, new Date(controller.scheduledTime));
     await cleanupSwaGrants(env, new Date(controller.scheduledTime));
+    await cleanupSessionMfaProofs(env, new Date(controller.scheduledTime));
+    await cleanupOAuth1Temporaries(env, controller.scheduledTime);
+    await cleanupSsfInbox(env.DB, controller.scheduledTime);
+    await cleanupSsfDeliveries(env, controller.scheduledTime);
+    await attemptPendingSSFDispatch(env, controller.scheduledTime);
   } catch (error) {
     console.error("Scheduled security cleanup failed", {
       cron: controller.cron,

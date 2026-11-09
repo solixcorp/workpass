@@ -45,7 +45,7 @@
 
 The following wrangler.jsonc platform settings are in force; verify them at deploy:
 
-- `compatibility_date: 2026-11-09` — Node.js compatibility (v1+v2) and
+- `compatibility_date: 2026-11-10` — Node.js compatibility (v1+v2) and
   AsyncLocalStorage are default-on at this date; the explicit `nodejs_als`
   flag was removed as redundant.
 - `workers_dev: false` — internal IdP is served by a configured route only.
@@ -81,6 +81,30 @@ The following wrangler.jsonc platform settings are in force; verify them at depl
 
 ## OPAQUE (RFC 9807) zero-password authentication (2026-11)
 
+**Active (2026-11):** OPAQUE routes are served again. Every login now runs
+through the shared gate (`src/auth/opaque-login.ts`) before a session issues:
+
+- banned accounts (and accounts whose row cannot be read) are denied,
+- the device-risk pipeline matches password/username/passkey logins: clients
+  may submit `fingerprint: { event_id }` at `/api/opaque/auth/start` (sealed
+  results are rejected); in `enforce` mode the session is withheld on a
+  missing/unverifiable event, a replay, or a deny/step_up risk action; in
+  `observe` mode outcomes are recorded best-effort and never block baseline
+  authentication,
+- denials audit `authentication.opaque.login` with outcome `failure`,
+- `requireMfa` application policies still apply to OPAQUE sessions the same
+  way as passkey sessions: no proof is minted at login, so restricted apps
+  require a step-up verification through one of the proof-recording
+  endpoints first.
+- **MFA session proofs (2026-11):** `requireMfa` policies honor only
+session-bound proofs (`session_mfa_proofs`), recorded on successful
+`/two-factor/verify-totp`, `/two-factor/verify-otp`,
+`/two-factor/verify-backup-code`, `/api/mfa/hotp/verify`, and
+`/api/mfa/duo/verify` (`result: allow`). Enrollment alone satisfies nothing;
+a trust-device cookie that bypasses the challenge does not mint a proof — such
+sessions must step up through a verification endpoint first. Proof rows are
+removed by the daily cron after 31 days.
+
 - @cloudflare/opaque-ts over OPAQUE_P256; the password never leaves the
   browser and the platform stores no password, hash, or password-derived
   value (the credential record is itself password-protected, plus sealed
@@ -94,3 +118,81 @@ The following wrangler.jsonc platform settings are in force; verify them at depl
   re-enrollment of every credential record.
 - Legacy password sign-in remains available; migrate accounts by enrolling
   OPAQUE per user (the smoke scripts/opaque-smoke.ts demonstrates the flow).
+
+## OAuth 2.0 Token Exchange (RFC 8693) (2026-11)
+
+Enabled only on a worker running with `ENABLE_TOKEN_EXCHANGE=true`; the grant
+`urn:ietf:params:oauth:grant-type:token-exchange` is served at the standard
+`/api/auth/oauth2/token` endpoint through the OAuth provider extension.
+
+Profile rules (all enforced server-side, default deny):
+- Confidential clients only (client_secret/basic; public clients denied).
+- Explicit allowlist `TOKEN_EXCHANGE_ALLOWED_RESOURCES` → per-client target
+  resources; anything missing or malformed is denied.
+- Client authentication is mandatory; a sender-constrained subject (`cnf`)
+  cannot be exchanged because the profile cannot carry the constraint.
+- Subject: the platform's own active access token (opaque or RFC 9068
+  `at+jwt`) bound to a live session (`sid`); account-banned users denied.
+- Scope narrowing only: requested scopes must be a subset of the subject's;
+  `openid`/`offline_access` are never issued through exchange (no ID/refresh
+  tokens minted by this grant); `actor_token` (delegation chains) rejected.
+- Lifetime: the target resource's configured `accessTokenTtl` (from
+  `OAUTH_RESOURCES`) must be shorter than the subject's remaining life plus a
+  safety margin, or the exchange is denied — a delegation can never outlive
+  the subject. Seed a short-TTL delegated resource explicitly as the target.
+- Every authorized exchange is audited
+  (`authentication.token_exchange.authorized`); if the audit write fails the
+  token is not minted.
+
+Integration verified in `tests/token-exchange-flow.test.ts` (real server, in-memory
+DB: registration → authorize/consent → mint → exchange → failure paths) and by
+`scripts/token-exchange-smoke.ts` against a running worker.
+
+## OAuth 1.0a server (RFC 5849, HMAC-SHA1 profile) (2026-11)
+
+Enabled only with `ENABLE_OAUTH1=true`; every `/api/oauth1/*` route fails
+closed otherwise. `OAUTH1_MANAGEMENT_TOKEN` (>= 32 bytes) is required.
+- Consumer registration: `POST /api/oauth1/consumers` (operator bearer token)
+  returns the consumer key/secret once; secrets and all token secrets are
+  sealed at rest with the platform AEAD (`AEAD_SEALING_KEY` required).
+- Three-legged flow: `POST /api/oauth1/initiate` (HMAC-SHA1, consumer-only,
+  callback validated, 10-minute temporary credentials) → browser
+  `GET /api/oauth1/authorize?oauth_token=…` → signed-in user approves/denies →
+  verifier delivered by callback redirect (or shown for `oob`) →
+  `POST /api/oauth1/token` (consumer + temp-token signature, single-use
+  verifier) issues a long-lived access token.
+- Replay protection: HMAC-SHA1 verified with Web Crypto, nonces consumed
+  atomically in `oauth1_nonce_claims` (unique key), temporary credentials are
+  single-use receipts. Signature base normalizes per RFC 5849; protocol
+  parameters must arrive in the Authorization header (body protocol params are
+  rejected to remove ambiguity).
+- Revocation/offboarding: `POST /api/oauth1/token/revoke`, explicit
+  `revokeOAuth1UserTokens` helper for lifecycle code, disabled consumers.
+- Audited: consumer register/enable/disable, temporary issue, approve/deny,
+  access issue/revoke. Access-token requests are rate-limit candidates for a
+  later pass (not yet wired).
+
+## Shared Signals Framework (OpenID SSF 1.0) (2026-11)
+
+Receiver: `ENABLE_SSF_RECEIVER=true` + `SSF_STREAMS` (operator-pinned issuer,
+audience, JWKS, event types, optional shared delivery token).
+- `POST /api/ssf/receiver/:streamId` accepts `application/secevent+jwt`;
+  verifies RS256 signature against pinned keys only, issuer/audience/event
+  type/jti/iat constraints, atomically queues the SET (`ssf_inbox`) and
+  replies 202; duplicates accepted idempotently. Every queueing also writes a
+  receiver audit event; if the audit write fails the sender gets 503.
+- The inbox is deliberately inert: it does NOT affect accounts. Consuming
+  events (session revocation etc.) requires a dedicated, reviewed handler
+  that validates the event-specific subject — not wired yet, so incoming
+  signals are durably recorded but not acted on.
+
+Sender: `ENABLE_SSF_SENDER=true`; `SSF_MANAGEMENT_TOKEN` gates recipient
+registration (`POST/DELETE /api/SSF/… /api/ssf/streams`) and explicit dispatch
+(`POST /api/ssf/events`). Outbound SETs are signed with a generated RS256 key
+(sealed at rest; public JWKS at `/api/ssf/jwks.json`, kid `ssf-1`). Delivery is
+recorded per attempt with bounded retry (10 attempts, exponential backoff,
+abandoned states never silently dropped; scheduled waves retry `retry` rows).
+Wiring real account-lifecycle events into `dispatchSSFEvent` is a follow-up.
+
+Verified in `tests/oauth1-flow.test.ts` and `tests/ssf-flow.test.ts`
+(real router, in-memory DB). No external-interop testing has been performed.

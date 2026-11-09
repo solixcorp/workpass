@@ -104,6 +104,6 @@ export function opaqueIdentityFor(email: string): string {
   return email.toLowerCase();
 }
 
-export function opaqueBadRequest(context: Context<{ Bindings: Env }>, detail: string, status: 400 | 401 | 429 | 503 = 400): Response {
+export function opaqueBadRequest(context: Context<{ Bindings: Env }>, detail: string, status: 400 | 401 | 403 | 429 | 503 = 400): Response {
   return context.json({ error: detail }, status);
 }

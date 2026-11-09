@@ -10,12 +10,18 @@
 const sharedArgs = Bun.argv.slice(2);
 const smokes = [
   "scripts/oidc-smoke.ts",
+  "scripts/mfa-proof-smoke.ts",
   "scripts/passkey-smoke.ts",
   "scripts/session-revocation-smoke.ts",
   "scripts/swa-smoke.ts",
   "scripts/wsfed-smoke.ts",
   "scripts/scim-inbound-smoke.ts",
+  // OPAQUE login is gated by account state and the shared device-risk
+  // pipeline (src/auth/opaque-login.ts), re-enabled for the smoke wave.
   "scripts/opaque-smoke.ts",
+  // Token exchange (RFC 8693) only validates on a worker started with
+  // ENABLE_TOKEN_EXCHANGE=true and a seeded allowlist (see token-exchange-smoke.ts).
+  "scripts/token-exchange-smoke.ts",
 ];
 
 for (const smoke of smokes) {

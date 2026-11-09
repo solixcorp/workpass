@@ -44,3 +44,30 @@ SAML_IDP_PREVIOUS_SIGNING_CERTIFICATE=
 SAML_IDP_PREVIOUS_SIGNING_PRIVATE_KEY=
 # OPAQUE (RFC 9807) zero-password authentication: server master key, 32 bytes base64.
 # OPAQUE_MASTER_KEY=
+# RFC 8693 token exchange (opt-in): disabled unless ENABLE_TOKEN_EXCHANGE=true.
+# The allowlist maps each confidential client id to the exact resource URIs it
+# may receive after exchange; anything missing from the map is denied. Resource
+# URIs (and their TTLs) are seeded from OAUTH_RESOURCES; a delegation target
+# must have a strictly shorter accessTokenTtl than the subject's source
+# resource so exchanged tokens can never outlive the subject.
+ENABLE_TOKEN_EXCHANGE=false
+TOKEN_EXCHANGE_ALLOWED_RESOURCES={"exchange-client":["https://api.example.com/delegated"]}
+OAUTH_RESOURCES=[{"identifier":"https://api.example.com/","accessTokenTtl":600},{"identifier":"https://api.example.com/delegated","accessTokenTtl":300}]
+# OAuth 1.0a server (RFC 5849, HMAC-SHA1): opt-in. OAUTH1_MANAGEMENT_TOKEN
+# (>= 32 bytes) protects POST/PATCH /api/oauth1/consumers; consumers and all
+# token secrets are sealed with AEAD_SEALING_KEY, which is therefore required
+# when this feature is enabled.
+ENABLE_OAUTH1=false
+OAUTH1_MANAGEMENT_TOKEN=
+# SSF (Shared Signals Framework). ENABLE_SSF_RECEIVER accepts inbound SETs for
+# operator-pinned streams; ENABLE_SSF_SENDER signs outbound SETs with a
+# platform RS256 key (public JWKS at /api/ssf/jwks.json) and pushes to
+# operator-registered recipients. Both share SSF_MANAGEMENT_TOKEN (>= 32 bytes).
+ENABLE_SSF_RECEIVER=false
+ENABLE_SSF_SENDER=false
+SSF_MANAGEMENT_TOKEN=
+# Example inbound stream: {"id":"legacy-idp","issuer":"https://legacy-idp.example",
+#   "audience":"internal-auth","jwks":{"keys":[{"kty":"RSA","kid":"k1","n":"...","e":"AQAB","alg":"RS256"}]},
+#   "event_types":["https://schemas.openid.net/secevent/caep/event-type/session-revoked"],
+#   "delivery_token":"shared-secret"}
+SSF_STREAMS=
