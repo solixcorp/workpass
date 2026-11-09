@@ -10,6 +10,7 @@ import type { Context } from "hono";
 import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
+import { getObjectAttributes } from "../objects/attributes";
 
 export const directoryRoutes = new Hono<{ Bindings: Env }>();
 
@@ -115,7 +116,8 @@ directoryRoutes.get("/directory-groups/:id", async (context) => {
     `SELECT user_id AS userId, granted_by AS grantedBy, granted_at AS grantedAt
      FROM directory_group_members WHERE group_id = ? ORDER BY granted_at ASC, user_id ASC LIMIT 500`,
   ).bind(id).all<{ userId: string; grantedBy: string; grantedAt: string }>();
-  return context.json({ group, members: memberships.results });
+  const attributes = await getObjectAttributes(context.env, "group", id);
+  return context.json({ group: { ...group, attributes: attributes.attributes }, members: memberships.results });
 });
 
 directoryRoutes.delete("/directory-groups/:id", async (context) => {
@@ -126,9 +128,12 @@ directoryRoutes.delete("/directory-groups/:id", async (context) => {
   return auditStandaloneOperation(context.env, "directory.group.delete", context.req.path, async () => {
     const removed = await context.env.DB.batch([
       context.env.DB.prepare("DELETE FROM directory_group_members WHERE group_id = ?").bind(id),
+      context.env.DB.prepare(
+        "DELETE FROM object_attributes WHERE object_type = 'group' AND object_id = ?",
+      ).bind(id),
       context.env.DB.prepare("DELETE FROM directory_groups WHERE id = ?").bind(id),
     ]);
-    if (removed[1]!.meta.changes !== 1) {
+    if (removed[2]!.meta.changes !== 1) {
       return { response: Response.json({ error: "Group not found" }, { status: 404 }), actorUserId: actor.userId };
     }
     return { response: Response.json({ deleted: true }), actorUserId: actor.userId, targetUserId: id };
