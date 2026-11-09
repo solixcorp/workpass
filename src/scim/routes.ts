@@ -27,9 +27,15 @@ scimAdminRoutes.post("/scim-operations", async (context) => {
   if (context.env.ENABLE_SCIM_PROVISIONING !== "true" || !targetId || !baseUrl || !bearerToken) {
     return context.json({ error: "SCIM provisioning is disabled or not configured" }, 503);
   }
+  // Development-only loopback allowance: http://127.0.0.1|localhost targets are
+  // accepted solely so the transport can be verified against a local mock.
+  const allowLoopbackHttp = context.env.SCIM_DEV_LOOPBACK_TARGET === "true";
   try {
     const url = new URL(baseUrl);
-    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash ||
+    const protocolOk = url.protocol === "https:" ||
+      (allowLoopbackHttp && url.protocol === "http:" &&
+        (url.hostname === "127.0.0.1" || url.hostname === "localhost"));
+    if (!protocolOk || url.username || url.password || url.search || url.hash ||
         !bearerToken.trim() || !/^[A-Za-z0-9_-]{1,128}$/.test(targetId)) {
       return context.json({ error: "SCIM target configuration is invalid" }, 503);
     }
@@ -64,7 +70,7 @@ scimAdminRoutes.post("/scim-operations", async (context) => {
         await finishScimOperation(context.env, opId, "failed");
         return { response: Response.json({ error: "SCIM mapping conflict", operationId: opId }, { status: 409 }), actorUserId: adminSession.userId, targetUserId: userId };
       }
-      const target = { baseUrl, bearerToken };
+      const target = { baseUrl, bearerToken, allowLoopbackHttp };
       remoteAttempted = true;
       const result = operation === "create"
         ? await createScimUser(target, { externalId: user.id, userName: user.username || user.email, displayName: user.name, email: user.email, active: true })

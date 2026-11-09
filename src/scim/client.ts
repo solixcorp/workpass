@@ -2,6 +2,12 @@
 export interface ScimTarget {
   baseUrl: string;
   bearerToken: string;
+  /**
+   * Development-only: permits an http://127.0.0.1 or http://localhost target so
+   * the transport can be verified against a local mock before production.
+   * Never honored for any other host, and production deployments leave this off.
+   */
+  allowLoopbackHttp?: boolean;
 }
 
 export interface ScimUserInput {
@@ -24,10 +30,16 @@ export type ScimResult<T> =
 const USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
 const PATCH_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "127.0.0.1" || hostname === "localhost";
+}
+
 function usersUrl(target: ScimTarget): URL | null {
   try {
     const base = new URL(target.baseUrl);
-    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash || !target.bearerToken.trim()) {
+    const protocolOk = base.protocol === "https:" ||
+      (target.allowLoopbackHttp === true && base.protocol === "http:" && isLoopbackHost(base.hostname));
+    if (!protocolOk || base.username || base.password || base.search || base.hash || !target.bearerToken.trim()) {
       return null;
     }
     base.pathname = `${base.pathname.replace(/\/+$/, "")}/Users`;

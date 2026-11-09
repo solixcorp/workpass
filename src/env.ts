@@ -20,6 +20,7 @@ export interface Env {
   SCIM_BASE_URL?: string;
   SCIM_BEARER_TOKEN?: string;
   ENABLE_SCIM_PROVISIONING?: string;
+  SCIM_DEV_LOOPBACK_TARGET?: string;
   SAML_IDP_ENTITY_ID?: string;
   SAML_IDP_SIGNING_CERTIFICATE?: string;
   SAML_IDP_SIGNING_PRIVATE_KEY?: string;
