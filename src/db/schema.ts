@@ -135,6 +135,28 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
      WHERE status IN ('pending', 'in_progress', 'outcome_unknown')`,
   ).run();
   await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS directory_groups (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS directory_group_members (
+      group_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      granted_by TEXT NOT NULL,
+      granted_at TEXT NOT NULL,
+      PRIMARY KEY (group_id, user_id)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS directory_group_members_user_idx ON directory_group_members (user_id)",
+  ).run();
+  await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS saml_service_providers (
       id TEXT PRIMARY KEY NOT NULL,
       entity_id TEXT NOT NULL UNIQUE,

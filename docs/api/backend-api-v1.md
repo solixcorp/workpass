@@ -30,6 +30,7 @@ Unauthenticated process/runtime liveness only; does not expose D1 state, credent
 
 1. Copy `.dev.vars.example` to the ignored `.dev.vars` and replace the auth secret and migration token with independent random values.
 2. Temporarily set `ENABLE_MIGRATIONS=true` in `.dev.vars`, start `bun run dev:local`, and call `POST /_internal/migrate` with `Authorization: Bearer <MIGRATION_TOKEN>`.
+2a. Local verification smokes (disposable databases only): `bun run scripts/passkey-smoke.ts --migrate-token <t> --admin-token <t>` drives both passkey verification ceremonies headlessly, and `bun run scripts/directory-smoke.ts --migrate-token <t> --admin-token <t>` exercises the directory group API including authorization and audit checks.
 3. Temporarily set `ENABLE_ADMIN_BOOTSTRAP=true` and a random `ADMIN_BOOTSTRAP_TOKEN` of at least 32 bytes; call `POST /api/admin/bootstrap` with that bearer token to create the first admin account. The endpoint works only while the user table is empty and assigns the admin role.
 4. Turn both feature flags off, remove both temporary tokens from `.dev.vars`, restart the Worker, and sign in through the normal API before calling admin APIs.
 
@@ -132,6 +133,14 @@ For interactive OAuth authorization, a logged-in browser may provide `fingerprin
 Initial retention defaults: event replay claims 24 hours, device/network observations 30 days, and risk-decision records and inactive device records 90 days. A daily Worker Cron applies these windows regardless of Fingerprint mode and processes any existing tables even if schema initialization is incomplete. They still need approval by the privacy owner.
 
 ## Database initialization
+
+### Directory groups
+
+- `POST /api/admin/directory-groups` creates a first-party group with `{name, description?}`; names are 1-64 characters from `[A-Za-z0-9_.-]` and unique. 201 with the group, 409 on a duplicate name. Administrator session and exact `Origin` required; audited.
+- `GET /api/admin/directory-groups` lists groups (cursor + `limit` 1-100) without members; `GET /api/admin/directory-groups/{id}` returns the group with up to 500 members; both are read-only and session-gated.
+- `POST /api/admin/directory-groups/{id}/members` grants `{userId}` membership to an existing user (rejects unknown users with 404 and duplicates with 409, both audited); `DELETE /api/admin/directory-groups/{id}/members/{userId}` revokes.
+- `DELETE /api/admin/directory-groups/{id}` removes the group and its memberships in one atomic D1 batch.
+- Groups are claim-release candidates only: protocol assertions do not carry groups until an application binding and release policy exist (see docs/design/directory-groups.md for the open list).
 
 ### SAML and SCIM preparation
 
