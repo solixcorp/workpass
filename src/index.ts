@@ -10,6 +10,8 @@ import { trustedDeviceRoutes } from "./security/trusted-device-routes";
 import { lockdownRoutes } from "./security/lockdown-routes";
 import { stepUpRoutes } from "./security/step-up-routes";
 import { cleanupStepUpChallenges } from "./security/step-up";
+import { recoveryRoutes } from "./security/account-recovery-routes";
+import { cleanupRecoveryTokens } from "./security/account-recovery";
 import { cleanupFingerprintData } from "./security/fingerprint-retention";
 import { cleanupSessionNetworkBindings } from "./security/session-geo-binding";
 import { cleanupSamlRequestClaims } from "./saml/request-claims";
@@ -32,6 +34,7 @@ import { accountRoutes } from "./accounts/routes";
 import { cleanupAccountSessionContexts } from "./accounts/store";
 import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
 import { cleanupAccessRequests } from "./access/requests";
+import { backupAuditEvents } from "./audit/backup";
 
 const app = new Hono<{ Bindings: Env }>();
 app.onError((error, context) => {
@@ -78,6 +81,9 @@ app.route("/api/security", lockdownRoutes);
 // Step-up challenge status for the acting session (second factor required
 // after a risky decision); see src/security/step-up.ts.
 app.route("/api/security", stepUpRoutes);
+// Admin-issued one-time recovery links and redemption for locked accounts;
+// see src/security/account-recovery.ts.
+app.route("/api/security", recoveryRoutes);
 app.route("/_internal", migrationRoutes);
 app.route("/", inboundScimRoutes);
 // OAuth 1.0a and SSF routers fail closed on every request; they are reachable
@@ -99,6 +105,7 @@ async function scheduled(
     await cleanupFingerprintData(env, new Date(controller.scheduledTime));
     await cleanupSessionNetworkBindings(env, new Date(controller.scheduledTime));
     await cleanupStepUpChallenges(env, new Date(controller.scheduledTime));
+    await cleanupRecoveryTokens(env, new Date(controller.scheduledTime));
     await cleanupSamlRequestClaims(env, new Date(controller.scheduledTime));
     await cleanupSwaGrants(env, new Date(controller.scheduledTime));
     await cleanupSessionMfaProofs(env, new Date(controller.scheduledTime));
@@ -108,6 +115,15 @@ async function scheduled(
     await attemptPendingSSFDispatch(env, controller.scheduledTime);
     await cleanupAccountSessionContexts(env, new Date(controller.scheduledTime));
     await cleanupAccessRequests(env, controller.scheduledTime);
+    try {
+      // Independent audit backup: watermark-guarded R2 export; fails safe
+      // without the AUDIT_BACKUP binding and never blocks other cleanups.
+      await backupAuditEvents(env, controller.scheduledTime);
+    } catch (error) {
+      console.error("Audit backup export failed", {
+        name: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
   } catch (error) {
     console.error("Scheduled security cleanup failed", {
       cron: controller.cron,

@@ -11,8 +11,9 @@
   - `CLIENT_REGISTRATION_TOKEN` if dynamic client registration is wanted at launch
   - `SAML_IDP_ENTITY_ID` + `SAML_IDP_SIGNING_CERTIFICATE` + `SAML_IDP_SIGNING_PRIVATE_KEY` — generate with `bun run scripts/generate-saml-key.ts`; keep the private key in the secret store only
 - **Flags in `wrangler.jsonc`/vars:** leave `ENABLE_MIGRATIONS`, `ENABLE_ADMIN_BOOTSTRAP`, `ENABLE_DYNAMIC_CLIENT_REGISTRATION` set to `false` in the committed config; enable them only as temporary deployment-window overrides.
-- **DNS.** The email-domain route for Tailscale WebFinger (`/.well-known/webfinger` on the company domain) is only needed when that integration goes live (deferred by recorded decision).
-- **Review gates that remain owner decisions:** MFA policy, recovery channel, audit backup design, test SaaS targets.
+- **DNS.** The email-domain route for Tailscale WebFinger (`/.well-known/webfinger` on the company domain) is only needed when that integration goes live. Live validation is unblocked as of 2026-11-10: `auth.solixllc.com` is the selected company email domain (QST-1794159222-ane decision) — configure `OIDC_EMAIL_DOMAIN=auth.solixllc.com`, point WebFinger routing for that domain at this Worker, and provision the disposable Tailscale test tenant when the live run is scheduled.
+- **Audit backup.** Create `wrangler r2 bucket create internal-auth-audit-backup` before the deploy that adds the `AUDIT_BACKUP` binding (docs/security/audit-backup.md).
+- **Review gates that remain owner decisions:** MFA policy, recovery channel, production SAML/SCIM target applications (pending owner selection; registration APIs are implemented and ready).
 
 ## 2. Deployment window
 

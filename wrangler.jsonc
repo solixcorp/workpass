@@ -9,7 +9,14 @@
     "enabled": true,
     "logs": {
       "enabled": true,
-      "head_sampling_rate": 1
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "storage": {
+        // Operational diagnostics retention (decided 2026-11-10; QST-1794159887-jwy):
+        // the maximum Workers Logs retention, distinct from the one-year
+        // tamper-evident security audit window in D1.
+        "retention_days": 30
+      }
     },
     "traces": {
       "enabled": true,
@@ -40,6 +47,17 @@
       "binding": "DB",
       "database_name": "internal-auth-local",
       "database_id": "00000000-0000-0000-0000-000000000001"
+    }
+  ],
+  // Independent audit backup (docs/security/audit-backup.md): the scheduled
+  // export appends positioned audit rows to dated R2 objects; the bucket must
+  // exist before the binding is deployed ("wrangler r2 bucket create
+  // internal-auth-audit-backup"). All audit features fail safe when the
+  // binding is absent.
+  "r2_buckets": [
+    {
+      "binding": "AUDIT_BACKUP",
+      "bucket_name": "internal-auth-audit-backup"
     }
   ]
 }

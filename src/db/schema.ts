@@ -571,4 +571,3 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS app_temporal_grants_user_idx ON app_temporal_grants (user_id, subject)",
   ).run();
-}
