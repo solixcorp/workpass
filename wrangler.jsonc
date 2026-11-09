@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "internal-auth",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-08",
+  "compatibility_flags": ["nodejs_als"],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
+  "vars": {
+    "ENABLE_ADMIN_BOOTSTRAP": "false",
+    "ENABLE_MIGRATIONS": "false",
+    "ENABLE_DYNAMIC_CLIENT_REGISTRATION": "false",
+    "FINGERPRINT_MODE": "disabled",
+    "FINGERPRINT_REGION": "us"
+  },
+  "triggers": {
+    "crons": ["17 4 * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "internal-auth-local",
+      "database_id": "00000000-0000-0000-0000-000000000001"
+    }
+  ]
+}

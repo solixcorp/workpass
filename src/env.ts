@@ -1,0 +1,19 @@
+export interface Env {
+  DB: D1Database;
+  AUTH_SECRET: string;
+  AUTH_BASE_URL: string;
+  OIDC_EMAIL_DOMAIN?: string;
+  FINGERPRINT_MODE?: "disabled" | "observe" | "enforce";
+  FINGERPRINT_REGION?: "us" | "eu" | "ap";
+  FINGERPRINT_SERVER_API_KEY?: string;
+  FINGERPRINT_ALLOWED_ORIGINS?: string;
+  FINGERPRINT_MIN_CONFIDENCE?: string;
+  FINGERPRINT_SUSPECT_SCORE_THRESHOLD?: string;
+  FINGERPRINT_MAX_EVENT_AGE_SECONDS?: string;
+  ENABLE_ADMIN_BOOTSTRAP?: string;
+  ADMIN_BOOTSTRAP_TOKEN?: string;
+  ENABLE_MIGRATIONS?: string;
+  MIGRATION_TOKEN?: string;
+  ENABLE_DYNAMIC_CLIENT_REGISTRATION?: string;
+  CLIENT_REGISTRATION_TOKEN?: string;
+}

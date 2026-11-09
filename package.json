@@ -1,0 +1,23 @@
+{
+  "name": "internal-auth",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:local": "wrangler dev --local",
+    "typecheck": "tsc --noEmit",
+    "build:check": "wrangler deploy --dry-run --outdir .wrangler/deploy",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@better-auth/oauth-provider": "1.7.18",
+    "@better-auth/passkey": "1.7.18",
+    "better-auth": "1.7.18",
+    "hono": "4.11.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261108.1",
+    "typescript": "5.9.3",
+    "wrangler": "4.158.0"
+  }
+}
