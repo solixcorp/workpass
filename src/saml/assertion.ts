@@ -20,6 +20,10 @@ const STATUS_SUCCESS = "urn:oasis:names:tc:SAML:2.0:status:Success";
 const NAMEID_EMAIL_URN = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
 const BEARER_URN = "urn:oasis:names:tc:SAML:2.0:cm:bearer";
 const UNSPECIFIED_AUTHN_CONTEXT = "urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified";
+const ATTRIBUTE_NAME_FORMAT_URI = "urn:oasis:names:tc:SAML:2.0:attrname-format:uri";
+const XSI_URN = "http://www.w3.org/2001/XMLSchema-instance";
+const XS_URN = "http://www.w3.org/2001/XMLSchema";
+const ATTRIBUTE_VALUE_TYPE = "xs:string";
 
 export interface SamlSigningMaterial {
   entityId: string;
@@ -52,6 +56,12 @@ export interface SamlResponseParams {
   now?: Date;
   /** Per-application token lifetime override (clamped by the caller). */
   lifetimeSeconds?: number;
+  /**
+   * Attribute release (active account, custom user attributes); simple
+   * string values, sorted by name for canonical construction. Omitted when
+   * claim release is disabled or nothing matches.
+   */
+  attributes?: Array<{ name: string; value: string }>;
 }
 
 export interface IssuedSamlResponse {
@@ -71,6 +81,30 @@ function generateXmlId(): string {
 }
 
 /**
+ * Build the attribute statement for released claims. Namespaced names use
+ * the SAML `uri` NameFormat; the statement declares the XSI/XS namespaces it
+ * visibly uses, and callers pass attributes already sorted by name so the
+ * built bytes stay canonical.
+ */
+function buildAttributeStatement(
+  attributes: NonNullable<SamlResponseParams["attributes"]>,
+): string {
+  const entries = [...attributes].sort((left, right) => left.name.localeCompare(right.name));
+  if (entries.length === 0) return "";
+  return (
+    `<saml:AttributeStatement xmlns:xs="${XS_URN}" xmlns:xsi="${XSI_URN}">` +
+    entries
+      .map((attribute) =>
+        `<saml:Attribute Name="${escapeSamlAttribute(attribute.name)}" NameFormat="${ATTRIBUTE_NAME_FORMAT_URI}">` +
+        `<saml:AttributeValue xsi:type="${ATTRIBUTE_VALUE_TYPE}">${escapeSamlText(attribute.value)}</saml:AttributeValue>` +
+        `</saml:Attribute>`,
+      )
+      .join("") +
+    `</saml:AttributeStatement>`
+  );
+}
+
+/**
  * Build the full signed Response with an enveloped signature over the
  * Assertion. The assertion is signed, not the response itself; interop with a
  * real service provider is verified in a dedicated task before enablement.
@@ -85,6 +119,7 @@ export async function buildSignedSamlResponse(
   const responseId = generateXmlId();
   const assertionId = generateXmlId();
   const authnClass = params.authnClass ?? UNSPECIFIED_AUTHN_CONTEXT;
+  const attributeStatement = params.attributes ? buildAttributeStatement(params.attributes) : "";
 
   const coreAssertion =
     `<saml:Assertion xmlns:saml="${ASSERTION_URN}" ID="${assertionId}" IssueInstant="${issueInstant}" Version="2.0">` +
@@ -98,6 +133,7 @@ export async function buildSignedSamlResponse(
     `<saml:Conditions NotBefore="${notBefore}" NotOnOrAfter="${notOnOrAfter}">` +
     `<saml:AudienceRestriction><saml:Audience>${escapeSamlText(params.serviceProviderEntityId)}</saml:Audience></saml:AudienceRestriction>` +
     `</saml:Conditions>` +
+    attributeStatement +
     `<saml:AuthnStatement AuthnInstant="${formatSamlInstant(params.subject.authenticatedAt)}" SessionIndex="${assertionId}">` +
     `<saml:AuthnContext><saml:AuthnContextClassRef>${authnClass}</saml:AuthnContextClassRef></saml:AuthnContext>` +
     `</saml:AuthnStatement>` +

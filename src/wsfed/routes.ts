@@ -22,6 +22,7 @@ import { buildWsfedSignInResult } from "./token";
 import { buildSsoLoginPage } from "../pages/sso-login";
 import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
 import { loadSamlIdpSigningMaterial } from "../saml/protocol-routes";
+import { claimNamespace, samlAttributeRelease } from "../claims/protocol-claims";
 import {
   evaluateAppAccess,
   loadAppAccessPolicy,
@@ -206,6 +207,14 @@ wsfedProtocolRoutes.get(WSFED_SIGNIN_PATH, async (context) => {
     if (wctx !== null && new TextEncoder().encode(wctx).length > MAX_CTX_BYTES) {
       return rejectSignin(context, "oversized-context");
     }
+    // Attribute release fails closed on the operator flags; disabled flags
+    // yield no AttributeStatement.
+    const releasedAttributes = await samlAttributeRelease(
+      context.env,
+      wsfedSessionToken(session),
+      sessionUserId(session),
+      session.user.id,
+    );
     const issued = await buildWsfedSignInResult({
       wctx,
       realm: party.realm,
@@ -213,6 +222,9 @@ wsfedProtocolRoutes.get(WSFED_SIGNIN_PATH, async (context) => {
       identity: { nameId: email },
       signing,
       now,
+      attributeRelease: releasedAttributes.length > 0
+        ? { namespace: claimNamespace(context.env), attributes: releasedAttributes }
+        : undefined,
     });
     await (await import("../access/policies")).recordAppIssuance(
       context.env,
@@ -292,4 +304,18 @@ function pemCertificateBody(certificatePem: string): string {
   const footer = certificatePem.lastIndexOf("-----END CERTIFICATE-----");
   if (header < 0 || footer < 0 || footer < header) throw new Error("certificate is not PEM");
   return certificatePem.slice(header + "-----BEGIN CERTIFICATE-----".length, footer).replace(/\s+/g, "");
+}
+
+type WsfedSession = Awaited<ReturnType<ReturnType<typeof createAuth>["api"]["getSession"]>>;
+
+/** The Better Auth session id (`sid` used to resolve the active account). */
+function sessionUserId(session: NonNullable<WsfedSession>): string | null {
+  const inner = (session as { session?: { id?: unknown } }).session;
+  return typeof inner?.id === "string" && inner.id.length > 0 ? inner.id : null;
+}
+
+/** The switch context is keyed by the raw session token. */
+function wsfedSessionToken(session: NonNullable<WsfedSession>): string | null {
+  const inner = (session as { session?: { token?: unknown } }).session;
+  return typeof inner?.token === "string" && inner.token.length > 0 ? inner.token : null;
 }

@@ -19,6 +19,20 @@ export interface Env extends Partial<WorkerBindings> {
   ENABLE_TOKEN_EXCHANGE?: string;
   TOKEN_EXCHANGE_ALLOWED_RESOURCES?: string;
   /**
+   * Release the session's active multi-account context (id, name, member
+   * role) as namespaced claims on protocol tokens (OIDC access/ID token,
+   * SAML assertion attributes, the JWT plugin's /token payload). Claims fail
+   * closed when unset.
+   */
+  ENABLE_ACCOUNT_CLAIMS?: string;
+  /**
+   * Release custom object attributes of the acting user as claims on
+   * protocol tokens (same surfaces as ENABLE_ACCOUNT_CLAIMS). Users'
+   * group/account attributes stay unreleased pending a per-application
+   * release policy.
+   */
+  ENABLE_ATTRIBUTE_CLAIMS?: string;
+  /**
    * RFC 8707 protected-resource seed (JSON array of strings, or objects with
    * identifier/accessTokenTtl/allowedScopes). Seeded into the provider's
    * oauthResource table on first use; malformed config disables startup.

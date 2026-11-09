@@ -25,6 +25,7 @@ import { getEnabledSamlServiceProviderByEntityId } from "./service-providers";
 import { importSamlIdpPrivateKey, importSamlServiceProviderTrustedKey } from "./certificates";
 import { buildSignedSamlResponse, type SamlSigningMaterial } from "./assertion";
 import { buildSamlIdpMetadata } from "./metadata";
+import { samlAttributeRelease } from "../claims/protocol-claims";
 import { cachedProtocolDocument, storeProtocolDocument } from "../web/protocol-cache";
 import { buildSsoLoginPage } from "../pages/sso-login";
 
@@ -142,6 +143,14 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
         console.error("SAML SSO rejected", { stage: "replayed-request" });
         return { response: Response.json({ error: GENERIC_REJECTION }, { status: 400 }), actorUserId: session.user.id, targetUserId: provider.id };
       }
+      // Attribute release fails closed on the operator flags; disabled flags
+      // yield an empty list and an assertion without an AttributeStatement.
+      const attributes = await samlAttributeRelease(
+        context.env,
+        protocolSessionToken(session),
+        sessionUserId(session),
+        session.user.id,
+      );
       const issued = await buildSignedSamlResponse({
         requestId: request.id,
         acsUrl: provider.acsUrl,
@@ -150,6 +159,7 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
         subject: { nameId: email, sessionId: sessionUserId(session), authenticatedAt },
         signing,
         lifetimeSeconds: policy ? policyTtlSeconds(policy, 5 * 60) : undefined,
+        attributes: attributes.length > 0 ? attributes : undefined,
       });
       await recordAppIssuance(
         context.env,
@@ -238,6 +248,12 @@ type SamlSession = Awaited<ReturnType<ReturnType<typeof createAuth>["api"]["getS
 function sessionUserId(session: NonNullable<SamlSession>): string {
   const inner = (session as { session?: { id?: unknown } }).session;
   return typeof inner?.id === "string" && inner.id.length > 0 ? inner.id : crypto.randomUUID();
+}
+
+/** The switch context is keyed by the raw session token. */
+function protocolSessionToken(session: NonNullable<SamlSession>): string | null {
+  const inner = (session as { session?: { token?: unknown } }).session;
+  return typeof inner?.token === "string" && inner.token.length > 0 ? inner.token : null;
 }
 
 export function expectedSsoDestination(env: Env): string {

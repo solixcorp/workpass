@@ -12,6 +12,8 @@ import { validateFingerprintConfig } from "../security/fingerprint";
 import { revokeTrustedDevices } from "../security/trusted-device-store";
 import { tokenExchangeExtension } from "../token/grant";
 import { backchannelFailureEvent } from "../oidc/logout-logging";
+import { jwtPayloadRelease } from "../claims/protocol-claims";
+import { claimReleaseExtension } from "../claims/extension";
 
 export type AuthInstance = ReturnType<typeof createAuth>;
 
@@ -80,7 +82,16 @@ export function createAuth(env: Env) {
         roles: { admin: adminAc, user: userAc },
       }),
       jwt({
-        jwt: { issuer: `${baseURL}/api/auth` },
+        jwt: {
+          issuer: `${baseURL}/api/auth`,
+          // The plugin replaces the payload wholesale: keep the built-in
+          // entire-user-object behavior and add the released claims
+          // (active account, user attributes) on top. Fails closed on flags.
+          definePayload: async ({ user, session }) =>
+            await jwtPayloadRelease(env, { user, session } as { user: { id: string } } & Record<string, unknown>),
+        },
+        // `jwks` is a top-level jwt-plugin option (sibling of `jwt:`) —
+        // nesting it inside `jwt:` silently falls back to EdDSA signing.
         jwks: { keyPairConfig: { alg: "ES256" } },
       }),
       passkey({ rpID: authBaseUrl.hostname, rpName: "Internal Auth" }),
@@ -130,7 +141,12 @@ export function createAuth(env: Env) {
         clientRegistrationAllowedResources: resourceSeedIdentifiers(parseResourceSeed(env.OAUTH_RESOURCES)),
         // RFC 8693 token exchange is opt-in; the extension enforces an explicit
         // client→resource allowlist and denies everything by default.
-        extensions: env.ENABLE_TOKEN_EXCHANGE === "true" ? [tokenExchangeExtension(env)] : [],
+        // The claim-release extension is registered always; its helpers fail
+        // closed on the operator flags.
+        extensions: [
+          ...(env.ENABLE_TOKEN_EXCHANGE === "true" ? [tokenExchangeExtension(env)] : []),
+          claimReleaseExtension(env),
+        ],
       }),
     ],
   });

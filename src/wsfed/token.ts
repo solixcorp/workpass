@@ -38,6 +38,13 @@ export interface WsfedSignInParams {
   identity: { nameId: string };
   signing: WsfedSigningMaterial;
   now?: Date;
+  /**
+   * Attribute release (active account, custom user attributes), built with
+   * `samlAttributeRelease` and delivered in a SAML 1.1 AttributeStatement.
+   * The namespace prefixes every attribute name; values are simple strings.
+   * Omitted when claim release is disabled or nothing matches.
+   */
+  attributeRelease?: { namespace: string; attributes: Array<{ name: string; value: string }> };
 }
 
 function formatSaml11Instant(date: Date): string {
@@ -52,6 +59,31 @@ function generateId(prefix: string): string {
 }
 
 /**
+ * Build the SAML 1.1 attribute statement for released claims. Every
+ * attribute lives in the release namespace and carries an escaped simple
+ * string value; callers pass attributes already sorted by name so the built
+ * bytes stay canonical.
+ */
+function buildAttributeStatement(release: NonNullable<WsfedSignInParams["attributeRelease"]>): string {
+  if (release.attributes.length === 0) return "";
+  const entries = [...release.attributes].sort((left, right) => left.name.localeCompare(right.name));
+  return (
+    `<saml:AttributeStatement>` +
+    `<saml:Subject>` +
+    `<saml:SubjectConfirmation><saml:ConfirmationMethod>urn:oasis:names:tc:SAML:1.0:cm:bearer</saml:ConfirmationMethod></saml:SubjectConfirmation>` +
+    `</saml:Subject>` +
+    entries
+      .map((attribute) =>
+        `<saml:Attribute AttributeNamespace="${escapeSamlAttribute(release.namespace)}" AttributeName="${escapeSamlAttribute(attribute.name)}">` +
+        `<saml:AttributeValue>${escapeSamlText(attribute.value)}</saml:AttributeValue>` +
+        `</saml:Attribute>`,
+      )
+      .join("") +
+    `</saml:AttributeStatement>`
+  );
+}
+
+/**
  * Build and sign the complete RequestSecurityTokenResponse (wresult). The
  * assertion carries the enveloped signature over the assertion minus the
  * Signature element, exactly like the SAML 2.0 builder.
@@ -62,12 +94,14 @@ export async function buildWsfedSignInResult(params: WsfedSignInParams): Promise
   const notBefore = formatSaml11Instant(new Date(now.getTime() - 30_000));
   const notOnOrAfter = formatSaml11Instant(new Date(now.getTime() + 5 * 60_000));
   const assertionId = generateId("id");
+  const attributeStatement = params.attributeRelease ? buildAttributeStatement(params.attributeRelease) : "";
 
   const coreAssertion =
     `<saml:Assertion xmlns:saml="${SAML11_URN}" AssertionID="${assertionId}" IssueInstant="${issueInstant}" Issuer="${escapeSamlAttribute(params.signing.entityId)}" MajorVersion="1" MinorVersion="1">` +
     `<saml:Conditions NotBefore="${notBefore}" NotOnOrAfter="${notOnOrAfter}">` +
     `<saml:AudienceRestrictionCondition><saml:Audience>${escapeSamlText(params.realm)}</saml:Audience></saml:AudienceRestrictionCondition>` +
     `</saml:Conditions>` +
+    attributeStatement +
     `<saml:AuthenticationStatement AuthenticationInstant="${issueInstant}" AuthenticationMethod="${PASSWORD_METHOD_URN}">` +
     `<saml:Subject>` +
     `<saml:NameIdentifier Format="${NAMEID_EMAIL_URN}">${escapeSamlText(params.identity.nameId)}</saml:NameIdentifier>` +
