@@ -47,7 +47,9 @@ app.route("/", wsfedProtocolRoutes);
 app.route("/", consentRoutes);
 app.route("/", oidcSignInRoutes);
 app.route("/", swaUserRoutes);
-app.route("/", mfaRoutes);
+// The MFA sub-router declares /mfa/... paths; the public surface is /api/mfa/...,
+// matching every caller, audit record, and document.
+app.route("/api", mfaRoutes);
 app.route("/.well-known", webfingerRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin", bootstrapRoutes);

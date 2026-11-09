@@ -18,6 +18,12 @@ CLIENT_REGISTRATION_TOKEN=
 ENABLE_SCIM_PROVISIONING=false
 # Dev-only: permits an http://127.0.0.1|localhost SCIM target for local transport
 # verification. Never enable in production; production targets stay https-only.
+# Sealed storage: sensitive material at rest (e.g. hardware OTP token
+# secrets) is XChaCha20-Poly1305-sealed. The key is 32 bytes, base64; the
+# cipher is xchacha20poly1305 (the configurable, only current, choice).
+# Generate one with:  bun -e "console.log(btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))))"
+AEAD_SEALING_KEY=
+SEALED_STORAGE_CIPHER=xchacha20poly1305
 # Inbound SCIM (RFC 7644): workforce systems provision users INTO this
 # platform over bearer-token-protected /scim/v2 endpoints. Token must be
 # >= 32 bytes; provisioned users carry no credential.

@@ -60,3 +60,21 @@ The following wrangler.jsonc platform settings are in force; verify them at depl
   also pass-through-safe on workers.dev. **Key rotation note:** after rotating
   the SAML signing secret, SP metadata refreshes within 60 s; force a refresh
   immediately `cache.delete` by requesting metadata once after deployment.
+
+## Credential & storage protection posture (2026-11)
+
+- Transport: TLS 1.3 terminates at the edge; credential payloads (passwords,
+  session cookies, bearer tokens) must never be transmitted unencrypted and
+  the Worker must not be served without HTTPS routes.
+- Passwords: hashed scrypt via Better Auth — never stored or logged plaintext
+  and never reversible.
+- Material at rest in D1 is XChaCha20-Poly1305 sealed (`src/crypto/sealed.ts`
+  via @noble/ciphers, audited dependency-free, workerd-verified): currently
+  hardware OTP token secrets (envelope `v1.<nonce>.<payload>`). Requires
+  `AEAD_SEALING_KEY` (32 bytes, base64) + `SEALED_STORAGE_CIPHER`
+  (xchacha20poly1305). Fail-closed: without the key, sealing operations abort
+  instead of storing plaintext. Legacy plaintext rows lazily re-seal on first successful use.
+- MFA sub-router is mounted under /api (`app.route("/api", mfaRoutes)`);
+  /api/mfa/* endpoints return 401 (not 404) without a session.
+- HOTP secrets are canonical RFC 4648 base32 (32 chars for a 20-byte key) so
+  hardware tokens can load them; verification decodes canonically.

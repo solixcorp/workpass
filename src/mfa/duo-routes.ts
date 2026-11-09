@@ -10,6 +10,7 @@ import { createAuth } from "../auth/config";
 import type { Env } from "../env";
 import { auditStandaloneOperation } from "../audit/store";
 import { duoAuthCall, duoConfig } from "./duo";
+import { sealString } from "../crypto/sealed";
 import { generateHotpSecret, hotpVerify, userHasHotpToken } from "./hotp";
 
 
@@ -59,10 +60,11 @@ mfaRoutes.post("/mfa/hotp/enroll", async (context) => {
   const label = typeof value.label === "string" && value.label.length > 0 && value.label.length <= 64 ? value.label : "";
   if (label.length === 0) return context.json({ error: "The hardware token enrollment cannot be processed" }, 400);
   const secret = await generateHotpSecret();
+  const sealedSecret = await sealString(context.env, secret, `mfa_hotp_token:${session.user.id}`);
   const id = crypto.randomUUID();
   await context.env.DB.prepare(
     "INSERT INTO mfa_hotp_tokens (id, user_id, label, secret_base32, counter, created_at) VALUES (?, ?, ?, ?, 0, ?)",
-  ).bind(id, session.user.id, label, secret, new Date().toISOString()).run();
+  ).bind(id, session.user.id, label, sealedSecret, new Date().toISOString()).run();
   return auditStandaloneOperation(context.env, "mfa.hotp.enroll", "/api/mfa/hotp/enroll", async () => ({
     response: Response.json({ tokenId: id, label, secretBase32: secret }, { status: 201 }),
     actorUserId: session.user.id,
@@ -89,7 +91,9 @@ mfaRoutes.post("/mfa/hotp/verify", async (context) => {
   });
 });
 
-// The admin-facing second-factor check used by the SSO routes.
+// The admin-facing second-factor check used by the SSO routes; SAML and
+// WS-Fed call the shared userSatisfiesRequireMfa helper directly
+// (src/mfa/second-factor.ts).
 mfaRoutes.get("/mfa/second-factor", async (context) => {
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);
@@ -98,19 +102,3 @@ mfaRoutes.get("/mfa/second-factor", async (context) => {
   return context.json({ secondFactor: twoFactorEnabled || hotp, via: twoFactorEnabled ? "better-auth" : hotp ? "hardware-otp" : null });
 });
 
-
-/** Does the acting user satisfy a requireMfa policy? A TOTP/OTP enrollment or an enrolled hardware OTP token counts. */
-async function userSatisfiesRequireMfa(env: Env, userId: string, twoFactorEnabled: boolean): Promise<boolean> {
-  if (twoFactorEnabled) return true;
-  return userHasHotpToken(env, userId);
-}
-
-export const secondFactorCheckRoutes = new Hono<{ Bindings: Env }>();
-
-secondFactorCheckRoutes.get("/mfa/second-factor", async (context) => {
-  const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.json({ error: "Unauthorized" }, 401);
-  const twoFactorEnabled = session.user.twoFactorEnabled === true;
-  const hotp = await userHasHotpToken(context.env, session.user.id);
-  return context.json({ secondFactor: twoFactorEnabled || hotp, via: twoFactorEnabled ? "better-auth" : hotp ? "hardware-otp" : null });
-});

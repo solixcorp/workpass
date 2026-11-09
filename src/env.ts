@@ -30,6 +30,10 @@ export interface Env {
   SAML_IDP_PREVIOUS_SIGNING_PRIVATE_KEY?: string;
   MFA_OTP_EMAIL_WEBHOOK_URL?: string;
   MFA_SMS_WEBHOOK_URL?: string;
+  /** Sealed-storage AEAD key: 32 bytes, base64-encoded. */
+  AEAD_SEALING_KEY?: string;
+  /** Cipher for sealed storage; defaults to xchacha20poly1305 (the only one). */
+  SEALED_STORAGE_CIPHER?: string;
   RESEND_API_KEY?: string;
   MFA_OTP_EMAIL_FROM?: string;
   DUO_IKEY?: string;

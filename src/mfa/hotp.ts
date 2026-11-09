@@ -5,6 +5,7 @@
  * small counter lookahead window (replay-safe by counter advancement).
  */
 
+import { looksSealed, sealString, unsealString } from "../crypto/sealed";
 import type { Env } from "../env";
 
 const HOTP_LOOKAHEAD = 5;
@@ -25,7 +26,8 @@ function base32Decode(value: string): Uint8Array {
       bits -= 8;
     }
   }
-  if (bits > 0) output.push((accumulator << (8 - bits)) & 0xff);
+  // Trailing bits (< 8) are an encoding artifact of non-canonical values, not
+  // secret material; dropping them matches reference decoders (RFC 4648).
   return new Uint8Array(output);
 }
 
@@ -51,9 +53,19 @@ function hotpCode(secret: Uint8Array, counter: number): Promise<string> {
 
 export function generateHotpSecret(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(20));
+  // RFC 4648 base32 (unpadded): 20 bytes = 160 bits = exactly 32 characters.
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   let out = "";
-  for (const byte of bytes) out += alphabet[byte & 31]!;
+  let accumulator = 0;
+  let bits = 0;
+  for (const byte of bytes) {
+    accumulator = (accumulator << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += alphabet[(accumulator >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
   return out;
 }
 
@@ -64,10 +76,29 @@ export async function hotpVerify(env: Env, userId: string, code: string): Promis
   ).bind(userId).all<{ id: string; secretB32: string; counter: number }>();
   let secret: Uint8Array | null = null;
   for (const row of rows.results) {
+    // Sealed envelopes open with the per-user AAD; legacy plaintext rows are
+    // lazily migrated on the first successful use and re-sealed immediately.
+    let secretB32: string;
     try {
-      secret = base32Decode(row.secretB32);
+      secretB32 = looksSealed(row.secretB32)
+        ? await unsealString(env, row.secretB32, `mfa_hotp_token:${userId}`)
+        : row.secretB32;
     } catch {
       continue;
+    }
+    try {
+      secret = base32Decode(secretB32);
+    } catch {
+      continue;
+    }
+    if (!looksSealed(row.secretB32)) {
+      try {
+        const sealed = await sealString(env, secretB32, `mfa_hotp_token:${userId}`);
+        await env.DB.prepare("UPDATE mfa_hotp_tokens SET secret_base32 = ? WHERE id = ? AND user_id = ?")
+          .bind(sealed, row.id, userId).run();
+      } catch {
+        // Migration is best-effort; verification still proceeds this request.
+      }
     }
     if (!secret) continue;
     for (let offset = 0; offset <= HOTP_LOOKAHEAD; offset += 1) {
