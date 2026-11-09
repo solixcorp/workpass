@@ -65,6 +65,39 @@ samlAdminRoutes.post("/saml-service-providers/:id/disable", async (context) => {
   return setProviderEnabled(context, false, "saml.service_provider.disable");
 });
 
+samlAdminRoutes.delete("/saml-service-providers/:id", async (context) => {
+  const id = context.req.param("id");
+  if (!id || id.length > 128) return context.json({ error: "Invalid service provider" }, 400);
+  const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
+  if (!session) return context.json({ error: "Unauthorized" }, 401);
+  const role = (session.user as typeof session.user & { role?: unknown }).role;
+  if (!(typeof role === "string" && role.split(",").includes("admin"))) {
+    return context.json({ error: "Forbidden" }, 403);
+  }
+  if (context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
+    return context.json({ error: "Invalid origin" }, 403);
+  }
+  return auditStandaloneOperation(context.env, "saml.service_provider.delete", `/api/admin/saml-service-providers/${id}/delete`, async () => {
+    // A disabled registration can be removed outright; an enabled one must be
+    // disabled first so its retirement is a deliberate two-step action.
+    const provider = await getSamlServiceProvider(context.env, id);
+    if (!provider) return { response: Response.json({ error: "Service provider not found" }, { status: 404 }), actorUserId: session.user.id };
+    if (provider.enabled) {
+      return { response: Response.json({ error: "Disable the service provider before deleting it" }, { status: 409 }), actorUserId: session.user.id, targetUserId: id };
+    }
+    const removed = await context.env.DB.prepare(
+      "DELETE FROM saml_service_providers WHERE id = ? AND enabled = 0",
+    ).bind(id).run();
+    return {
+      response: removed.meta.changes === 1
+        ? Response.json({ deleted: true })
+        : Response.json({ error: "Service provider not found or enabled" }, { status: 409 }),
+      actorUserId: session.user.id,
+      targetUserId: id,
+    };
+  });
+});
+
 samlAdminRoutes.post("/saml-service-providers", async (context) => {
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);

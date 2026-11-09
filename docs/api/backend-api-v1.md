@@ -145,6 +145,7 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 ### SAML and SCIM preparation
 
 - `POST /api/admin/saml-service-providers` registers an SP configuration in a disabled state; administrators supply `entityId`, `acsUrl` and `signingCertificate`. Requires an administrator session, exact configured `Origin`, and application schema migration. This does not enable SAML sign-in.
+- `DELETE /api/admin/saml-service-providers/{id}` removes a disabled registration; an enabled one must be disabled first (409 otherwise). Administrator session, exact `Origin`, audited.
 - `GET /api/admin/saml-service-providers/{id}` retrieves an SP registration for an administrator. Certificate syntax is checked but X.509 validity and interoperability are not yet verified.
 - `GET /api/admin/saml-service-providers` lists registrations with optional `limit` (1–100) and `cursor`; the list omits certificates.
 - `GET /api/admin/scim-operations/{id}` retrieves one outbound operation journal entry for an administrator.
