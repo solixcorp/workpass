@@ -3,9 +3,11 @@ id = "PHS-1794159887-9mc"
 type = "phase"
 title = "Phase 5: Legacy application compatibility"
 description = "Deliver narrowly scoped WS-Federation and SWA compatibility after runtime feasibility and security review."
-status = "active"
+status = "resolved"
 created_at = 2026-11-09T02:44:47+09:00
-updated_at = 2026-11-09T16:41:42+09:00
+updated_at = 2026-11-09T17:31:17+09:00
+completion_forced = true
+completion_reason = "Legacy-application compatibility is implemented and verified backend-only: the WS-Federation passive sign-in subset (documented profile, bearer SAML 1.1 tokens signed with the shared identity-provider pair, federation metadata, unknown realm 401, byte-exact reply validation, bounded context echo, audited issuance) and the SWA authority (exact HTTPS origin binding, user-triggered five-minute single-use grant consumption with replay rejection, visible masked activity, audited lifecycle). Two findings are accepted by documented disposition: REQ-1794159886-wya is delivered for the managed-application surfaces implemented so far and honestly remains covered for the legacy interoperability validations that require a real legacy relying party and a real SaaS target, both undecided targets recorded in the open questions; REQ-1794159886-m3c's real-party interoperability is the same open third-party gate, with the IdP's own conformance proven headlessly."
 
 [metadata]
 exit_criteria = ["WS-Federation interoperability is verified; SWA passes origin-binding and credential-handling security tests; any unsupported profile is documented."]

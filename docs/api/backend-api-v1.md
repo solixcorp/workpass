@@ -138,6 +138,12 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 
 ## Database initialization
 
+### SWA applications
+
+- `POST /api/admin/swa-applications` registers a Secure Web Authentication application with `{name, origin}`; the origin binds an exact HTTPS origin (no path, credentials, query or fragment) and registrations start disabled. Administrator session, exact `Origin`, audited.
+- `GET /api/admin/swa-applications` lists applications; `GET /api/admin/swa-applications/{id}/grants` returns the visible activity view (masked nonces, consumed flags).
+- `POST /api/swa/grants` issues a five-minute single-use grant for the acting user at an exact registered, enabled origin; `POST /api/swa/exchange` consumes the nonce atomically once (replays, foreign users, and expired or unknown nonces reject), returning the attestation. The IdP never accepts, stores or logs application credentials; capture stays with the user agent.
+
 ### Directory groups
 
 - `POST /api/admin/directory-groups` creates a first-party group with `{name, description?}`; names are 1-64 characters from `[A-Za-z0-9_.-]` and unique. 201 with the group, 409 on a duplicate name. Administrator session and exact `Origin` required; audited.

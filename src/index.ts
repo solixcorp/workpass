@@ -11,6 +11,7 @@ import { cleanupSamlRequestClaims } from "./saml/request-claims";
 import { samlProtocolRoutes } from "./saml/protocol-routes";
 import { wsfedProtocolRoutes } from "./wsfed/routes";
 import { consentRoutes } from "./oidc/consent";
+import { swaUserRoutes } from "./swa/routes";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -40,6 +41,7 @@ app.route("/", authRoutes);
 app.route("/", samlProtocolRoutes);
 app.route("/", wsfedProtocolRoutes);
 app.route("/", consentRoutes);
+app.route("/", swaUserRoutes);
 app.route("/.well-known", webfingerRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin", bootstrapRoutes);
