@@ -1,0 +1,182 @@
+/**
+ * Administrator routes for the application registry: application lifecycle
+ * (disabled creation, deliberate enablement) and provider binding. Every
+ * mutation is audited; authorization mirrors the other admin routes.
+ */
+
+import { Hono } from "hono";
+import type { Context } from "hono";
+import type { Env } from "../env";
+import { requireAdministrator } from "../security/authorization";
+import { auditStandaloneOperation } from "../audit/store";
+import {
+  createApplication,
+  deleteApplication,
+  getApplication,
+  listApplications,
+  setApplicationEnabled,
+  updateApplication,
+  validateApplicationInput,
+  validateBindingReference,
+} from "./store";
+
+export const applicationAdminRoutes = new Hono<{ Bindings: Env }>();
+
+applicationAdminRoutes.use("/applications*", async (context, next) => {
+  context.header("Cache-Control", "no-store");
+  await next();
+});
+
+applicationAdminRoutes.get("/applications", async (context) => {
+  const admin = await requireAdministrator(context);
+  if (admin instanceof Response) return admin;
+  return context.json({ applications: await listApplications(context.env) });
+});
+
+applicationAdminRoutes.get("/applications/:slug", async (context) => {
+  const admin = await requireAdministrator(context);
+  if (admin instanceof Response) return admin;
+  const application = await getApplication(context.env, context.req.param("slug"));
+  if (!application) return applicationNotFound(context);
+  return context.json({ application });
+});
+
+applicationAdminRoutes.post("/applications", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const input = await readInput(context, "create");
+  if (input instanceof Response) return input;
+  return auditStandaloneOperation(context.env, "app.create", "/api/admin/applications", async () => {
+    let application;
+    try {
+      application = await createApplication(context.env, input.input as import("./store").ValidatedApplicationInput, actor.userId);
+    } catch (error) {
+      return badInput(context, actor.userId, error);
+    }
+    if (!application) {
+      return { response: Response.json({ error: "An application with this slug already exists" }, { status: 409 }), actorUserId: actor.userId };
+    }
+    return {
+      response: Response.json({ application }, { status: 201 }),
+      actorUserId: actor.userId,
+      targetUserId: application.slug,
+    };
+  });
+});
+
+applicationAdminRoutes.patch("/applications/:slug", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const slug = context.req.param("slug");
+  const input = await readInput(context, "patch");
+  if (input instanceof Response) return input;
+  return auditStandaloneOperation(context.env, "app.update", context.req.path, async () => {
+    let application;
+    try {
+      // The protocol is immutable: a protocol change would orphan the
+      // stored app:<slug> gate policy and any issued-URL semantics.
+      if (input.input.protocol !== undefined && input.input.protocol !== (await getApplication(context.env, slug))?.protocol) {
+        return { response: Response.json({ error: "protocol is immutable" }, { status: 400 }), actorUserId: actor.userId };
+      }
+      const updates = { ...input.input };
+      delete updates.protocol;
+      delete updates.slug;
+      application = await updateApplication(context.env, slug, updates);
+    } catch (error) {
+      return badInput(context, actor.userId, error);
+    }
+    if (!application) return { response: await applicationNotFound(context), actorUserId: actor.userId };
+    return {
+      response: Response.json({ application }),
+      actorUserId: actor.userId,
+      targetUserId: application.slug,
+    };
+  });
+});
+
+/** Enable/disable: the same two-step lifecycle language as the other registries. */
+applicationAdminRoutes.post("/applications/:slug/enable", async (context) =>
+  await withEnabled(context, "app.enable", true));
+applicationAdminRoutes.post("/applications/:slug/disable", async (context) =>
+  await withEnabled(context, "app.disable", false));
+
+async function withEnabled(
+  context: Context<{ Bindings: Env }>,
+  eventType: string,
+  enabled: boolean,
+): Promise<Response> {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const slug = context.req.param("slug");
+  if (!slug) return context.json({ error: "Application not found" }, 404);
+  return auditStandaloneOperation(context.env, eventType, context.req.path, async () => {
+    const application = await getApplication(context.env, slug);
+    if (!application) return { response: await applicationNotFound(context), actorUserId: actor.userId };
+    const changed = await setApplicationEnabled(context.env, slug, enabled);
+    return {
+      response: changed
+        ? Response.json({ application: { ...application, enabled } })
+        : Response.json({ error: "Application not found" }, { status: 404 }),
+      actorUserId: actor.userId,
+      targetUserId: slug,
+    };
+  });
+}
+
+applicationAdminRoutes.delete("/applications/:slug", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const slug = context.req.param("slug");
+  if (!slug) return context.json({ error: "Application not found" }, 404);
+  return auditStandaloneOperation(context.env, "app.delete", context.req.path, async () => {
+    const existing = await getApplication(context.env, slug);
+    if (!existing) return { response: await applicationNotFound(context), actorUserId: actor.userId };
+    // A backed protocol's enablement stays in its own registry: deleting an
+    // application does not touch the provider registration, only the
+    // dashboard surface.
+    const removed = await deleteApplication(context.env, slug);
+    return {
+      response: removed
+        ? Response.json({ deleted: true })
+        : Response.json({ error: "Application not found" }, { status: 404 }),
+      actorUserId: actor.userId,
+      targetUserId: slug,
+    };
+  });
+});
+
+async function applicationNotFound(context: Context<{ Bindings: Env }>): Promise<Response> {
+  return context.json({ error: "Application not found" }, 404);
+}
+
+function badInput(context: Context<{ Bindings: Env }>, actorUserId: string, error: unknown) {
+  console.error("Application input rejected", {
+    name: error instanceof Error ? error.name : "UnknownError",
+  });
+  return {
+    response: Response.json(
+      { error: error instanceof Error ? error.message : "Invalid application" },
+      { status: 400 },
+    ),
+    actorUserId,
+  };
+}
+
+/** Parse and pre-validate the JSON body once for the audited operation. */
+async function readInput(
+  context: Context<{ Bindings: Env }>,
+  mode: "create" | "patch",
+): Promise<{ input: Partial<import("./store").ValidatedApplicationInput> } | Response> {
+  let body: unknown;
+  try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON body" }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid body" }, 400);
+  try {
+    return { input: await validateApplicationInput(context.env, body as Record<string, unknown>, mode) };
+  } catch (error) {
+    return context.json({ error: error instanceof Error ? error.message : "Invalid application" }, 400);
+  }
+}
+
+// Kept exported for the create path: the binding reference check happens
+// inside createApplication/updateApplication via finalizeProtocol.
+export { validateBindingReference };

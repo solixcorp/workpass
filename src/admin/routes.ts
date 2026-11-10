@@ -11,6 +11,7 @@ import { usageRoutes } from "./usage";
 import { accountAdminRoutes } from "../accounts/admin";
 import { objectAttributeRoutes } from "../objects/attribute-routes";
 import { claimReleasePolicyRoutes } from "../claims/release-policy-routes";
+import { applicationAdminRoutes } from "../applications/admin";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -25,3 +26,4 @@ adminRoutes.route("/", usageRoutes);
 adminRoutes.route("/", accountAdminRoutes);
 adminRoutes.route("/", objectAttributeRoutes);
 adminRoutes.route("/", claimReleasePolicyRoutes);
+adminRoutes.route("/", applicationAdminRoutes);

@@ -419,6 +419,26 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   } catch {
     // Column already present.
   }
+  // Applications: the authentik-style unified registry over every backed
+  // protocol (saml, wsfed, oidc, swa) plus plain bookmark apps (no binding,
+  // launch URL only). Visibility follows the app:<slug> access-policy
+  // subject; nothing configured means every signed-in user sees the app.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS applications (
+      id TEXT PRIMARY KEY NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      protocol TEXT NOT NULL CHECK (protocol IN ('bookmark', 'saml', 'wsfed', 'oidc', 'swa')),
+      binding TEXT,
+      launch_url TEXT,
+      hide_from_dashboard INTEGER NOT NULL DEFAULT 0 CHECK (hide_from_dashboard IN (0, 1)),
+      enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
   // Account invitations: opaque single-use join tokens created by the admin
   // surface and redeemed by a signed-in user (see docs/design/multi-accounts.md).
   await env.DB.prepare(

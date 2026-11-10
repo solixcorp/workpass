@@ -218,6 +218,12 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 - Outbound SCIM release, `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: `create` and `update` operations on `/api/admin/scim-operations` deliver the user's custom attributes to the target as the same extension (`update` as a path-scoped PATCH operation; `deactivate` never carries profile data). Fail-closed default; a deliberate per-target operator decision.
 - Attribute changes are self-propagating: writes through the attributes admin API and inbound SCIM queue an `update` operation for users already mapped to the configured target (single-active-op constraint respected), and the daily Worker Cron drains pending SCIM operations through the same executor the admin route uses — so attribute edits reach targets without a manual trigger. There is no separate webhook surface for attribute events yet.
 
+### Applications (bookmarks and protocol-backed apps)
+
+- A unified application registry (authentik-style): plain bookmark apps (launch URL only) and backed protocol apps referencing a registered provider (SAML SP entity id, WS-Fed realm, OIDC client id, SWA origin — binding integrity validated at write time).
+- `POST /api/admin/applications` (`{slug, name, protocol, binding?, launchUrl?, hideFromDashboard?}`, created disabled; 409 on a duplicate slug), `GET` list/detail, `PATCH {slug}` (protocol immutable), `POST .../enable|disable`, `DELETE {slug}` (removes the dashboard surface only, never the provider registration). Administrator session + exact `Origin` for writes; audited (`app.create`, `app.update`, `app.enable`, `app.disable`, `app.delete`).
+- `GET /api/applications` (session-gated, no-store) lists enabled, not-hidden applications the user passes, ordered by name. Visibility follows the `app:<slug>` access-policy subject — no policy row means every signed-in user sees the app (authentik's empty-binding default); group bindings, the per-account gate and temporal grants apply through the same engine. See docs/design/applications.md.
+
 ### Access requests (just-in-time application access)
 
 Requests let a user ask for time-limited access to an application instead of an administrator editing access-policy groups; approval grants expire automatically (see docs/design/access-requests.md). Policy subjects are the same protocol-qualified strings as app-access policies.
