@@ -99,3 +99,12 @@ export function summarize(policy: Policy): string {
       return String(c.expression ?? '').split('\n')[0]!.slice(0, 80)
   }
 }
+
+export type Transport = { kind: 'webhook'; url: string } | { kind: 'email'; to: string }
+
+export type NotificationRule = {
+  id: string
+  name: string
+  transports: Transport[]
+  enabled: boolean
+}

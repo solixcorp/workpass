@@ -22,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ApiError, apiFetch } from '@/lib/api'
 import { summarize, TARGET_INFO, TYPE_INFO, type Binding, type Policy } from '@/lib/policies'
 import { BindingDialog } from './policy-binding-dialog'
+import { NotificationRules } from './notification-rules'
 import { PolicyDialog } from './policy-dialog'
 
 const policiesKey = ['admin', 'policies'] as const
@@ -33,6 +34,7 @@ export function PoliciesPage() {
       <h1 className="text-2xl font-semibold">정책</h1>
       <PolicyList />
       <BindingList />
+      <NotificationRules />
     </div>
   )
 }

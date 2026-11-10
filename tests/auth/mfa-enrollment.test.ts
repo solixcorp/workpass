@@ -247,6 +247,26 @@ describe("second-factor enrollment", () => {
     expect((await call(`/api/admin/policies/${policy.id}`, { method: "DELETE" })).status).toBe(200);
   });
 
+  test("notification rules: validate transports, reject duplicates, list and delete", async () => {
+    const path = "/api/admin/notification-rules";
+    const make = (body: unknown) => call(path, { method: "POST", body });
+    expect((await make({ name: "bad name!", transports: [{ kind: "email", to: "a@example.com" }] })).status).toBe(400);
+    expect((await make({ name: "alerts", transports: [] })).status).toBe(400);
+    expect((await make({ name: "alerts", transports: [{ kind: "webhook", url: "http://insecure.example.com" }] })).status).toBe(400);
+
+    const created = await make({ name: "alerts", transports: [{ kind: "email", to: "sec@example.com" }, { kind: "webhook", url: "https://hooks.example.com/x" }] });
+    expect(created.status).toBe(201);
+    const rule = (await created.json() as any).rule;
+    expect((await make({ name: "alerts", transports: [{ kind: "email", to: "b@example.com" }] })).status).toBe(409);
+
+    const listed = (await (await call(path)).json() as any).rules;
+    expect(listed.map((r: any) => r.name)).toEqual(["alerts"]);
+    expect(listed[0].transports).toHaveLength(2);
+
+    expect((await call(`${path}/${rule.id}`, { method: "DELETE" })).status).toBe(200);
+    expect((await call(`${path}/${rule.id}`, { method: "DELETE" })).status).toBe(404);
+  });
+
   test("an administrator can attach a hardware token seed for a user", async () => {
     const me = await (await call("/api/auth/get-session")).json() as any;
     const bad = await call(`/api/admin/users/${me.user.id}/mfa/hotp`, { method: "POST", body: { label: "x", secretBase32: "short" } });
