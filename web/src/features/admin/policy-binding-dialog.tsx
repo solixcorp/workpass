@@ -18,6 +18,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { ApiError, apiFetch } from '@/lib/api'
 import { TARGET_INFO, type BindingTarget, type Policy } from '@/lib/policies'
+import { useNotificationRules } from './notification-rules'
 
 export function BindingDialog({
   open,
@@ -36,6 +37,8 @@ export function BindingDialog({
   const [negate, setNegate] = useState(false)
   const [failOpen, setFailOpen] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+
+  const rules = useNotificationRules(open && target === 'notification_rule')
 
   const create = useMutation({
     mutationFn: () =>
@@ -103,16 +106,42 @@ export function BindingDialog({
             </Field>
             <Field>
               <FieldLabel htmlFor="binding-ref">대상</FieldLabel>
-              <Input
-                id="binding-ref"
-                autoComplete="off"
-                spellCheck={false}
-                className="font-mono"
-                placeholder={TARGET_INFO[target].refHint}
-                value={targetRef}
-                onChange={(event) => setTargetRef(event.target.value)}
-              />
-              <FieldDescription>{TARGET_INFO[target].refHint}</FieldDescription>
+              {target === 'notification_rule' ? (
+                <>
+                  <Select value={targetRef} onValueChange={setTargetRef}>
+                    <SelectTrigger id="binding-ref" className="w-full">
+                      <SelectValue placeholder={rules.isPending ? '불러오는 중…' : '알림 규칙 선택'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {(rules.data ?? []).map((rule) => (
+                          <SelectItem key={rule.id} value={rule.id}>
+                            {rule.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>
+                    {rules.data?.length === 0
+                      ? '알림 규칙이 없습니다. 아래 "알림 규칙"에서 먼저 만드세요.'
+                      : '이벤트가 정책에 맞을 때 알릴 규칙을 고릅니다.'}
+                  </FieldDescription>
+                </>
+              ) : (
+                <>
+                  <Input
+                    id="binding-ref"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="font-mono"
+                    placeholder={TARGET_INFO[target].refHint}
+                    value={targetRef}
+                    onChange={(event) => setTargetRef(event.target.value)}
+                  />
+                  <FieldDescription>{TARGET_INFO[target].refHint}</FieldDescription>
+                </>
+              )}
             </Field>
             <Field>
               <FieldLabel htmlFor="binding-policy">정책</FieldLabel>

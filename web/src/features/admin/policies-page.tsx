@@ -22,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ApiError, apiFetch } from '@/lib/api'
 import { summarize, TARGET_INFO, TYPE_INFO, type Binding, type Policy } from '@/lib/policies'
 import { BindingDialog } from './policy-binding-dialog'
-import { NotificationRules } from './notification-rules'
+import { NotificationRules, useNotificationRules } from './notification-rules'
 import { PolicyDialog } from './policy-dialog'
 
 const policiesKey = ['admin', 'policies'] as const
@@ -174,6 +174,7 @@ function BindingList() {
     queryKey: bindingsKey,
     queryFn: async () => (await apiFetch<{ bindings: Binding[] }>('/api/admin/policy-bindings')).bindings,
   })
+  const rules = useNotificationRules()
   const [open, setOpen] = useState(false)
 
   const toggle = useMutation({
@@ -231,7 +232,11 @@ function BindingList() {
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-medium">{TARGET_INFO[binding.target]?.label ?? binding.target}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{binding.targetRef}</span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {binding.target === 'notification_rule'
+                          ? (rules.data?.find((rule) => rule.id === binding.targetRef)?.name ?? binding.targetRef)
+                          : binding.targetRef}
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell>

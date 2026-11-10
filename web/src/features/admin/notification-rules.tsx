@@ -25,15 +25,20 @@ import type { NotificationRule, Transport } from '@/lib/policies'
 
 const rulesKey = ['admin', 'notification-rules'] as const
 
+export function useNotificationRules(enabled = true) {
+  return useQuery({
+    queryKey: rulesKey,
+    enabled,
+    queryFn: async () => (await apiFetch<{ rules: NotificationRule[] }>('/api/admin/notification-rules')).rules,
+  })
+}
+
 type Row = { kind: 'webhook' | 'email'; value: string }
 
 /** Where an event notification goes. Which events trigger it is set by binding an event-matcher policy. */
 export function NotificationRules() {
   const queryClient = useQueryClient()
-  const { data, isPending, error } = useQuery({
-    queryKey: rulesKey,
-    queryFn: async () => (await apiFetch<{ rules: NotificationRule[] }>('/api/admin/notification-rules')).rules,
-  })
+  const { data, isPending, error } = useNotificationRules()
   const [open, setOpen] = useState(false)
 
   const remove = useMutation({
@@ -51,8 +56,8 @@ export function NotificationRules() {
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-medium text-muted-foreground">알림 규칙</h2>
           <p className="text-sm text-muted-foreground">
-            알릴 곳(웹훅, 이메일)을 정합니다. 어떤 이벤트에 알릴지는 위에서 "이벤트 매처" 정책을 만들고, 연결 추가에서 검사할 때를
-            "알림 규칙"으로, 대상을 이 규칙의 ID로 지정해 연결합니다.
+            알릴 곳(웹훅, 이메일)을 정합니다. 어떤 이벤트에 알릴지는 위에서 "이벤트 매처" 정책을 만든 뒤, 연결 추가에서 검사할 때를
+            "알림 규칙"으로 하고 이 규칙을 골라 연결합니다.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
