@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794273531-aef"
+type = "interface"
+title = "Policy CRUD, bindings, and event notification rule APIs"
+description = "Admin: /api/admin/policies (typed CRUD), /api/admin/policy-bindings (targets, order, mode, negate, failure-result, direct user/group binds), /api/admin/notification-rules. Events listing accepts an AKQL search parameter."
+status = "draft"
+created_at = 2026-11-10T10:18:51+09:00
+updated_at = 2026-11-10T10:18:51+09:00
+
+[metadata]
+kind = "http"
+
+[[relations]]
+to = "REQ-1794273531-yrx"
+type = "implements"

@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794273531-2mx"
+type = "criterion"
+title = "Bound policies gate their surfaces end to end"
+status = "draft"
+created_at = 2026-11-10T10:18:51+09:00
+updated_at = 2026-11-10T10:18:51+09:00
+
+[metadata]
+given = "Policies bound to applications, the login pipeline, password entry, user writes, or notification rules"
+then = "Failure of a bound non-negated policy blocks the action (or the rule dispatch) with collected messages, and every check is covered by tests"
+when = "A login, password set/change, user write, authorization, or audit event occurs"

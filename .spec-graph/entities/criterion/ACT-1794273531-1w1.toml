@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794273531-1w1"
+type = "criterion"
+title = "Event matcher and AKQL work against audit events"
+status = "draft"
+created_at = 2026-11-10T10:18:51+09:00
+updated_at = 2026-11-10T10:18:51+09:00
+
+[metadata]
+given = "An audit event with client_ip and event context recorded"
+then = "The outcome reflects document-compatible AKQL operator semantics and the tamper hash covers the new fields"
+when = "An event matcher policy (fields or AKQL query) evaluates it"
