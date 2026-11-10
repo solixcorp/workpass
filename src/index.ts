@@ -22,6 +22,7 @@ import { consentRoutes } from "./pages/consent";
 import { oidcSignInRoutes } from "./pages/sign-in";
 import { swaUserRoutes } from "./swa/routes";
 import { mfaRoutes } from "./mfa/duo-routes";
+import { mfaEnrollRoutes } from "./mfa/enroll-routes";
 import { opaqueRoutes } from "./auth/opaque-routes";
 import { idxRoutes } from "./auth/idx-routes";
 import { workpassRoutes } from "./auth/workpass-routes";
@@ -110,6 +111,7 @@ app.route("/", swaUserRoutes);
 // The MFA sub-router declares /mfa/... paths; the public surface is /api/mfa/...,
 // matching every caller, audit record, and document.
 app.route("/api", mfaRoutes);
+app.route("/api", mfaEnrollRoutes);
 // OPAQUE sessions issue only after the login gate (banned accounts and the
 // shared device-risk pipeline) passes; see src/auth/opaque-login.ts.
 app.route("/", opaqueRoutes);

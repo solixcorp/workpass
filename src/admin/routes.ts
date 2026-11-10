@@ -15,6 +15,7 @@ import { notificationRuleRoutes } from "../policies/notification-routes";
 import { claimReleasePolicyRoutes } from "../claims/release-policy-routes";
 import { applicationAdminRoutes } from "../applications/admin";
 import { settingsRoutes } from "../settings/routes";
+import { mfaAdminRoutes } from "../mfa/admin-routes";
 import { passwordRulesRoutes } from "../policies/password-rules-routes";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
@@ -35,3 +36,4 @@ adminRoutes.route("/", claimReleasePolicyRoutes);
 adminRoutes.route("/", applicationAdminRoutes);
 adminRoutes.route("/", settingsRoutes);
 adminRoutes.route("/", passwordRulesRoutes);
+adminRoutes.route("/", mfaAdminRoutes);
