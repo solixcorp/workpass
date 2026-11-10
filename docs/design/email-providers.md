@@ -60,6 +60,18 @@ Adding a provider: implement the `MailProvider` interface in
 variables to `src/env.ts` and this document, and cover its request shape in
 `tests/mail-providers.test.ts`.
 
+## Private CA / custom TLS certificates (not supported)
+
+authentik-style "SMTP server with TLS verification" — mounting a private CA
+bundle and pointing `SSL_CERT_FILE` at it — is not available on this
+platform. Workers have no mountable filesystem, and the `cloudflare:sockets`
+TLS layer validates against the platform's built-in public root CAs only:
+there is no option to inject a custom CA or skip verification. Connecting to
+an SMTP server whose certificate is signed by a private CA fails at TLS
+validation. Deployments that need such a relay should point `MAIL_SMTP_*` at
+a hop with a publicly trusted certificate (or deliberately choose
+`MAIL_SMTP_SECURE=false` for a credential-less internal-network relay).
+
 ## Operations notes
 
 - Providers verify sender-domain ownership out of band (Resend domain, SES
