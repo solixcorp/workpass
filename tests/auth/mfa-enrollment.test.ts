@@ -159,6 +159,30 @@ describe("second-factor enrollment", () => {
     expect(enable.status).toBe(200);
   });
 
+  test("administrator user actions: role, sessions and deactivation reach the account", async () => {
+    // A second account to act on.
+    const created = await (await call("/api/admin/users", { method: "POST", body: { email: "target@mfa.test", name: "Target", sendEmail: false } })).json() as any;
+    const targetId = created.user.id as string;
+
+    expect((await call("/api/auth/admin/set-role", { method: "POST", body: { userId: targetId, role: "admin" } })).status).toBe(200);
+    expect((await db.prepare('SELECT role FROM "user" WHERE id = ?').bind(targetId).first<{ role: string }>())?.role).toBe("admin");
+    expect((await call("/api/auth/admin/set-role", { method: "POST", body: { userId: targetId, role: "user" } })).status).toBe(200);
+
+    expect((await call("/api/auth/admin/ban-user", { method: "POST", body: { userId: targetId } })).status).toBe(200);
+    expect((await db.prepare('SELECT banned FROM "user" WHERE id = ?').bind(targetId).first<{ banned: number }>())?.banned).toBe(1);
+    expect((await call("/api/auth/admin/unban-user", { method: "POST", body: { userId: targetId } })).status).toBe(200);
+    expect((await call("/api/auth/admin/revoke-user-sessions", { method: "POST", body: { userId: targetId } })).status).toBe(200);
+
+    const audited = await db.prepare(
+      "SELECT event_type FROM audit_events WHERE event_type LIKE 'identity.user.%' AND target_user_id = ? ORDER BY log_pos",
+    ).bind(targetId).all<{ event_type: string }>();
+    const types = audited.results.map((row) => row.event_type);
+    expect(types).toContain("identity.user.role_change.success_or_failure");
+    expect(types).toContain("identity.user.disable.success_or_failure");
+    expect(types).toContain("identity.user.enable.success_or_failure");
+    expect(types).toContain("identity.user.sessions_revoke.success_or_failure");
+  });
+
   test("an administrator can attach a hardware token seed for a user", async () => {
     const me = await (await call("/api/auth/get-session")).json() as any;
     const bad = await call(`/api/admin/users/${me.user.id}/mfa/hotp`, { method: "POST", body: { label: "x", secretBase32: "short" } });

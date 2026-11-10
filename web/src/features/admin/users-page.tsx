@@ -27,9 +27,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { UserActions } from './user-actions'
 import { UserMfaDialog, type MfaUser } from './user-mfa-dialog'
 import { apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
+import { sessionQuery } from '@/lib/queries'
 import { formatDateTime } from '@/lib/format'
 
 const PAGE_SIZE = 25
@@ -54,6 +56,7 @@ type LinkDialogState = { email: string; outcome: ActivationOutcome } | null
 
 export function UsersPage() {
   const queryClient = useQueryClient()
+  const { data: session } = useQuery(sessionQuery)
   const [createOpen, setCreateOpen] = useState(false)
   const [mfaUser, setMfaUser] = useState<MfaUser | null>(null)
   const [linkDialog, setLinkDialog] = useState<LinkDialogState>(null)
@@ -149,7 +152,7 @@ export function UsersPage() {
                   <TableHead>역할</TableHead>
                   <TableHead>상태</TableHead>
                   <TableHead>가입일</TableHead>
-                  <TableHead className="w-24" />
+                  <TableHead className="w-32" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -203,6 +206,7 @@ export function UsersPage() {
                       >
                         <MailIcon />
                       </Button>
+                      <UserActions user={user} currentUserId={session?.user.id} />
                     </TableCell>
                   </TableRow>
                 ))}
