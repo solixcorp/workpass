@@ -42,6 +42,6 @@ The global flags make release possible; a **claim release policy** row decides w
 
 ## What remains open
 
-- Group and account attribute release as claims (user attributes release fully; a per-attribute allow/deny granularity inside a released set would be a further refinement).
-- Outbound SCIM attribute push is implemented behind `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: create/patch payloads to targets carry the user's custom attributes as the `urn:solixcorp:scim:1.0:CustomAttributes` extension (patch as a path-scoped operation, deactivation never carries profile data). Fail-closed default; it is still a deliberate per-target operator decision (privacy review), and attribute changes surface only on the next manually triggered `update` operation — there is no automatic lifecycle trigger yet.
-- Update events for attributes (an SSF SET event type would let downstream apps follow changes).
+- Group and account attribute release as claims: users release fully (kind gates plus per-attribute allowlist included); group/account attributes describe shared objects whose audiences need their own release decision — still not released.
+- Outbound SCIM attribute push is implemented behind `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: create/patch payloads to targets carry the user's custom attributes as the `urn:solixcorp:scim:1.0:CustomAttributes` extension (patch as a path-scoped operation, deactivation never carries profile data). Fail-closed default; it remains a deliberate per-target operator decision (privacy review). Attribute changes self-propagate: writes through the admin API and inbound SCIM queue an `update` operation and the daily Worker Cron drains pending operations through the shared executor — no manual trigger is needed anymore.
+- Update events for attributes beyond the SCIM queue (an SSF SET event type would let downstream apps follow changes through the Shared Signals Framework).

@@ -32,10 +32,10 @@ import { cleanupSsfInbox } from "./ssf/inbox";
 import { attemptPendingSSFDispatch } from "./ssf/dispatch";
 import { accountRoutes } from "./accounts/routes";
 import { cleanupAccountSessionContexts, cleanupAccountInvitations } from "./accounts/store";
+import { dispatchPendingScimOperations } from "./scim/executor";
 import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
 import { cleanupAccessRequests } from "./access/requests";
 import { backupAuditEvents } from "./audit/backup";
-import { dispatchPendingScimOperations } from "./scim/executor";
 
 const app = new Hono<{ Bindings: Env }>();
 app.onError((error, context) => {
