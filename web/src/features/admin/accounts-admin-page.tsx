@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CopyIcon, PlusIcon, Trash2Icon, UserMinusIcon } from 'lucide-react'
+import { CopyIcon, PlusIcon, TagsIcon, Trash2Icon, UserMinusIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import {
@@ -34,6 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { ROLE_LABELS, type Account } from '@/lib/accounts'
+import { AttributesDialog, type AttributeTarget } from './attributes-dialog'
 import { formatDateTime } from '@/lib/format'
 
 type Member = { userId: string; role: 'admin' | 'member'; grantedAt: string }
@@ -58,6 +59,7 @@ export function AccountsAdminPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Account | null>(null)
+  const [attrTarget, setAttrTarget] = useState<AttributeTarget | null>(null)
 
   const { data, isPending, error } = useQuery({
     queryKey: listKey,
@@ -116,7 +118,7 @@ export function AccountsAdminPage() {
                 <TableHead>이름</TableHead>
                 <TableHead>설명</TableHead>
                 <TableHead>만든 날짜</TableHead>
-                <TableHead className="w-24" />
+                <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -128,6 +130,14 @@ export function AccountsAdminPage() {
                   <TableCell className="whitespace-nowrap">
                     <Button variant="outline" size="sm" onClick={() => setOpenId(account.id)}>
                       관리
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${account.name} 속성`}
+                      onClick={() => setAttrTarget({ type: 'account', id: account.id, label: account.name })}
+                    >
+                      <TagsIcon />
                     </Button>
                     <Button variant="ghost" size="icon-sm" aria-label={`${account.name} 삭제`} onClick={() => setPendingDelete(account)}>
                       <Trash2Icon />
@@ -142,6 +152,7 @@ export function AccountsAdminPage() {
 
       <CreateAccountDialog open={createOpen} onOpenChange={setCreateOpen} />
       <ManageDialog accountId={openId} onClose={() => setOpenId(null)} />
+      <AttributesDialog target={attrTarget} onClose={() => setAttrTarget(null)} />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>

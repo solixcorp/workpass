@@ -63,7 +63,7 @@ export function parseAttributesInput(input: unknown): ParsedAttributeSet {
     }
     if (typeof value === "number") {
       if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) {
-        return { ok: false, error: "attribute numbers must be finite integers within the safe range" };
+        return { ok: false, error: "attribute numbers must be finite and within the safe integer range" };
       }
       attributes[key] = value;
       continue;

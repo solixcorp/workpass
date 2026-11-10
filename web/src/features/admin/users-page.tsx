@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CopyIcon, MailIcon, PlusIcon, ShieldIcon } from 'lucide-react'
+import { CopyIcon, MailIcon, PlusIcon, ShieldIcon, TagsIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -27,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { AttributesDialog, type AttributeTarget } from './attributes-dialog'
 import { UserActions } from './user-actions'
 import { UserMfaDialog, type MfaUser } from './user-mfa-dialog'
 import { apiFetch } from '@/lib/api'
@@ -59,6 +60,7 @@ export function UsersPage() {
   const { data: session } = useQuery(sessionQuery)
   const [createOpen, setCreateOpen] = useState(false)
   const [mfaUser, setMfaUser] = useState<MfaUser | null>(null)
+  const [attrTarget, setAttrTarget] = useState<AttributeTarget | null>(null)
   const [linkDialog, setLinkDialog] = useState<LinkDialogState>(null)
   const [term, setTerm] = useState('')
   const [search, setSearch] = useState('')
@@ -152,7 +154,7 @@ export function UsersPage() {
                   <TableHead>역할</TableHead>
                   <TableHead>상태</TableHead>
                   <TableHead>가입일</TableHead>
-                  <TableHead className="w-32" />
+                  <TableHead className="w-40" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -189,6 +191,14 @@ export function UsersPage() {
                       {formatDateTime(user.createdAt)}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`${user.email} 속성`}
+                        onClick={() => setAttrTarget({ type: 'user', id: user.id, label: user.email })}
+                      >
+                        <TagsIcon />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -234,6 +244,7 @@ export function UsersPage() {
         </>
       )}
       <UserMfaDialog user={mfaUser} onClose={() => setMfaUser(null)} />
+      <AttributesDialog target={attrTarget} onClose={() => setAttrTarget(null)} />
       <CreateUserDialog
         open={createOpen}
         onOpenChange={setCreateOpen}

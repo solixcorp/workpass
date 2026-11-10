@@ -216,6 +216,20 @@ describe("second-factor enrollment", () => {
     expect((await call("/api/accounts/join", { method: "POST", body: { token: "nope" } })).status).toBe(403);
   });
 
+  test("custom attributes: typed values round-trip, bad names are refused, delete empties them", async () => {
+    const me = await (await call("/api/auth/get-session")).json() as any;
+    const path = `/api/admin/attributes/user/${me.user.id}`;
+    const put = await call(path, { method: "PUT", body: { attributes: { department: "엔지니어링", level: 3, contractor: false, note: null } } });
+    expect(put.status).toBe(200);
+    const read = await (await call(path)).json() as any;
+    expect(read.attributes).toEqual({ department: "엔지니어링", level: 3, contractor: false, note: null });
+    expect((await call(path, { method: "PUT", body: { attributes: { "bad name!": "x" } } })).status).toBe(400);
+    expect((await call(path, { method: "PUT", body: { attributes: { level: 2 ** 60 } } })).status).toBe(400);
+    expect((await call(path, { method: "PUT", body: { attributes: { ratio: 1.5 } } })).status).toBe(200);
+    expect((await call(path, { method: "DELETE" })).status).toBe(200);
+    expect(((await (await call(path)).json()) as any).attributes).toEqual({});
+  });
+
   test("an administrator can attach a hardware token seed for a user", async () => {
     const me = await (await call("/api/auth/get-session")).json() as any;
     const bad = await call(`/api/admin/users/${me.user.id}/mfa/hotp`, { method: "POST", body: { label: "x", secretBase32: "short" } });

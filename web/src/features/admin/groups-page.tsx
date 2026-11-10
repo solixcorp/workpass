@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PlusIcon, Trash2Icon, UserMinusIcon } from 'lucide-react'
+import { PlusIcon, TagsIcon, Trash2Icon, UserMinusIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import {
@@ -32,6 +32,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
+import { AttributesDialog, type AttributeTarget } from './attributes-dialog'
 import { formatDateTime } from '@/lib/format'
 
 type Group = { id: string; name: string; description: string; createdAt: string }
@@ -52,6 +53,7 @@ export function GroupsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Group | null>(null)
+  const [attrTarget, setAttrTarget] = useState<AttributeTarget | null>(null)
 
   const { data, isPending, error } = useQuery({
     queryKey: groupsKey,
@@ -107,7 +109,7 @@ export function GroupsPage() {
                 <TableHead>이름</TableHead>
                 <TableHead>설명</TableHead>
                 <TableHead>만든 날짜</TableHead>
-                <TableHead className="w-24" />
+                <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -119,6 +121,14 @@ export function GroupsPage() {
                   <TableCell className="whitespace-nowrap">
                     <Button variant="outline" size="sm" onClick={() => setOpenId(group.id)}>
                       멤버
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${group.name} 속성`}
+                      onClick={() => setAttrTarget({ type: 'group', id: group.id, label: group.name })}
+                    >
+                      <TagsIcon />
                     </Button>
                     <Button
                       variant="ghost"
@@ -138,6 +148,7 @@ export function GroupsPage() {
 
       <CreateGroupDialog open={createOpen} onOpenChange={setCreateOpen} />
       <MembersDialog groupId={openId} onClose={() => setOpenId(null)} />
+      <AttributesDialog target={attrTarget} onClose={() => setAttrTarget(null)} />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
