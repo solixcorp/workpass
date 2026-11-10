@@ -12,6 +12,7 @@
     "test": "bun test tests/",
     "saml:keygen": "bun run scripts/generate-saml-key.ts",
     "smoke": "bun run scripts/run-all-smokes.ts",
+    "verify:web": "bun run scripts/verify-web-deploy.ts",
     "provision:r2": "bun run scripts/ensure-audit-backup-bucket.ts",
     "predeploy": "bun run scripts/ensure-audit-backup-bucket.ts",
     "types:worker": "wrangler types --env-interface=WorkerBindings --strict-vars=false",
