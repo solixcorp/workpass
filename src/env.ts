@@ -131,6 +131,8 @@ export interface Env extends Partial<WorkerBindings> {
   DUO_IKEY?: string;
   DUO_SKEY?: string;
   DUO_API_HOSTNAME?: string;
+  /** Reputation policies (docs/design/authentik-policies.md): ledger entry expiry. */
+  REPUTATION_EXPIRY_HOURS?: string;
   /** Sender address for account invitation emails (falls back to MFA_OTP_EMAIL_FROM). */
   INVITATION_EMAIL_FROM?: string;
   /** Dev/mock webhook that records invitation emails instead of delivering them (headless local testing). */

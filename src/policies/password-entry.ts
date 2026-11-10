@@ -23,6 +23,7 @@ export interface PasswordEntryRuntime {
   clientIp?: string | null;
   context?: Record<string, unknown>;
   requestPath?: string;
+  geo?: PolicyEvaluationContext["geo"];
 }
 
 /**
@@ -81,6 +82,7 @@ export async function evaluateLoginSurface(
     subject: null,
     context: runtime.context ?? {},
     requestPath: runtime.requestPath,
+    geo: runtime.geo,
   } satisfies PolicyEvaluationContext);
 }
 

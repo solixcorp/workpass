@@ -41,6 +41,20 @@ import { cleanupAccessRequests } from "./access/requests";
 import { backupAuditEvents } from "./audit/backup";
 
 const app = new Hono<{ Bindings: Env }>();
+
+// Global security headers applied to every response. Per-route CSP (set in
+// individual handlers) is preserved; these are the common baseline that does
+// not depend on the rendered content.
+app.use("*", async (context, next) => {
+  await next();
+  context.header("X-Content-Type-Options", "nosniff");
+  context.header("X-Frame-Options", "DENY");
+  context.header("X-Robots-Tag", "noindex, nofollow");
+  context.header("X-XSS-Protection", "0");
+  context.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  context.header("Referrer-Policy", context.res.headers.get("Referrer-Policy") ?? "no-referrer");
+});
+
 app.onError((error, context) => {
   console.error("Unhandled Worker request error", {
     name: error.name,

@@ -51,4 +51,13 @@ export interface PolicyEvaluationContext {
   /** The candidate password at password-entry surfaces. */
   password?: string;
   requestPath?: string;
+  /** Request-derived geo/ASN context (Workers request.cf), when available. */
+  geo?: {
+    country?: string;
+    city?: string;
+    lat?: number;
+    long?: number;
+    asn?: number;
+    asOrg?: string;
+  };
 }

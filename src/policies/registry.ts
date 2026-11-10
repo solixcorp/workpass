@@ -19,6 +19,8 @@ import {
   validatePasswordConfig,
   validateUniquenessConfig,
 } from "./password";
+import { evaluateReputation, validateReputationConfig } from "./reputation";
+import { evaluateGeoIp, validateGeoIpConfig } from "./geoip";
 import type { PolicyEvaluationContext, PolicyRow } from "./types";
 export interface RuntimePolicyResult { passing: boolean; messages: string[]; rawResult: unknown }
 
@@ -34,10 +36,16 @@ const callDepths = new WeakMap<object, number>();
 const MAX_CALL_DEPTH = 4;
 
 export function implementedTypes(): string[] {
-  return ["expression", "password", "password_expiry", "password_uniqueness"];
+  return ["expression", "password", "password_expiry", "password_uniqueness", "reputation", "geoip"];
 }
 
 export function validatePolicyConfig(type: string, config: unknown): { config: unknown } {
+  if (type === "reputation") {
+    return { config: validateReputationConfig(config) as unknown };
+  }
+  if (type === "geoip") {
+    return { config: validateGeoIpConfig(config) as unknown };
+  }
   if (type === "expression") {
     const value = (config ?? {}) as Record<string, unknown>;
     const expression = typeof value.expression === "string" ? value.expression : "";
@@ -131,6 +139,17 @@ export async function evaluateTyped(
       const uniqueness = validateUniquenessConfig(config);
       const reused = await passwordHistoryContains(env, context.user.id, context.password, uniqueness.count);
       return reused ? { passing: false, messages: ["the password was used before"] } : { passing: true, messages: [] };
+    }
+    case "reputation": {
+      const reputationConfig = validateReputationConfig(config);
+      return await evaluateReputation(env, reputationConfig, {
+        clientIp: context.clientIp,
+        username: context.user ? (context.user.username ?? null) : null,
+      });
+    }
+    case "geoip": {
+      const geoipConfig = validateGeoIpConfig(config);
+      return await evaluateGeoIp(env, geoipConfig, context, context.user);
     }
     case "password_expiry": {
       if (!context.user) throw new Error("password expiry requires a user in the evaluation context");

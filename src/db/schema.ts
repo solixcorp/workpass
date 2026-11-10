@@ -739,4 +739,15 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS password_history_user_idx ON password_history (user_id, created_at)",
   ).run();
+  // Reputation ledger (authentik reputation policies): login outcomes move the
+  // score of a client IP or username toward or away from the threshold.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS reputation_scores (
+      kind TEXT NOT NULL CHECK (kind IN ('ip', 'username')),
+      identifier TEXT NOT NULL,
+      score INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (kind, identifier)
+    )`,
+  ).run();
 }

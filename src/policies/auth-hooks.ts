@@ -16,11 +16,13 @@
 
 import { APIError } from "better-auth/api";
 import type { Env } from "../env";
+import type { PolicyEvaluationContext } from "./types";
 import {
   enforcePasswordEntry,
   evaluateLoginSurface,
   recordSuccessfulPasswordWrite,
 } from "./password-entry";
+import { recordReputationOutcome } from "./reputation";
 
 interface HookPayload {
   path: string;
@@ -28,6 +30,21 @@ interface HookPayload {
   headers: Headers | undefined;
   session?: { user?: { id?: string } | null } | null;
   user?: { id?: string } | null;
+  request?: Request;
+  returned?: Response;
+}
+
+function geoFromRequest(request: Request | undefined): NonNullable<PolicyEvaluationContext["geo"]> | undefined {
+  const cf = (request as (Request & { cf?: Record<string, unknown> }) | undefined)?.cf;
+  if (!cf || typeof cf !== "object") return undefined;
+  const geo: Record<string, unknown> = {};
+  if (typeof cf.country === "string") geo.country = cf.country;
+  if (typeof cf.city === "string") geo.city = cf.city;
+  if (typeof cf.latitude === "number") geo.lat = cf.latitude;
+  if (typeof cf.longitude === "number") geo.long = cf.longitude;
+  if (typeof cf.asn === "number") geo.asn = cf.asn;
+  if (typeof cf.asOrganization === "string") geo.asOrg = cf.asOrganization;
+  return Object.keys(geo).length > 0 ? (geo as NonNullable<PolicyEvaluationContext["geo"]>) : undefined;
 }
 
 function readContext(hookContext: unknown): HookPayload {
@@ -35,17 +52,29 @@ function readContext(hookContext: unknown): HookPayload {
     path?: string;
     body?: Record<string, unknown> | null;
     headers?: Headers;
+    session?: { user?: { id?: string } | null } | null;
+    user?: { id?: string } | null;
+    request?: Request;
+    returned?: Response;
     context?: {
       session?: { user?: { id?: string } | null } | null;
       user?: { id?: string } | null;
+      request?: Request;
+      returned?: Response;
     } | null;
   };
+  const session = value.context?.session ?? value.session;
+  const user = value.context?.user ?? value.user;
+  const request = value.context?.request ?? value.request;
+  const returned = value.context?.returned ?? value.returned;
   return {
     path: value.path ?? "",
     body: value.body ?? null,
     headers: value.headers,
-    session: value.context?.session,
-    user: value.context?.user,
+    session,
+    user,
+    request,
+    returned,
   };
 }
 
@@ -83,6 +112,8 @@ function reject(messages: string[]): never {
   throw new APIError("FORBIDDEN", { message: messages.join("; ") });
 }
 
+const LOGIN_PATHS = new Set(["/sign-in/email", "/sign-in/username", "/passkey/verify-authentication"]);
+
 /** Password write paths better-auth serves directly. */
 const PASSWORD_ENTRY_PATHS = new Set(["/change-password", "/admin/set-user-password", "/reset-password"]);
 const PASSWORD_LOGIN_PATHS = new Set(["/sign-in/email", "/sign-in/username"]);
@@ -99,7 +130,7 @@ export function createPasswordPolicyHooks(env: Env): {
   after: (hookContext: unknown) => Promise<unknown>;
 } {
   const before = async (hookContext: unknown): Promise<unknown> => {
-    const { path, body, headers, user: hookUser, session: hookSession } = readContext(hookContext);
+    const { path, body, headers, user: hookUser, session: hookSession, request } = readContext(hookContext);
     const actingOrTargetUser = hookUser ?? hookSession?.user ?? undefined;
 
     if (PASSWORD_ENTRY_PATHS.has(path)) {
@@ -117,7 +148,11 @@ export function createPasswordPolicyHooks(env: Env): {
         : typeof body?.username === "string" ? body.username : null;
       const userId = await resolveUserId(env, identity);
       if (!userId) return undefined; // Unknown identity: fall through to the login itself.
-      const outcome = await evaluateLoginSurface(env, userId, { clientIp: clientIp(headers), requestPath: path });
+      const outcome = await evaluateLoginSurface(env, userId, {
+        clientIp: clientIp(headers),
+        requestPath: path,
+        geo: geoFromRequest(request),
+      });
       if (!outcome.passing) reject(outcome.messages);
       return undefined;
     }
@@ -126,8 +161,20 @@ export function createPasswordPolicyHooks(env: Env): {
   };
 
   const after = async (hookContext: unknown): Promise<unknown> => {
-    const { path, body, user: hookUser, session: hookSession } = readContext(hookContext);
-    if (!PASSWORD_SUCCESS_PATHS.has(path)) return AFTER_RESULT;
+    const { path, body, headers, user: hookUser, session: hookSession, request, returned } = readContext(hookContext);
+    if (!PASSWORD_SUCCESS_PATHS.has(path)) {
+      // Reputation accounting for login outcomes (failures decrement, success
+      // increments); the response status is the source of truth.
+      if (LOGIN_PATHS.has(path)) {
+        const identity = typeof body?.email === "string"
+          ? body.email
+          : typeof body?.username === "string" ? body.username : null;
+        const status = returned?.status ?? 200;
+        await recordReputationOutcome(env, clientIp(headers), identity, status === 200)
+          .catch(() => undefined);
+      }
+      return AFTER_RESULT;
+    }
     const password = pickPassword(body);
     const userId = pickTargetUser(body, hookUser ?? hookSession?.user ?? undefined);
     if (password && userId) {
