@@ -44,7 +44,13 @@ claimReleasePolicyRoutes.put("/claim-release-policies/:encodedSubject", async (c
     subject,
     allowAccountClaims: value.allowAccountClaims === undefined ? true : value.allowAccountClaims === true,
     allowUserAttributes: value.allowUserAttributes === undefined ? true : value.allowUserAttributes === true,
+    attributeAllowlist: value.attributeAllowlist === undefined ? undefined
+      : value.attributeAllowlist === null ? null
+      : Array.isArray(value.attributeAllowlist) ? (value.attributeAllowlist as string[]) : undefined,
   };
+  if (value.attributeAllowlist !== undefined && value.attributeAllowlist !== null && !Array.isArray(value.attributeAllowlist)) {
+    return context.json({ error: "attributeAllowlist must be an array of keys or null" }, 400);
+  }
   return auditStandaloneOperation(context.env, "claim.policy.update", "/api/admin/claim-release-policies", async () => {
     try {
       await upsertClaimReleasePolicy(context.env, policy, actor.userId);

@@ -82,6 +82,57 @@ describe("claim release policy", () => {
   });
 });
 
+describe("per-attribute allowlist", () => {
+  test("an allowlist narrows the released attribute set; null keeps everything", async () => {
+    const env = await seededEnv();
+    const { userAttributesForSubject } = await import("../src/claims/release-policy");
+    const set = { team: "core", level: 3, badge: null };
+    expect(await userAttributesForSubject(env, "oidc:client-1", set)).toEqual(set);
+    await upsertClaimReleasePolicy(env, {
+      subject: "oidc:client-1", allowAccountClaims: true, allowUserAttributes: true,
+      attributeAllowlist: ["team", "ghost-key"],
+    }, "u1");
+    // Only listed keys flow, and unknown allowlist entries release nothing.
+    expect(await userAttributesForSubject(env, "oidc:client-1", set)).toEqual({ team: "core" });
+    await upsertClaimReleasePolicy(env, {
+      subject: "oidc:client-1", allowAccountClaims: true, allowUserAttributes: true,
+      attributeAllowlist: [],
+    }, "u1");
+    expect(await userAttributesForSubject(env, "oidc:client-1", set)).toEqual({});
+    await upsertClaimReleasePolicy(env, {
+      subject: "oidc:client-1", allowAccountClaims: true, allowUserAttributes: true,
+      attributeAllowlist: null,
+    }, "u1");
+    expect(await userAttributesForSubject(env, "oidc:client-1", set)).toEqual(set);
+  });
+
+  test("the merged claim surfaces honor the allowlist", async () => {
+    const env = await seededEnv();
+    await upsertClaimReleasePolicy(env, {
+      subject: "oidc:client-1", allowAccountClaims: true, allowUserAttributes: true,
+      attributeAllowlist: ["team"],
+    }, "u1");
+    const claims = await oidcClaimReleaseForSubject(env, "sess-1", "u1", "oidc:client-1");
+    expect(claims["https://auth.example.test/claims/attributes"]).toEqual({ team: "core" });
+  });
+
+  test("invalid allowlist inputs are rejected at the write path", async () => {
+    const env = await seededEnv();
+    await expect(
+      upsertClaimReleasePolicy(env, {
+        subject: "oidc:client-1", allowAccountClaims: true, allowUserAttributes: true,
+        attributeAllowlist: ["bad key with spaces"],
+      }, "u1"),
+    ).rejects.toThrow("attributeAllowlist keys");
+    await expect(
+      upsertClaimReleasePolicy(env, {
+        subject: "oidc:client-1", allowAccountClaims: true, allowUserAttributes: true,
+        attributeAllowlist: Array.from({ length: 33 }, (_, index) => `k${index}`) as string[],
+      }, "u1"),
+    ).rejects.toThrow("at most 32");
+  });
+});
+
 describe("subject-aware release surfaces", () => {
   test("the user-surface helpers keep working without a subject", async () => {
     const env = await seededEnv();

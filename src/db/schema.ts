@@ -425,6 +425,21 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   } catch {
     // Column already present.
   }
+    `CREATE TABLE IF NOT EXISTS claim_release_policies (
+      subject TEXT PRIMARY KEY NOT NULL,
+      allow_account_claims INTEGER NOT NULL DEFAULT 1 CHECK (allow_account_claims IN (0, 1)),
+      allow_user_attributes INTEGER NOT NULL DEFAULT 1 CHECK (allow_user_attributes IN (0, 1)),
+      updated_by TEXT,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  // The optional attribute allowlist narrows the released user-attribute keys further
+  // (in-place column).
+  try {
+    await env.DB.prepare("ALTER TABLE claim_release_policies ADD COLUMN attribute_allowlist TEXT").run();
+  } catch {
+    // Column already present.
+  }
   // Custom object attributes: one flat JSON object per (object_type, object_id)
   // (see docs/design/object-attributes.md).
   await env.DB.prepare(

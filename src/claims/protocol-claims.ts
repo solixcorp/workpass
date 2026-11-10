@@ -19,7 +19,7 @@
 import type { Env } from "../env";
 import { getObjectAttributes, type AttributeValue } from "../objects/attributes";
 import { getSessionAccountContext } from "../accounts/store";
-import { claimReleaseDecision } from "./release-policy";
+import { claimReleaseDecision, userAttributesForSubject } from "./release-policy";
 
 /** URI namespace for released application claims: the configured IdP origin. */
 export function claimNamespace(env: Env): string {
@@ -90,8 +90,9 @@ export async function userAttributesClaimForSubject(
     return await Promise.resolve({});
   }
   const { attributes } = await getObjectAttributes(env, "user", userId);
-  if (Object.keys(attributes).length === 0) return {};
-  return { [`${claimNamespace(env)}/${ATTRIBUTES_CLAIM_SUFFIX}`]: attributes };
+  const filtered = await userAttributesForSubject(env, subject, attributes);
+  if (Object.keys(filtered).length === 0) return {};
+  return { [`${claimNamespace(env)}/${ATTRIBUTES_CLAIM_SUFFIX}`]: filtered };
 }
 
 /** The merged OIDC claim set for both the access-token and ID-token paths. */
@@ -173,8 +174,9 @@ export async function samlAttributeRelease(
   }
   if (attributeClaimsEnabled(env) && userId && (await claimReleaseDecision(env, subject, "attributes"))) {
     const userAttributes = await getObjectAttributes(env, "user", userId);
-    for (const key of Object.keys(userAttributes.attributes).sort()) {
-      const value = attributeValue(userAttributes.attributes, key);
+    const filtered = await userAttributesForSubject(env, subject, userAttributes.attributes);
+    for (const key of Object.keys(filtered).sort()) {
+      const value = attributeValue(filtered, key);
       if (value !== null) {
         attributes.push({ name: `${names.attributePrefix}/${key}`, value });
       }
