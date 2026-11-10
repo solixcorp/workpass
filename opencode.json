@@ -5,6 +5,11 @@
       "type": "local",
       "command": ["bunx", "--bun", "shadcn@latest", "mcp", "-c", "web"],
       "enabled": true
+    },
+    "fingerprint": {
+      "type": "remote",
+      "url": "https://mcp.fpjs.io/mcp",
+      "enabled": true
     }
   }
 }
