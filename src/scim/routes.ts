@@ -5,6 +5,12 @@ import { requireAdministrator } from "../security/authorization";
 import { createScimUser, patchScimUser } from "./client";
 import { getScimUserMapping } from "./mappings";
 import { claimScimOperation, completeScimCreate, createScimOperation, finishScimOperation, getScimOperation, type ScimOperationType } from "./operations";
+import { getObjectAttributes } from "../objects/attributes";
+
+/** Attribute push is a deliberate operator decision; fail closed when unset. */
+export async function scimAttributeReleaseEnabled(env: Env): Promise<boolean> {
+  return env.ENABLE_SCIM_ATTRIBUTE_RELEASE === "true";
+}
 
 export const scimAdminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -71,12 +77,17 @@ scimAdminRoutes.post("/scim-operations", async (context) => {
         return { response: Response.json({ error: "SCIM mapping conflict", operationId: opId }, { status: 409 }), actorUserId: adminSession.userId, targetUserId: userId };
       }
       const target = { baseUrl, bearerToken, allowLoopbackHttp };
+      // Attribute release rides on create/update only: deactivation never
+      // carries profile data, and the flag gates the whole extension.
+      const customAttributes = operation === "deactivate" || !(await scimAttributeReleaseEnabled(context.env))
+        ? undefined
+        : (await getObjectAttributes(context.env, "user", userId)).attributes;
       remoteAttempted = true;
       const result = operation === "create"
-        ? await createScimUser(target, { externalId: user.id, userName: user.username || user.email, displayName: user.name, email: user.email, active: true })
+        ? await createScimUser(target, { externalId: user.id, userName: user.username || user.email, displayName: user.name, email: user.email, active: true, customAttributes })
         : await patchScimUser(target, mapped!, operation === "deactivate"
           ? { active: false }
-          : { userName: user.username || user.email, displayName: user.name, email: user.email });
+          : { userName: user.username || user.email, displayName: user.name, email: user.email, customAttributes });
       if (!result.ok) {
         const unknown = result.kind === "outcome_unknown" || result.kind === "invalid_response";
         await finishScimOperation(context.env, opId, unknown ? "outcome_unknown" : "failed", result.status ?? null);

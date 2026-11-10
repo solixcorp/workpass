@@ -11,6 +11,7 @@ import type { Context } from "hono";
 import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
+import { scheduleScimAttributeSync } from "../scim/executor";
 import {
   deleteObjectAttributes,
   getObjectAttributes,
@@ -98,6 +99,14 @@ objectAttributeRoutes.put("/attributes/:objectType/:objectId", async (context) =
       };
     }
     const stored = await getObjectAttributes(context.env, target.type, target.objectId);
+    // Attribute changes propagate to SCIM targets that already map the user:
+    // one queued update op best-effort; the cron dispatcher drains the queue.
+    if (target.type === "user") {
+      const synced = await scheduleScimAttributeSync(context.env, target.objectId).catch(() => false);
+      if (!synced) {
+        console.warn("SCIM attribute propagation not queued", { userId: target.objectId });
+      }
+    }
     return {
       response: Response.json({ objectType: target.type, objectId: target.objectId, ...stored }),
       actorUserId: actor.userId,
@@ -116,6 +125,9 @@ objectAttributeRoutes.delete("/attributes/:objectType/:objectId", async (context
       return { response: Response.json({ error: "Object not found" }, { status: 404 }), actorUserId: actor.userId };
     }
     const removed = await deleteObjectAttributes(context.env, target.type, target.objectId);
+    if (removed && target.type === "user") {
+      await scheduleScimAttributeSync(context.env, target.objectId).catch(() => undefined);
+    }
     return {
       response: removed
         ? Response.json({ deleted: true })

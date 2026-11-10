@@ -35,6 +35,7 @@ import { cleanupAccountSessionContexts, cleanupAccountInvitations } from "./acco
 import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
 import { cleanupAccessRequests } from "./access/requests";
 import { backupAuditEvents } from "./audit/backup";
+import { dispatchPendingScimOperations } from "./scim/executor";
 
 const app = new Hono<{ Bindings: Env }>();
 app.onError((error, context) => {
@@ -115,6 +116,7 @@ async function scheduled(
     await attemptPendingSSFDispatch(env, controller.scheduledTime);
     await cleanupAccountSessionContexts(env, new Date(controller.scheduledTime));
     await cleanupAccountInvitations(env, new Date(controller.scheduledTime));
+    await dispatchPendingScimOperations(env);
     await cleanupAccessRequests(env, controller.scheduledTime);
     try {
       // Independent audit backup: watermark-guarded R2 export; fails safe

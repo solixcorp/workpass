@@ -16,6 +16,12 @@ export interface ScimUserInput {
   displayName?: string;
   email?: string;
   active: boolean;
+  /**
+   * Custom object attributes carried as the
+   * `urn:solixcorp:scim:1.0:CustomAttributes` extension. Callers gate the
+   * release on the operator flag; an undefined extension is omitted.
+   */
+  customAttributes?: Record<string, unknown>;
 }
 
 export interface ScimUserReference {
@@ -29,6 +35,8 @@ export type ScimResult<T> =
 
 const USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
 const PATCH_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
+/** Custom object attributes extension shared with the inbound SCIM server. */
+export const CUSTOM_ATTRIBUTES_URN = "urn:solixcorp:scim:1.0:CustomAttributes";
 
 function isLoopbackHost(hostname: string): boolean {
   return hostname === "127.0.0.1" || hostname === "localhost";
@@ -92,11 +100,14 @@ export async function createScimUser(target: ScimTarget, user: ScimUserInput): P
   const url = usersUrl(target);
   if (!url || !user.externalId || !user.userName) return { ok: false, kind: "invalid_configuration" };
   const response = await send(target, url, "POST", {
-    schemas: [USER_SCHEMA],
+    schemas: [USER_SCHEMA, ...(user.customAttributes && Object.keys(user.customAttributes).length > 0 ? [CUSTOM_ATTRIBUTES_URN] : [])],
     externalId: user.externalId,
     userName: user.userName,
     ...(user.displayName !== undefined ? { displayName: user.displayName } : {}),
     ...(user.email !== undefined ? { emails: [{ value: user.email, primary: true }] } : {}),
+    ...(user.customAttributes && Object.keys(user.customAttributes).length > 0
+      ? { [CUSTOM_ATTRIBUTES_URN]: user.customAttributes }
+      : {}),
     active: user.active,
   });
   if (!response.ok) return response;
@@ -116,7 +127,7 @@ export async function createScimUser(target: ScimTarget, user: ScimUserInput): P
 export async function patchScimUser(
   target: ScimTarget,
   externalUserId: string,
-  changes: { userName?: string; displayName?: string; email?: string; active?: boolean },
+  changes: { userName?: string; displayName?: string; email?: string; active?: boolean; customAttributes?: Record<string, unknown> },
 ): Promise<ScimResult<void>> {
   const url = usersUrl(target);
   if (
@@ -132,10 +143,22 @@ export async function patchScimUser(
     ...(changes.email !== undefined ? { emails: [{ value: changes.email, primary: true }] } : {}),
     ...(changes.active !== undefined ? { active: changes.active } : {}),
   };
-  if (Object.keys(value).length === 0) return { ok: false, kind: "invalid_configuration" };
+  const operations: Array<Record<string, unknown>> = [{ op: "replace", value }];
+  if (changes.customAttributes && Object.keys(changes.customAttributes).length > 0) {
+    // The extension is replaced as its own path-scoped operation: core SCIM
+    // attributes and custom attributes move independently.
+    operations.push({
+      op: "replace",
+      path: CUSTOM_ATTRIBUTES_URN,
+      value: changes.customAttributes,
+    });
+  }
+  if (Object.keys(value).length === 0 && operations.length === 1) {
+    return { ok: false, kind: "invalid_configuration" };
+  }
   const response = await send(target, url, "PATCH", {
     schemas: [PATCH_SCHEMA],
-    Operations: [{ op: "replace", value }],
+    Operations: operations,
   });
   if (!response.ok) return response;
   if (response.value.status !== 200 && response.value.status !== 204) {

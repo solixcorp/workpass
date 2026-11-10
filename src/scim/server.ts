@@ -15,11 +15,24 @@ import type { Context } from "hono";
 import type { Env } from "../env";
 import { constantTimeTokenMatches } from "../security/tokens";
 import { auditStandaloneOperation } from "../audit/store";
+import {
+  getObjectAttributes,
+  parseAttributesInput,
+  setObjectAttributes,
+  type AttributeValue,
+} from "../objects/attributes";
+import { scheduleScimAttributeSync } from "./executor";
 
 export const inboundScimRoutes = new Hono<{ Bindings: Env }>();
 
 const USER_SCHEMAS = ["urn:ietf:params:scim:schemas:core:2.0:User"];
 const LIST_SCHEMAS = ["urn:ietf:params:scim:api:messages:2.0:ListResponse"];
+/**
+ * Custom object attributes travel as one SCIM extension schema: the schema
+ * URN carries a flat object of primitive values validated by the same
+ * bounds as the admin attributes API.
+ */
+const CUSTOM_ATTRIBUTES_URN = "urn:solixcorp:scim:1.0:CustomAttributes";
 
 interface ScimUserRow {
   id: string;
@@ -61,16 +74,26 @@ async function requireScimToken(context: Context<{ Bindings: Env }>): Promise<Re
   return null;
 }
 
-function userToScim(row: ScimUserRow): Record<string, unknown> {
+function userToScim(row: ScimUserRow, attributes?: Record<string, AttributeValue>): Record<string, unknown> {
+  const hasAttributes = attributes !== undefined && Object.keys(attributes).length > 0;
   return {
-    schemas: USER_SCHEMAS,
+    schemas: hasAttributes ? [...USER_SCHEMAS, CUSTOM_ATTRIBUTES_URN] : USER_SCHEMAS,
     id: row.id,
     userName: row.username ?? row.email,
     name: { formatted: row.name },
     emails: [{ value: row.email, primary: true, type: "work" }],
     active: row.active === 1,
+    ...(hasAttributes ? { [CUSTOM_ATTRIBUTES_URN]: attributes } : {}),
     meta: { resourceType: "User" },
   };
+}
+
+/** Extract a validated attribute set from the extension, or null to leave it untouched. */
+function parseCustomAttributes(body: Record<string, unknown>): { ok: true; attributes: Record<string, AttributeValue> | null } | { ok: false; error: string } {
+  if (!Object.hasOwn(body, CUSTOM_ATTRIBUTES_URN)) return { ok: true, attributes: null };
+  const parsed = parseAttributesInput(body[CUSTOM_ATTRIBUTES_URN]);
+  if (!parsed.ok) return parsed;
+  return { ok: true, attributes: parsed.attributes };
 }
 
 async function loadUser(env: Env, id: string): Promise<ScimUserRow | null> {
@@ -167,14 +190,18 @@ inboundScimRoutes.get(`${SCIM_PATH}/Users`, async (context) => {
     totalResults: rows.results.length,
     startIndex,
     itemsPerPage: count,
-    Resources: rows.results.map(userToScim),
+    Resources: await Promise.all(rows.results.map(async (row) => {
+      const { attributes } = await getObjectAttributes(context.env, "user", row.id);
+      return userToScim(row, attributes);
+    })),
   });
 });
 
 inboundScimRoutes.get(`${SCIM_PATH}/Users/:id`, async (context) => {
   const row = await loadUser(context.env, context.req.param("id"));
   if (!row) return scimError("404", "User not found");
-  return context.json(userToScim(row));
+  const { attributes } = await getObjectAttributes(context.env, "user", row.id);
+  return context.json(userToScim(row, attributes));
 });
 
 inboundScimRoutes.post(`${SCIM_PATH}/Users`, async (context) => {
@@ -188,6 +215,8 @@ inboundScimRoutes.post(`${SCIM_PATH}/Users`, async (context) => {
   if (!parsed) {
     return scimError("400", "userName (an email) and a display name are required");
   }
+  const attributes = parseCustomAttributes(body);
+  if (!attributes.ok) return scimError("400", attributes.error);
   return audit(context, "scim.inbound.user.create", `${SCIM_PATH}/Users`, async () => {
     const existing = await findUserByEmail(context.env, parsed.email);
     if (existing) {
@@ -199,9 +228,14 @@ inboundScimRoutes.post(`${SCIM_PATH}/Users`, async (context) => {
       `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, username, role)
        VALUES (?, ?, ?, 0, ?, ?, ?, "user")`,
     ).bind(id, parsed.name, parsed.email, now, now, parsed.username).run();
+    if (attributes.attributes !== null) {
+      await setObjectAttributes(context.env, "user", id, attributes.attributes, null);
+      await scheduleScimAttributeSync(context.env, id).catch(() => undefined);
+    }
     const row = await loadUser(context.env, id);
+    const stored = await getObjectAttributes(context.env, "user", id);
     // A provisioned user must NEVER carry a credential from the source system.
-    const response = Response.json(userToScim(row!), { status: 201 });
+    const response = Response.json(userToScim(row!, stored.attributes), { status: 201 });
     return { response, targetUserId: id };
   });
 });
@@ -215,6 +249,8 @@ inboundScimRoutes.put(`${SCIM_PATH}/Users/:id`, async (context) => {
   }
   const parsed = parseNewUser(body);
   const active = typeof body.active === "boolean" ? body.active : null;
+  const attributes = parseCustomAttributes(body);
+  if (!attributes.ok) return scimError("400", attributes.error);
   return audit(context, "scim.inbound.user.put", `${SCIM_PATH}/Users/${context.req.param("id")}`, async () => {
     const row = await loadUser(context.env, context.req.param("id"));
     if (!row) return { response: scimError("404", "User not found") };
@@ -234,8 +270,15 @@ inboundScimRoutes.put(`${SCIM_PATH}/Users/:id`, async (context) => {
       new Date().toISOString(),
       row.id,
     ).run();
+    if (attributes.attributes !== null) {
+      // Full-resource semantics: the extension replaces the whole set (an
+      // empty extension clears it, matching RFC 7644 full replacement).
+      await setObjectAttributes(context.env, "user", row.id, attributes.attributes, null);
+      await scheduleScimAttributeSync(context.env, row.id).catch(() => undefined);
+    }
     const updated = await loadUser(context.env, row.id);
-    return { response: Response.json(userToScim(updated!)), targetUserId: row.id };
+    const stored = await getObjectAttributes(context.env, "user", row.id);
+    return { response: Response.json(userToScim(updated!, stored.attributes)), targetUserId: row.id };
   });
 });
 
@@ -250,21 +293,40 @@ inboundScimRoutes.patch(`${SCIM_PATH}/Users/:id`, async (context) => {
     const row = await loadUser(context.env, context.req.param("id"));
     if (!row) return { response: scimError("404", "User not found") };
     let active: boolean | null = null;
+    let attributesPatch: Record<string, AttributeValue> | null | undefined = undefined;
     for (const operation of body.Operations ?? []) {
-      if (operation.op !== "replace" && operation.op !== "Replace") continue;
+      if (operation.op !== "replace" && operation.op !== "Replace" && operation.op !== "remove" && operation.op !== "Remove") continue;
       if (operation.path === "active" && typeof operation.value === "boolean") {
         active = operation.value;
       } else if ((operation.path === undefined || operation.path === null) &&
         typeof (operation.value as { active?: unknown })?.active === "boolean") {
         active = (operation.value as { active: boolean }).active;
+      } else if (operation.path === CUSTOM_ATTRIBUTES_URN) {
+        if (operation.op === "remove" || operation.op === "Remove") {
+          // Removing the extension clears the whole attribute set.
+          attributesPatch = {};
+        } else {
+          const parsed = parseCustomAttributes({ [CUSTOM_ATTRIBUTES_URN]: operation.value });
+          if (!parsed.ok) return { response: scimError("400", parsed.error) };
+          attributesPatch = parsed.attributes;
+        }
       }
     }
-    if (active === null) return { response: scimError("400", "Only active replacement is supported") };
-    await context.env.DB.prepare(
-      `UPDATE "user" SET banned = ?, updatedAt = ? WHERE id = ?`,
-    ).bind(active ? 0 : 1, new Date().toISOString(), row.id).run();
+    if (active === null && attributesPatch === undefined) {
+      return { response: scimError("400", "Only active replacement is supported") };
+    }
+    if (active !== null) {
+      await context.env.DB.prepare(
+        `UPDATE "user" SET banned = ?, updatedAt = ? WHERE id = ?`,
+      ).bind(active ? 0 : 1, new Date().toISOString(), row.id).run();
+    }
+    if (attributesPatch !== undefined && attributesPatch !== null) {
+      await setObjectAttributes(context.env, "user", row.id, attributesPatch, null);
+      await scheduleScimAttributeSync(context.env, row.id).catch(() => undefined);
+    }
     const updated = await loadUser(context.env, row.id);
-    return { response: Response.json(userToScim(updated!)), targetUserId: row.id };
+    const stored = await getObjectAttributes(context.env, "user", row.id);
+    return { response: Response.json(userToScim(updated!, stored.attributes)), targetUserId: row.id };
   });
 });
 
