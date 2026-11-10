@@ -56,19 +56,27 @@ const METHOD_UI: Record<StepUpMethodUi["key"], StepUpMethodUi> = {
   },
 };
 
-export function stepUpUi(methods: string[]): StepUpUi {
+/** The sign-in was not risky; the administrator requires a second factor. */
+const POLICY_REASON = "mfa_required";
+
+export function stepUpUi(methods: string[], reasons: string[] = []): StepUpUi {
+  const policy = reasons.includes(POLICY_REASON);
   const offered = methods.filter((method): method is StepUpMethodUi["key"] => method in METHOD_UI);
   // Backup codes ride on the authenticator-app enrollment.
   if (offered.includes("totp") && !offered.includes("backup_code")) offered.push("backup_code");
   return {
     title: "추가 인증",
-    description: "새로운 기기나 위치에서 로그인했습니다. 2차 인증을 완료하세요.",
+    description: policy
+      ? "관리자가 이 계정에 2차 인증을 필수로 정했습니다. 인증을 완료하세요."
+      : "새로운 기기나 위치에서 로그인했습니다. 2차 인증을 완료하세요.",
     submit: { label: "확인" },
     methods: offered.map((key) => METHOD_UI[key]),
     alternatives: [{ label: "로그인 화면으로 돌아가기", action: "cancel" }],
     banner: {
       title: "추가 인증이 필요합니다",
-      description: "새로운 위치나 기기에서 로그인했습니다. 앱을 열기 전에 2차 인증을 완료하세요.",
+      description: policy
+        ? "관리자가 2차 인증을 필수로 정했습니다. 앱을 열기 전에 인증을 완료하세요."
+        : "새로운 위치나 기기에서 로그인했습니다. 앱을 열기 전에 2차 인증을 완료하세요.",
       expiredDescription: "추가 인증 기한이 지났습니다. 다시 로그인하세요.",
       action: "인증하기",
       dialogTitle: "추가 인증",

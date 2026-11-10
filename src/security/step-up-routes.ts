@@ -64,6 +64,6 @@ stepUpRoutes.get("/step-up/challenge", async (context) => {
     reasons: challenge.reasons,
     expiresAt: challenge.expiresAt,
     methods,
-    ui: stepUpUi(methods),
+    ui: stepUpUi(methods, challenge.reasons),
   });
 });

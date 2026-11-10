@@ -89,9 +89,10 @@ export async function buildEnrollmentView(
     {
       key: "otp",
       label: "일회용 코드",
-      description: smsDelivery
+      description: (smsDelivery
         ? "등록된 휴대폰 번호로 문자 메시지를 보냅니다."
-        : "계정 이메일로 일회용 코드를 보냅니다.",
+        : "계정 이메일로 일회용 코드를 보냅니다.") +
+        (hasTotp ? " 인증 앱을 등록하면 함께 켜집니다." : ""),
       state: pick(policy.allow.otp, twoFactorEnabled),
       stateLabel: "",
       actions: policy.allow.otp && !twoFactorEnabled ? ["enroll"] : [],

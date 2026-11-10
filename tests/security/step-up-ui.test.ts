@@ -23,6 +23,15 @@ describe("step-up screen definition", () => {
     expect(stepUpUi(["duo_push"]).methods[0]?.input).toBe("push");
   });
 
+  test("a policy-required challenge says so instead of blaming a new device", () => {
+    const risk = stepUpUi(["totp"], ["untrusted_device"]);
+    const policy = stepUpUi(["totp"], ["mfa_required"]);
+    expect(risk.description).toContain("새로운 기기");
+    expect(policy.description).toContain("관리자가");
+    expect(policy.description).not.toContain("새로운 기기");
+    expect(policy.banner.description).toContain("관리자가");
+  });
+
   test("carries the banner and error copy the client renders", () => {
     const ui = stepUpUi(["totp"]);
     expect(ui.banner.title && ui.banner.expiredDescription && ui.banner.action).toBeTruthy();

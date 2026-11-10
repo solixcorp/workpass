@@ -392,7 +392,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   // Step-up challenge: the gate allowed the login under a step_up decision
   // because the account has an enrollable second factor; SSO issuance stays
   // withheld until it is verified. Opening the row failing is fail-closed.
-  let stepUpAnnotation: { methods: string[]; expiresAt: string | null } | null = null;
+  let stepUpAnnotation: { methods: string[]; expiresAt: string | null; reasons: string[] } | null = null;
   // A required second factor the account already has is asked for right here.
   const mfaRequiredNow = gate.action !== "step_up" && await loginRequiresSecondFactor(context.env, transcriptRow.user_id).catch(() => false);
   if (gate.action === "step_up" || mfaRequiredNow) {
@@ -419,7 +419,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
       return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 503);
     }
     const challenge = await getStepUpChallenge(context.env, session.token);
-    stepUpAnnotation = { methods, expiresAt: challenge.expiresAt };
+    stepUpAnnotation = { methods, expiresAt: challenge.expiresAt, reasons: challenge.reasons };
   }
 
   const cookie = await sessionCookieHeader(context, auth, session.token);
@@ -439,7 +439,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   });
   const responseBody: Record<string, unknown> = { token: session.token };
   if (stepUpAnnotation) {
-    responseBody.stepUpChallenge = { required: true, ...stepUpAnnotation, ui: stepUpUi(stepUpAnnotation.methods) };
+    responseBody.stepUpChallenge = { required: true, ...stepUpAnnotation, ui: stepUpUi(stepUpAnnotation.methods, stepUpAnnotation.reasons) };
   }
   return new Response(JSON.stringify(responseBody), { status: 200, headers });
 });
