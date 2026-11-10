@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PlusIcon, Trash2Icon } from 'lucide-react'
+import { PlusIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -45,6 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { AppPolicyDialog, type PolicyApp } from './app-policy-dialog'
 import { apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 
@@ -75,6 +76,7 @@ export function ApplicationsPage() {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<AdminApplication | null>(null)
+  const [policyApp, setPolicyApp] = useState<PolicyApp | null>(null)
 
   const { data, isPending, error } = useQuery({
     queryKey: applicationsKey,
@@ -166,6 +168,14 @@ export function ApplicationsPage() {
                     />
                   </TableCell>
                   <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${application.name} 접근 정책`}
+                      onClick={() => setPolicyApp({ slug: application.slug, name: application.name })}
+                    >
+                      <SlidersHorizontalIcon />
+                    </Button>
                     {application.protected ? (
                       <Badge variant="secondary">기본 앱</Badge>
                     ) : (
@@ -187,6 +197,7 @@ export function ApplicationsPage() {
       )}
 
       <CreateApplicationDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <AppPolicyDialog app={policyApp} onClose={() => setPolicyApp(null)} />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
