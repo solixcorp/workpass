@@ -98,8 +98,7 @@ function PolicyList() {
                 <TableHead>이름</TableHead>
                 <TableHead>유형</TableHead>
                 <TableHead>내용</TableHead>
-                <TableHead>사용</TableHead>
-                <TableHead className="w-24 sticky right-0 bg-background" />
+                <TableHead className="sticky right-0 bg-background">사용</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -115,21 +114,21 @@ function PolicyList() {
                     <Badge variant="outline">{TYPE_INFO[policy.type]?.label ?? policy.type}</Badge>
                   </TableCell>
                   <TableCell className="max-w-sm truncate text-muted-foreground">{summarize(policy)}</TableCell>
-                  <TableCell>
-                    <Switch
-                      aria-label={`${policy.name} 사용`}
-                      checked={policy.enabled}
-                      disabled={toggle.isPending}
-                      onCheckedChange={(enabled) => toggle.mutate({ policy, enabled })}
-                    />
-                  </TableCell>
                   <TableCell className="whitespace-nowrap sticky right-0 bg-background">
-                    <Button variant="outline" size="sm" onClick={() => setDialog({ policy })}>
-                      편집
-                    </Button>
-                    <Button variant="ghost" size="icon-sm" aria-label={`${policy.name} 삭제`} onClick={() => setPendingDelete(policy)}>
-                      <Trash2Icon />
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Switch
+                        aria-label={`${policy.name} 사용`}
+                        checked={policy.enabled}
+                        disabled={toggle.isPending}
+                        onCheckedChange={(enabled) => toggle.mutate({ policy, enabled })}
+                      />
+                      <Button variant="outline" size="sm" onClick={() => setDialog({ policy })}>
+                        편집
+                      </Button>
+                      <Button variant="ghost" size="icon-sm" aria-label={`${policy.name} 삭제`} onClick={() => setPendingDelete(policy)}>
+                        <Trash2Icon />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -221,8 +220,7 @@ function BindingList() {
                 <TableHead>정책</TableHead>
                 <TableHead>순서</TableHead>
                 <TableHead>동작</TableHead>
-                <TableHead>사용</TableHead>
-                <TableHead className="w-12" />
+                <TableHead className="sticky right-0 bg-background">사용</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -241,18 +239,18 @@ function BindingList() {
                   <TableCell className="text-muted-foreground">
                     {binding.negate ? '결과 뒤집기 · ' : ''}오류 시 {binding.failureResult === 'pass' ? '통과' : '거절'}
                   </TableCell>
-                  <TableCell>
-                    <Switch
-                      aria-label="연결 사용"
-                      checked={binding.enabled}
-                      disabled={toggle.isPending}
-                      onCheckedChange={(enabled) => toggle.mutate({ binding, enabled })}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon-sm" aria-label="연결 해제" onClick={() => remove.mutate(binding.id)}>
-                      <Trash2Icon />
-                    </Button>
+                  <TableCell className="whitespace-nowrap sticky right-0 bg-background">
+                    <div className="flex items-center justify-end gap-2">
+                      <Switch
+                        aria-label="연결 사용"
+                        checked={binding.enabled}
+                        disabled={toggle.isPending}
+                        onCheckedChange={(enabled) => toggle.mutate({ binding, enabled })}
+                      />
+                      <Button variant="ghost" size="icon-sm" aria-label="연결 해제" onClick={() => remove.mutate(binding.id)}>
+                        <Trash2Icon />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

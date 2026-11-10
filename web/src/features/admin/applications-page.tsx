@@ -135,8 +135,7 @@ export function ApplicationsPage() {
                 <TableHead>방식</TableHead>
                 <TableHead>그룹</TableHead>
                 <TableHead>등록일</TableHead>
-                <TableHead>사용</TableHead>
-                <TableHead className="w-12 sticky right-0 bg-background" />
+                <TableHead className="sticky right-0 bg-background">사용</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -159,35 +158,35 @@ export function ApplicationsPage() {
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {formatDateTime(application.createdAt)}
                   </TableCell>
-                  <TableCell>
-                    <Switch
-                      aria-label={`${application.name} 사용`}
-                      checked={application.enabled}
-                      disabled={toggle.isPending || application.protected}
-                      onCheckedChange={(enabled) => toggle.mutate({ slug: application.slug, enabled })}
-                    />
-                  </TableCell>
                   <TableCell className="whitespace-nowrap sticky right-0 bg-background">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`${application.name} 접근 정책`}
-                      onClick={() => setPolicyApp({ slug: application.slug, name: application.name })}
-                    >
-                      <SlidersHorizontalIcon />
-                    </Button>
-                    {application.protected ? (
-                      <Badge variant="secondary">기본 앱</Badge>
-                    ) : (
+                    <div className="flex items-center justify-end gap-2">
+                      <Switch
+                        aria-label={`${application.name} 사용`}
+                        checked={application.enabled}
+                        disabled={toggle.isPending || application.protected}
+                        onCheckedChange={(enabled) => toggle.mutate({ slug: application.slug, enabled })}
+                      />
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`${application.name} 삭제`}
-                        onClick={() => setPendingDelete(application)}
+                        aria-label={`${application.name} 접근 정책`}
+                        onClick={() => setPolicyApp({ slug: application.slug, name: application.name })}
                       >
-                        <Trash2Icon />
+                        <SlidersHorizontalIcon />
                       </Button>
-                    )}
+                      {application.protected ? (
+                        <Badge variant="secondary">기본 앱</Badge>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`${application.name} 삭제`}
+                          onClick={() => setPendingDelete(application)}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
