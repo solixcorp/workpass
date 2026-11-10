@@ -1,0 +1,23 @@
+schema = 1
+id = "CHG-1794272788-jnd"
+type = "change"
+title = "Modular mail provider abstraction with five providers"
+description = "Introduce src/mail/provider.ts (message model + provider interface), src/mail/config.ts (env resolution + from-address precedence), src/mail/dispatch.ts (webhook-aware send with fail-closed errors), src/mail/providers/{resend,cloudflare,maileroo,ses,smtp}.ts and src/mail/providers/smtp/{client,mime}.ts (adapted worker-mailer). Rewire src/mail/send.ts and src/mfa/otp-senders.ts onto the dispatcher. Env additions in src/env.ts, .dev.vars.example, and docs/design/email-providers.md."
+status = "draft"
+created_at = 2026-11-10T10:06:28+09:00
+updated_at = 2026-11-10T10:06:28+09:00
+
+[metadata]
+kind = "feature"
+
+[[relations]]
+to = "DEC-1794272788-2bg"
+type = "covers"
+
+[[relations]]
+to = "DEC-1794272788-v9n"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794272788-h5w"
+type = "covers"

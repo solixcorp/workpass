@@ -1,0 +1,15 @@
+schema = 1
+id = "TST-1794272788-jth"
+type = "test"
+title = "Mail provider dispatch, provider payloads, SMTP MIME coverage"
+description = "Bun tests cover: provider resolution from env combinations (explicit selection, unknown value, legacy Resend fallback, nothing configured); per-provider HTTP request shapes (Resend, Cloudflare Email Sending REST, Maileroo v2, SES v2 with SigV4 headers and canonical signature determinism); SMTP MIME assembly (quoted-printable, header encoding, dot-stuffing); OTP email routing through the shared dispatcher and webhook precedence."
+status = "active"
+created_at = 2026-11-10T10:06:28+09:00
+updated_at = 2026-11-10T10:09:47+09:00
+
+[metadata]
+kind = "unit"
+
+[[relations]]
+to = "REQ-1794272788-h5w"
+type = "verifies"

@@ -1,0 +1,11 @@
+schema = 1
+id = "DEC-1794272788-v9n"
+type = "decision"
+title = "Mail provider selection is environment-only configuration"
+description = "The active mail provider is chosen by MAIL_PROVIDER (smtp|resend|cloudflare|maileroo|ses) plus prefix-scoped MAIL_* credential variables on the Env interface. No database-backed or runtime-updatable mail configuration; changing provider requires redeploying vars. Common sender identity uses MAIL_FROM/MAIL_FROM_NAME with the existing per-purpose overrides (INVITATION_EMAIL_FROM, MFA_OTP_EMAIL_FROM) winning above the generic default. An unset MAIL_PROVIDER falls back to the legacy Resend path for backward compatibility. Unknown MAIL_PROVIDER values fail loudly."
+status = "active"
+created_at = 2026-11-10T10:06:28+09:00
+updated_at = 2026-11-10T10:09:47+09:00
+
+[metadata]
+kind = "architecture"

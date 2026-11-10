@@ -1,0 +1,12 @@
+schema = 1
+id = "DEC-1794272788-2bg"
+type = "decision"
+title = "SMTP transport is an in-repo client adapted from worker-mailer (MIT), no new dependencies"
+description = "Workers cannot use nodemailer (no nodejs_compat). The SMTP provider uses a vendored, adapted implementation of the MIT-licensed zou-yu/worker-mailer (cloudflare:sockets TCP + startTls()), trimmed to this platform's needs: implicit TLS (465) and STARTTLS (587), AUTH PLAIN and AUTH LOGIN only (CRAM-MD5 and DSN options dropped), one message per connection, MIME multipart assembly with quoted-printable and RFC 2047 header encoding retained. It is imported dynamically so the bun test suite never touches cloudflare:sockets. MIT attribution is preserved in the source header."
+status = "active"
+created_at = 2026-11-10T10:06:28+09:00
+updated_at = 2026-11-10T10:09:47+09:00
+
+[metadata]
+attribution = "MIT (c) zou-yu, https://github.com/zou-yu/worker-mailer"
+kind = "architecture"

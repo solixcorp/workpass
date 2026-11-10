@@ -1,0 +1,52 @@
+schema = 1
+id = "TSK-1794272983-2w0"
+type = "task"
+title = "Implement modular mail provider abstraction"
+description = "Introduce src/mail/provider.ts (message model, provider registry, env resolution), src/mail/send.ts dispatch (webhook precedence, fail-closed, Reply-To), one module per provider under src/mail/providers/ (resend, cloudflare, maileroo, ses with Web Crypto SigV4, smtp with the MIT-attributed vendored client under src/mail/providers/smtp/), rewire src/mfa/otp-senders.ts onto the dispatcher, add MAIL_* env variables to src/env.ts and .dev.vars.example, document in docs/design/email-providers.md, and cover everything in tests/mail-providers.test.ts."
+status = "resolved"
+created_at = 2026-11-10T10:09:43+09:00
+updated_at = 2026-11-10T10:09:53+09:00
+
+[metadata]
+acceptance = ["bun run typecheck exits 0", "bun test exits 0 with the new mail provider suite passing", "Existing invitation email and MFA tests remain green"]
+instructions = ["Implement the provider module per docs/design/email-providers.md module layout.", "Preserve existing dev webhook contracts (invitation body shape; OTP body keeps to/userId/otp).", "Keep the legacy Resend-only deployments working (MAIL_PROVIDER unset falls back to Resend)."]
+must_not = ["Do not add nodemailer, worker-mailer, or any AWS SDK dependency", "Do not implement Maileroo template endpoints", "Do not introduce database-backed mail configuration"]
+order = 1.0
+qa = [{command = "bun run typecheck && bun test", evidence = "tests/mail-providers.test.ts", expected = "exit 0; all tests pass including tests/mail-providers.test.ts"}]
+references = ["docs/design/email-providers.md"]
+
+[[relations]]
+to = "PHS-1794272983-49s"
+type = "belongs_to"
+
+[[relations]]
+to = "DEC-1794272788-2bg"
+type = "covers"
+
+[[relations]]
+to = "DEC-1794272788-v9n"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794272788-h5w"
+type = "covers"
+
+[[relations]]
+to = "TST-1794272788-jth"
+type = "covers"
+
+[[relations]]
+to = "DEC-1794272788-2bg"
+type = "delivers"
+
+[[relations]]
+to = "DEC-1794272788-v9n"
+type = "delivers"
+
+[[relations]]
+to = "REQ-1794272788-h5w"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794272788-jth"
+type = "delivers"

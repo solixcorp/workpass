@@ -1,0 +1,24 @@
+schema = 1
+id = "REQ-1794272788-h5w"
+type = "requirement"
+title = "Email delivery supports operator-selected providers (SMTP, Resend, Cloudflare Email Sending, Maileroo, Amazon SES)"
+description = "Transactional (invitation) and OTP email delivery must work through any of five providers: SMTP, Resend, Cloudflare Email Sending REST API, Maileroo basic API (templates excluded), or Amazon SES v2 API. The deployment selects one provider per environment configuration. Behaviors that must hold: modular provider implementations behind a shared interface; fail-closed delivery when no provider is configured (never silently drop); existing dev/mock webhook override paths keep working; legacy Resend-only deployments keep working without changes."
+status = "active"
+created_at = 2026-11-10T10:06:28+09:00
+updated_at = 2026-11-10T10:09:47+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
+
+[[relations]]
+to = "DEC-1794272788-2bg"
+type = "constrained_by"
+
+[[relations]]
+to = "DEC-1794272788-v9n"
+type = "constrained_by"
+
+[[relations]]
+to = "ACT-1794273005-fye"
+type = "has_criterion"

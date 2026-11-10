@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794273005-z4w"
+type = "interface"
+title = "MailProvider module interface and MAIL_* environment contract"
+description = "src/mail/provider.ts defines MailMessage {to, subject, text, html?, from, fromName?, replyTo?}, MailProvider {id, isEnabled(env), requiredEnv, send(env, message)}, and MAIL_PROVIDER_IDS. src/mail/send.ts exposes deliverMessage(env, message, {purpose, webhookUrl?, webhookPayload?}) with dev-webhook precedence and fail-closed delivery, sendTransactionEmail/transactionEmailAvailable for invitations, and src/mail/providers/* each implement one provider (smtp, resend, cloudflare, maileroo, ses). Environment contract: MAIL_PROVIDER selects the provider (unset falls back to legacy Resend; unknown values throw), MAIL_FROM/MAIL_FROM_NAME/MAIL_REPLY_TO provide generic sender identity below per-purpose overrides, per-provider credentials are MAIL_ prefixed (docs/design/email-providers.md tables the full set)."
+status = "draft"
+created_at = 2026-11-10T10:10:05+09:00
+updated_at = 2026-11-10T10:10:05+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794272788-h5w"
+type = "implements"
