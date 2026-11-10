@@ -21,13 +21,14 @@ import {
   policyTtlSeconds,
 } from "../access/policies";
 import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
+import { userMustUseMfa } from "../mfa/policy";
 import { getEnabledSamlServiceProviderByEntityId } from "./service-providers";
 import { importSamlIdpPrivateKey, importSamlServiceProviderTrustedKey } from "./certificates";
 import { buildSignedSamlResponse, type SamlSigningMaterial } from "./assertion";
 import { buildSamlIdpMetadata } from "./metadata";
 import { samlAttributeRelease } from "../claims/protocol-claims";
 import { cachedProtocolDocument, storeProtocolDocument } from "../web/protocol-cache";
-import { buildSsoLoginPage } from "../pages/sso-login";
+import { redirectToSignIn } from "../pages/sso-login";
 
 export const SAML_SSO_PATH = "/saml/sso";
 
@@ -105,10 +106,13 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
       if (request.isPassive) return reject(context, "passive-session-unavailable");
       // Prior-success bypass: a session is still required, but a signed-in
       // skip never applies here; the login page always gates unauthenticated users.
-      return renderLoginPage(context);
+      return redirectToSignIn(context);
     }
     // The per-application access policy: group gating plus per-app MFA
     // requirement, evaluated against the signed-in user.
+    if (userMustUseMfa(context.env, session.user as { role?: unknown }) && !(await sessionSatisfiesRequireMfa(context.env, session))) {
+      return reject(context, "mfa-required");
+    }
     const policySubject = `saml:${provider.entityId}`;
     const policy = await loadAppAccessPolicy(context.env, policySubject);
     if (policy) {
@@ -192,24 +196,6 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
     return context.json({ error: GENERIC_REJECTION }, 500);
   }
 });
-
-/** Render the login page only for a fully verified, unauthenticated request. */
-function renderLoginPage(context: Context<{ Bindings: Env }>) {
-  context.header("Cache-Control", "no-store");
-  context.header("Referrer-Policy", "no-referrer");
-  context.header(
-    "Content-Security-Policy",
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
-  );
-  return context.body(
-    buildSsoLoginPage({
-      title: "Sign in to continue",
-      hint: "This application sent you here to sign in. Authenticate to continue to it.",
-    }),
-    200,
-    { "Content-Type": "text/html; charset=utf-8" },
-  );
-}
 
 /** Public, unsigned protocol metadata for service provider configuration. */
 samlProtocolRoutes.get("/saml/metadata", async (context) => {

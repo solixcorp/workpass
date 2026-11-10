@@ -27,6 +27,8 @@ import { insertAuditEvent } from "../audit/store";
 import { auditStandaloneOperation } from "../audit/store";
 import { evaluateOpaqueLoginGate } from "./opaque-login";
 import { getStepUpChallenge, openStepUpChallenge, usableSecondFactors } from "../security/step-up";
+import { stepUpUi } from "../security/step-up-ui";
+import { loginRequiresSecondFactor } from "../mfa/policy";
 
 export const opaqueRoutes = new Hono<{ Bindings: Env }>();
 
@@ -36,7 +38,7 @@ interface AuthContext {
   secret: string;
   sessionTokenCookieName: string;
   secureCookie: boolean;
-  createSession: (userId: string) => Promise<{ token: string } | null>;
+  createSession: (userId: string, device?: { ipAddress?: string; userAgent?: string }) => Promise<{ token: string } | null>;
 }
 
 async function authContext(env: Env): Promise<AuthContext> {
@@ -61,7 +63,8 @@ async function authContext(env: Env): Promise<AuthContext> {
     secret: context.secret as unknown as string,
     sessionTokenCookieName: sessionCookie.name,
     secureCookie: sessionCookie.name.startsWith("__Secure-"),
-    createSession: async (userId) => await context.internalAdapter.createSession(userId, false),
+    createSession: async (userId, device) =>
+      await context.internalAdapter.createSession(userId, false, device ? { ...device } : undefined),
   };
 }
 
@@ -97,7 +100,7 @@ async function sessionCookieHeader(
 const WIRE_PATTERN = /^[A-Za-z0-9_-]{1,4096}$/;
 
 /** OPAQUE JSON fields are base64url strings (1–4096 chars). */
-function wireToBase64(value: unknown): string {
+export function wireToBase64(value: unknown): string {
   if (typeof value !== "string" || !WIRE_PATTERN.test(value)) {
     throw new Error("Malformed OPAQUE message");
   }
@@ -115,7 +118,7 @@ async function requireSession(context: Context<{ Bindings: Env }>) {
   return await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
 }
 
-async function storeCredentialRecord(env: Env, userId: string, identity: string, recordBytes: Uint8Array): Promise<void> {
+export async function storeCredentialRecord(env: Env, userId: string, identity: string, recordBytes: Uint8Array): Promise<void> {
   const sealed = await sealString(env, JSON.stringify(Array.from(recordBytes)), `opaque_record:${userId}`);
   const now = new Date().toISOString();
   await env.DB.prepare(
@@ -156,7 +159,7 @@ async function lookupUser(
   return row ?? null;
 }
 
-async function rateBucket(env: Env, ip: string): Promise<boolean> {
+export async function rateBucket(env: Env, ip: string): Promise<boolean> {
   const nowMinute = Math.floor(Date.now() / 60_000);
   const result = await env.DB.prepare(
     `INSERT INTO fingerprint_lookup_limits (budget_key, window_start, request_count)
@@ -173,7 +176,7 @@ async function rateBucket(env: Env, ip: string): Promise<boolean> {
   return (result?.request_count ?? Number.POSITIVE_INFINITY) <= 30;
 }
 
-function clientIp(context: Context<{ Bindings: Env }>): string {
+export function clientIp(context: Context<{ Bindings: Env }>): string {
   return context.req.header("cf-connecting-ip")
     ?? context.req.header("x-forwarded-for")?.split(",")[0]?.trim()
     ?? "127.0.0.1";
@@ -242,7 +245,7 @@ opaqueRoutes.post("/api/opaque/auth/start", async (context) => {
   let body: unknown;
   try { body = await context.req.json(); } catch { return opaqueBadRequest(context, "The OPAQUE authentication could not be processed"); }
   const value = (body ?? {}) as Record<string, unknown>;
-  const username = typeof value.username === "string" ? value.username : "";
+  const username = typeof value.username === "string" ? value.username.trim().toLowerCase() : "";
   let ke1Wire: string;
   try { ke1Wire = wireToBase64(value.ke1); } catch { return opaqueBadRequest(context, "The OPAQUE authentication could not be processed"); }
   // Device-risk contract: event ids only; a sealed result is explicitly
@@ -257,6 +260,9 @@ opaqueRoutes.post("/api/opaque/auth/start", async (context) => {
       fingerprintEventId = fingerprint.event_id;
     }
   }
+  if (!username || username.length > 256) {
+    return opaqueBadRequest(context, "The OPAQUE authentication could not be processed");
+  }
   if (!(await rateBucket(context.env, clientIp(context)))) {
     return context.json({ error: "Too many authentication attempts; retry later" }, 429);
   }
@@ -268,13 +274,19 @@ opaqueRoutes.post("/api/opaque/auth/start", async (context) => {
 
   const user = await lookupUser(context.env, username);
   const stored = user ? await loadCredentialRecord(context.env, user.id) : null;
-  const identity = stored ? stored.identity : "opaque:absent@example.invalid";
-  const record = stored
-    ? RegistrationRecord.deserialize(config, Array.from(stored.record))
+  // Enumeration resistance: the transcript always binds the identifier the
+  // caller typed, and the response echoes only that value. A real record is
+  // used only when it was enrolled under exactly this identifier (the
+  // lowercased email); an unknown identifier, an account without an OPAQUE
+  // record, or a username entry gets a fake record, so the client-side proof
+  // fails identically and no response field reveals whether the account exists.
+  const usable = stored && stored.identity === username ? stored : null;
+  const record = usable
+    ? RegistrationRecord.deserialize(config, Array.from(usable.record))
     : await RegistrationRecord.createFake(config);
 
   const parsed = KE1.deserialize(config, Array.from(base64Decode(ke1Wire)));
-  const init = await server.authInit(parsed, record, identity, identity);
+  const init = await server.authInit(parsed, record, username, username);
   if (init instanceof Error) return opaqueBadRequest(context, "The OPAQUE authentication could not be processed");
 
   await context.env.DB.prepare("DELETE FROM opaque_login_transcripts WHERE expires_at < ?")
@@ -286,8 +298,8 @@ opaqueRoutes.post("/api/opaque/auth/start", async (context) => {
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     transcriptId,
-    user?.id ?? null,
-    identity,
+    usable ? user!.id : null,
+    username,
     JSON.stringify(Array.from(init.expected.serialize())),
     new Date().toISOString(),
     expiresAt,
@@ -296,7 +308,7 @@ opaqueRoutes.post("/api/opaque/auth/start", async (context) => {
 
   return Response.json({
     ke2: base64Encode(new Uint8Array(init.ke2.serialize())),
-    credentialIdentifier: identity,
+    credentialIdentifier: username,
     serverIdentity,
     transcriptId,
   });
@@ -331,8 +343,15 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   const config = opaqueConfig();
   const { KE3, ExpectedAuthResult } = await import("@cloudflare/opaque-ts");
   const { server } = await opaqueServer(context.env);
-  const expected = ExpectedAuthResult.deserialize(config, JSON.parse(transcriptRow.expected) as number[]);
-  const finish = server.authFinish(KE3.deserialize(config, Array.from(ke3Bytes)), expected);
+  let finish: ReturnType<typeof server.authFinish>;
+  try {
+    const expected = ExpectedAuthResult.deserialize(config, JSON.parse(transcriptRow.expected) as number[]);
+    finish = server.authFinish(KE3.deserialize(config, Array.from(ke3Bytes)), expected);
+  } catch {
+    // A malformed KE3 must look exactly like a failed proof (401), never a 500
+    // that would distinguish a real account's transcript from an unknown one.
+    finish = new Error("Malformed OPAQUE message");
+  }
   if (finish instanceof Error) {
     return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 401);
   }
@@ -363,21 +382,27 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   }
 
   const auth = await authContext(context.env);
-  const session = await auth.createSession(transcriptRow.user_id);
+  const userAgent = context.req.header("user-agent");
+  const session = await auth.createSession(transcriptRow.user_id, {
+    ipAddress: clientIp(context),
+    ...(userAgent ? { userAgent: userAgent.slice(0, 512) } : {}),
+  });
   if (!session) return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 503);
 
   // Step-up challenge: the gate allowed the login under a step_up decision
   // because the account has an enrollable second factor; SSO issuance stays
   // withheld until it is verified. Opening the row failing is fail-closed.
   let stepUpAnnotation: { methods: string[]; expiresAt: string | null } | null = null;
-  if (gate.action === "step_up") {
+  // A required second factor the account already has is asked for right here.
+  const mfaRequiredNow = gate.action !== "step_up" && await loginRequiresSecondFactor(context.env, transcriptRow.user_id).catch(() => false);
+  if (gate.action === "step_up" || mfaRequiredNow) {
     const methods = await usableSecondFactors(context.env, transcriptRow.user_id).catch(() => [] as string[]);
     const opened = methods.length > 0 &&
       await openStepUpChallenge({
         env: context.env,
         sessionToken: session.token,
         userId: transcriptRow.user_id,
-        reasons: gate.reasons.slice(0, 5),
+        reasons: mfaRequiredNow ? ["mfa_required"] : gate.reasons.slice(0, 5),
         requestPath: "/api/opaque/auth/finish",
       }).catch(() => false);
     if (!opened) {
@@ -414,7 +439,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   });
   const responseBody: Record<string, unknown> = { token: session.token };
   if (stepUpAnnotation) {
-    responseBody.stepUpChallenge = { required: true, ...stepUpAnnotation };
+    responseBody.stepUpChallenge = { required: true, ...stepUpAnnotation, ui: stepUpUi(stepUpAnnotation.methods) };
   }
   return new Response(JSON.stringify(responseBody), { status: 200, headers });
 });

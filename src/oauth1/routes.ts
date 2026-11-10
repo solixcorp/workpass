@@ -7,6 +7,7 @@
  * authenticate with verifyOAuth1Request + resolveOAuth1AccessToken.
  */
 
+import { redirectToSignIn } from "../pages/sso-login";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { insertAuditEvent } from "../audit/store";
@@ -162,7 +163,7 @@ oauth1Routes.get("/api/oauth1/authorize", async (context) => {
   const auth = (await import("../auth/config")).createAuth(context.env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) {
-    return context.redirect(context.req.url.replace("/authorize", "/authorize/login"), 302);
+    return redirectToSignIn(context);
   }
 
   const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
@@ -181,59 +182,6 @@ oauth1Routes.get("/api/oauth1/authorize", async (context) => {
     "</form>",
   ];
   return context.body(page(nonce, bodyParts.join("\n")), 200, { "Content-Type": "text/html; charset=utf-8" });
-});
-
-/** Minimal sign-in handoff for unauthenticated authorize visits. */
-oauth1Routes.get("/api/oauth1/authorize/login", async (context) => {
-  if (!enabled(context.env)) return context.notFound();
-  const oauthToken = context.req.query("oauth_token") ?? "";
-  if (!oauthToken || oauthToken.length > 512) return context.json({ error: "oauth_token is required" }, 400);
-  const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
-  context.header("Cache-Control", "no-store");
-  context.header("Referrer-Policy", "no-referrer");
-  context.header("Content-Security-Policy",
-    `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'`);
-  const bodyParts = [
-    "<h1>Sign in to continue</h1>",
-    '<p>Sign in to the internal identity platform to continue.</p>',
-    '<form id="f">',
-    '<label for="identifier">Email or username</label>',
-    '<input id="identifier" required autocapitalize="off"/>',
-    '<label for="password">Password</label>',
-    '<input id="password" type="password" required/>',
-    '<button id="b" type="submit">Continue</button>',
-    '<div id="error" role="alert"></div>',
-    "</form>",
-  ];
-  const script = [
-    "var t=" + JSON.stringify(oauthToken) + ";",
-    "document.getElementById('f').addEventListener('submit',function(ev){ev.preventDefault();",
-    "var id=document.getElementById('identifier').value.trim();var pw=document.getElementById('password').value;",
-    "var endpoint=/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(id)?'/api/auth/sign-in/email':'/api/auth/sign-in/username';",
-    "var payload=endpoint==='/api/auth/sign-in/email'?{email:id,password:pw}:{username:id,password:pw};",
-    "fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})",
-    ".then(function(r){if(r.status!==200)return r.json().then(function(j){throw new Error(j.message||'Sign-in failed')});return r.json()})",
-    ".then(function(){location.replace('/api/oauth1/authorize?oauth_token='+encodeURIComponent(t))})",
-    ".catch(function(er){document.getElementById('error').textContent=er.message||'Sign-in failed';document.getElementById('b').disabled=false;});});",
-  ].join("\n");
-  const rendered = [
-    "<!DOCTYPE html>",
-    '<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>',
-    "<title>Sign in to continue</title>",
-    "<style>",
-    "body{font-family:system-ui,sans-serif;background:#f6f6f8;display:flex;min-height:100vh;align-items:center;justify-content:center}",
-    "main{background:#fff;border:1px solid #e4e4e9;border-radius:10px;padding:32px;width:min(340px,90vw)}",
-    "h1{font-size:17px;margin:0 0 8px}p{font-size:13px;color:#3c3c44}",
-    "label{display:block;font-size:12px;margin:10px 0 4px}",
-    "input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #cfcfd8;border-radius:6px;font-size:14px}",
-    "button{margin-top:16px;width:100%;padding:10px;border:0;border-radius:6px;background:#2f5fe0;color:#fff;font-size:14px;cursor:pointer}",
-    "#error{color:#b3261e;font-size:13px;margin-top:12px;min-height:16px}",
-    "</style></head><body><main>",
-    bodyParts.join("\n"),
-    `<script nonce="${nonce}">${script}</script>`,
-    "</main></body></html>",
-  ].join("\n");
-  return context.body(rendered, 200, { "Content-Type": "text/html; charset=utf-8" });
 });
 
 async function redirectTarget(callback: string, params: Record<string, string>): Promise<string> {

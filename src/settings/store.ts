@@ -1,0 +1,100 @@
+import type { Env } from "../env";
+import { SETTINGS, settingDefinition, type SettingDefinition } from "./registry";
+
+const CACHE_TTL_MS = 30_000;
+
+interface StoredSetting {
+  value: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+interface CacheEntry {
+  at: number;
+  rows: Map<string, StoredSetting>;
+}
+
+// Keyed by the D1 binding so isolates and tests never share stored values.
+const cache = new WeakMap<object, CacheEntry>();
+
+async function readRows(env: Env): Promise<Map<string, StoredSetting>> {
+  // No database (misconfigured deployment, unit tests): environment values apply.
+  if (!env.DB) return new Map();
+  const hit = cache.get(env.DB);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.rows;
+  const rows = new Map<string, StoredSetting>();
+  try {
+    const result = await env.DB.prepare(
+      "SELECT key, value, updated_by AS updatedBy, updated_at AS updatedAt FROM app_settings",
+    ).all<{ key: string; value: string; updatedBy: string; updatedAt: string }>();
+    for (const row of result.results) {
+      if (settingDefinition(row.key)) rows.set(row.key, row);
+    }
+  } catch {
+    // The table does not exist before the first migration: environment values apply.
+  }
+  cache.set(env.DB, { at: Date.now(), rows });
+  return rows;
+}
+
+export function invalidateSettings(env: Env): void {
+  if (env.DB) cache.delete(env.DB);
+}
+
+/**
+ * The environment with stored settings laid over it. Everything downstream
+ * keeps reading `env.FINGERPRINT_MODE` and friends; a stored value simply
+ * takes the place of the deployment value for this request.
+ */
+export async function applySettings(env: Env): Promise<Env> {
+  const rows = await readRows(env);
+  const overrides: Record<string, string> = {};
+  for (const [key, row] of rows) {
+    const definition = settingDefinition(key);
+    if (definition) overrides[definition.envName] = row.value;
+  }
+  // Lockout recovery: the operator sets FINGERPRINT_BREAK_GLASS=true on the
+  // deployment and device-risk checks are off again, whatever was stored.
+  if (env.FINGERPRINT_BREAK_GLASS === "true") overrides.FINGERPRINT_MODE = "disabled";
+  if (Object.keys(overrides).length === 0) return env;
+  return { ...env, ...overrides } as Env;
+}
+
+export type SettingSource = "admin" | "env" | "default";
+
+export interface ResolvedSetting {
+  definition: SettingDefinition;
+  value: string;
+  source: SettingSource;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+export async function resolveSettings(env: Env): Promise<ResolvedSetting[]> {
+  invalidateSettings(env);
+  const rows = await readRows(env);
+  return SETTINGS.map((definition) => {
+    const stored = rows.get(definition.key);
+    if (stored) {
+      return { definition, value: stored.value, source: "admin", updatedBy: stored.updatedBy, updatedAt: stored.updatedAt };
+    }
+    const fromEnv = (env as unknown as Record<string, unknown>)[definition.envName];
+    if (typeof fromEnv === "string" && fromEnv.trim() !== "") {
+      return { definition, value: fromEnv.trim(), source: "env", updatedBy: null, updatedAt: null };
+    }
+    return { definition, value: definition.default, source: "default", updatedBy: null, updatedAt: null };
+  });
+}
+
+export async function saveSetting(env: Env, key: string, value: string, actorUserId: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+  ).bind(key, value, actorUserId, new Date().toISOString()).run();
+  invalidateSettings(env);
+}
+
+export async function clearSetting(env: Env, key: string): Promise<void> {
+  await env.DB.prepare("DELETE FROM app_settings WHERE key = ?").bind(key).run();
+  invalidateSettings(env);
+}

@@ -3,9 +3,13 @@ export interface Env extends Partial<WorkerBindings> {
   AUTH_SECRET: string;
   AUTH_BASE_URL: string;
   OIDC_EMAIL_DOMAIN?: string;
+  /** "true" forces device-risk checks off whatever the stored setting says (lockout recovery). */
+  FINGERPRINT_BREAK_GLASS?: string;
   FINGERPRINT_MODE?: "disabled" | "observe" | "enforce";
   FINGERPRINT_REGION?: "us" | "eu" | "ap";
   FINGERPRINT_SERVER_API_KEY?: string;
+  /** Public (browser) key for the Fingerprint JS agent; safe to expose. */
+  FINGERPRINT_PUBLIC_API_KEY?: string;
   FINGERPRINT_ALLOWED_ORIGINS?: string;
   FINGERPRINT_MIN_CONFIDENCE?: string;
   FINGERPRINT_SUSPECT_SCORE_THRESHOLD?: string;
@@ -29,6 +33,19 @@ export interface Env extends Partial<WorkerBindings> {
   SESSION_BINDING_GEOIP?: "off" | "country" | "country_and_city";
   /** Step-up challenge window in seconds after a step_up risk decision (default 900). */
   STEP_UP_CHALLENGE_TTL_SECONDS?: string;
+  ACTIVATION_TOKEN_TTL_MINUTES?: string;
+  /** Organization name shown on the sign-in card and in the console (admin setting). */
+  ORGANIZATION_NAME?: string;
+  /** Second-factor policy (admin settings): requirement scope and which methods may be used. */
+  MFA_REQUIRE?: string;
+  MFA_ALLOW_TOTP?: string;
+  MFA_ALLOW_OTP?: string;
+  MFA_ALLOW_HOTP?: string;
+  MFA_ALLOW_DUO?: string;
+  /** "off" hides and refuses passkey sign-in everywhere. */
+  LOGIN_ALLOW_PASSKEY?: string;
+  /** Public Fingerprint endpoint (custom subdomain) the browser agent talks to. */
+  FINGERPRINT_ENDPOINT?: string;
   ENABLE_ADMIN_BOOTSTRAP?: string;
   ADMIN_BOOTSTRAP_TOKEN?: string;
   ENABLE_MIGRATIONS?: string;

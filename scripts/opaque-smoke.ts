@@ -65,7 +65,7 @@ if (ke1 instanceof Error) throw ke1;
 const authStart = await fetch(`${base}/api/opaque/auth/start`, {
   method: "POST",
   headers: { "Content-Type": "application/json", Origin: base },
-  body: JSON.stringify({ username: "benchadmin", ke1: toWire(ke1.serialize()) }),
+  body: JSON.stringify({ username: email, ke1: toWire(ke1.serialize()) }),
 });
 const authBody = await authStart.json() as { ke2: string; serverIdentity: string; credentialIdentifier: string; transcriptId: string; };
 expect("opaque auth start", authStart.status === 200 && !!authBody.ke2, { status: authStart.status, body: JSON.stringify(authBody).slice(0, 120) });
@@ -75,7 +75,7 @@ if (fin instanceof Error) { console.log("FAIL client authFinish", String(fin)); 
 const authFinish = await fetch(`${base}/api/opaque/auth/finish`, {
   method: "POST",
   headers: { "Content-Type": "application/json", Origin: base },
-  body: JSON.stringify({ username: "benchadmin", ke3: toWire(fin.ke3.serialize()), transcriptId: authBody.transcriptId }),
+  body: JSON.stringify({ username: email, ke3: toWire(fin.ke3.serialize()), transcriptId: authBody.transcriptId }),
 });
 const finBody = await authFinish.text();
 expect("opaque auth finish (session issued)", authFinish.status === 200, { status: authFinish.status, body: finBody.slice(0, 120) });
@@ -93,7 +93,7 @@ if (ke1w instanceof Error) throw ke1w;
 const authStartW = await fetch(`${base}/api/opaque/auth/start`, {
   method: "POST",
   headers: { "Content-Type": "application/json", Origin: base },
-  body: JSON.stringify({ username: "benchadmin", ke1: toWire(ke1w.serialize()) }),
+  body: JSON.stringify({ username: email, ke1: toWire(ke1w.serialize()) }),
 });
 const bodyW = await authStartW.json() as { ke2: string; serverIdentity: string; credentialIdentifier: string };
 const ke2W = KE2.deserialize(config, fromWire(bodyW.ke2));

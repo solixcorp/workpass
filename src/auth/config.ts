@@ -18,6 +18,7 @@ import { deviceFlowExtension, cibaExtension } from "../oauth/extended-grants";
 import { backchannelFailureEvent } from "../oidc/logout-logging";
 import { jwtPayloadRelease } from "../claims/protocol-claims";
 import { claimReleaseExtension } from "../claims/extension";
+import { STANDARD_SCOPES, WORKPASS_SCOPES } from "./workpass";
 
 export type AuthInstance = ReturnType<typeof createAuth>;
 
@@ -156,6 +157,10 @@ export function createAuth(env: Env) {
       }),
       twoFactor({
         issuer: authBaseUrl.hostname,
+        // Accounts sign in with OPAQUE and hold no server-side password, so the
+        // plugin cannot ask for one. A live session is the re-confirmation; the
+        // /api/auth/two-factor/* policy gate (src/mfa/policy.ts) applies on top.
+        allowPasswordless: true,
         otpOptions: {
           async sendOTP({ user, otp }, ctx) {
             // Delivery routing: a verified phone number receives the passcode by
@@ -167,6 +172,8 @@ export function createAuth(env: Env) {
         },
       }),
       oauthProvider({
+        // /sign-in verifies the signed query, then hands the browser to the SPA
+        // sign-in screen (web/src/features/auth/login-page.tsx).
         loginPage: "/sign-in",
         consentPage: "/consent",
         // "phone" releases phone_number/phone_number_verified from the
@@ -175,7 +182,9 @@ export function createAuth(env: Env) {
         // additionally rides the group-attribute release gate. See
         // src/claims/protocol-claims.ts (scopeClaimsForSubject). No "address"
         // scope: the user model has no address source.
-        scopes: ["openid", "profile", "email", "offline_access", "phone", "groups"],
+        scopes: [...STANDARD_SCOPES, ...WORKPASS_SCOPES],
+        // WorkPass scopes are first-party only: keep them out of public discovery.
+        advertisedMetadata: { scopes_supported: [...STANDARD_SCOPES] },
         rateLimit: { register: { window: 60, max: 3 } },
         allowDynamicClientRegistration:
           env.ENABLE_DYNAMIC_CLIENT_REGISTRATION === "true",

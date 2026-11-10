@@ -18,6 +18,7 @@ import {
 } from "../access/policies";
 import { auditStandaloneOperation } from "../audit/store";
 import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
+import { userMustUseMfa } from "../mfa/policy";
 import {
   consumeSwaGrant,
   createSwaApplication,
@@ -181,6 +182,10 @@ swaUserRoutes.post("/api/swa/grants", async (context) => {
     return context.json({ error: GENERIC_REJECTION }, 401);
   }
   // The per-application access policy gates grant issuance.
+  if (userMustUseMfa(context.env, session.user as { role?: unknown }) && !(await sessionSatisfiesRequireMfa(context.env, session))) {
+    console.error("SWA grant rejected", { stage: "mfa-required" });
+    return context.json({ error: GENERIC_REJECTION }, 403);
+  }
   const policySubject = `swa:${application.origin}`;
   const policy = await loadAppAccessPolicy(context.env, policySubject);
   if (policy) {

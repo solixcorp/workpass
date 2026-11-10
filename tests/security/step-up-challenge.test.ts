@@ -133,6 +133,9 @@ describe("second-factor availability", () => {
       CREATE TABLE "user" (id TEXT PRIMARY KEY, "twoFactorEnabled" INTEGER);
       INSERT INTO "user" (id, "twoFactorEnabled") VALUES ('u-totp', 1);
       INSERT INTO "user" (id, "twoFactorEnabled") VALUES ('u-none', 0);
+      INSERT INTO "user" (id, "twoFactorEnabled") VALUES ('u-otp', 1);
+      CREATE TABLE "twoFactor" (id TEXT PRIMARY KEY, userId TEXT, verified INTEGER);
+      INSERT INTO "twoFactor" (id, userId, verified) VALUES ('t1', 'u-totp', 1);
     `);
     await db.prepare(`INSERT INTO mfa_hotp_tokens (id, user_id, label, secret_base32, counter, created_at)
                       VALUES ('h1', 'u-none', 'YubiKey', 'sealed', 0, '2026-01-01T00:00:00Z')`).bind().run();
@@ -149,7 +152,11 @@ describe("second-factor availability", () => {
     const plain = await usableSecondFactors(envWith(db), "u-none");
     expect(plain).toEqual(["hotp"]);
     expect(await usableSecondFactors(envWith(db), "u-totp")).toEqual(["totp", "otp", "backup_code"]);
+    // Email/SMS codes alone (no authenticator secret) offer neither TOTP nor backup codes.
+    expect(await usableSecondFactors(envWith(db), "u-otp")).toEqual(["otp"]);
     expect(await usableSecondFactors(envWith(db), "u-missing")).toEqual([]);
+    // The administrator can switch a method off for everyone.
+    expect(await usableSecondFactors(envWith(db, { MFA_ALLOW_TOTP: "off", MFA_ALLOW_OTP: "off" }), "u-totp")).toEqual(["backup_code"]);
   });
 
   test("the OPAQUE gate's step-up branch is challenge-eligible only with a factor", async () => {

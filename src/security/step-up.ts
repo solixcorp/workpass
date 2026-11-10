@@ -189,6 +189,8 @@ export async function cleanupStepUpChallenges(env: Env, now: Date): Promise<void
 
 /** Which second-factor methods this account can actually complete. */
 export async function usableSecondFactors(env: Env, userId: string): Promise<string[]> {
+  const { mfaPolicy } = await import("../mfa/policy");
+  const policy = mfaPolicy(env);
   const methods: string[] = [];
   try {
     const user = await env.DB.prepare(
@@ -197,21 +199,28 @@ export async function usableSecondFactors(env: Env, userId: string): Promise<str
       .bind(userId)
       .first<{ twoFactorEnabled: number | boolean | null }>();
     if (user?.twoFactorEnabled === 1 || user?.twoFactorEnabled === true) {
-      // Better Auth 2FA covers TOTP, phone/email OTP, and backup codes.
-      methods.push("totp", "otp", "backup_code");
+      const secret = await env.DB.prepare(
+        `SELECT verified FROM "twoFactor" WHERE userId = ? LIMIT 1`,
+      ).bind(userId).first<{ verified: number | boolean | null }>().catch(() => null);
+      // An authenticator secret exists only after TOTP enrollment; OTP-only
+      // accounts have none. Backup codes ride on the same row.
+      const hasSecret = secret !== null && secret.verified !== 0 && secret.verified !== false;
+      if (hasSecret && policy.allow.totp) methods.push("totp");
+      if (policy.allow.otp) methods.push("otp");
+      if (hasSecret) methods.push("backup_code");
     }
   } catch {
     // Treat as unknown below; fall through to platform-managed factors.
   }
   try {
     const { userHasHotpToken } = await import("../mfa/hotp");
-    if (await userHasHotpToken(env, userId)) methods.push("hotp");
+    if (policy.allow.hotp && await userHasHotpToken(env, userId)) methods.push("hotp");
   } catch {
     // Unreadable hardware token state stays silent; availability is best-effort.
   }
   try {
     const { duoConfig } = await import("../mfa/duo");
-    if (duoConfig(env)) methods.push("duo_push");
+    if (policy.allow.duo && duoConfig(env)) methods.push("duo_push");
   } catch {
     // Duo presence check is best-effort.
   }

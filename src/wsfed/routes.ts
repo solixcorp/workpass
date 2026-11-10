@@ -19,8 +19,9 @@ import {
   validateWsfedRelyingParty,
 } from "./relying-parties";
 import { buildWsfedSignInResult } from "./token";
-import { buildSsoLoginPage } from "../pages/sso-login";
+import { redirectToSignIn } from "../pages/sso-login";
 import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
+import { userMustUseMfa } from "../mfa/policy";
 import { loadSamlIdpSigningMaterial } from "../saml/protocol-routes";
 import { claimNamespace, samlAttributeRelease } from "../claims/protocol-claims";
 import {
@@ -167,26 +168,14 @@ wsfedProtocolRoutes.get(WSFED_SIGNIN_PATH, async (context) => {
 
     // Stage 3: a mandatory session; passive sign-in carries no signed request.
     const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
-    if (!session) {
-      context.header("Cache-Control", "no-store");
-      context.header("Referrer-Policy", "no-referrer");
-      context.header(
-        "Content-Security-Policy",
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
-      );
-      return context.body(
-        buildSsoLoginPage({
-          title: "Sign in to continue",
-          hint: "This application sent you here to sign in. Authenticate to continue to it.",
-        }),
-        200,
-        { "Content-Type": "text/html; charset=utf-8" },
-      );
-    }
+    if (!session) return redirectToSignIn(context);
     const email = session.user.email;
     if (!email || email.length > 256) return rejectSignin(context, "no-nameid");
     // The per-application access policy: group gating plus per-app MFA
     // requirement, evaluated against the signed-in user.
+    if (userMustUseMfa(context.env, session.user as { role?: unknown }) && !(await sessionSatisfiesRequireMfa(context.env, session))) {
+      return rejectSignin(context, "mfa-required");
+    }
     const policySubject = `wsfed:${party.realm}`;
     const policy = await loadAppAccessPolicy(context.env, policySubject);
     if (policy) {

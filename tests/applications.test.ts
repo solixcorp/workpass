@@ -60,6 +60,16 @@ describe("application validation", () => {
 });
 
 describe("application lifecycle", () => {
+  test("creating from the admin form works when optional fields are omitted", async () => {
+    const env = await seededEnv();
+    // The console sends only slug, name, protocol, launchUrl and categoryGroup.
+    const validated = await validateApplicationInput(env, {
+      slug: "slack", name: "Slack", protocol: "bookmark", launchUrl: "https://slack.example.test", categoryGroup: null,
+    }, "create");
+    const created = await createApplication(env, validated as never, "u1");
+    expect(created).toMatchObject({ slug: "slack", description: "", binding: null, iconUrl: null, categoryGroup: null, hideFromDashboard: false, enabled: false });
+  });
+
   test("bookmarks require a launch URL, refuse bindings and start disabled", async () => {
     const env = await seededEnv();
     expect((await createApplication(env, bookmarkInput, "u1"))!.enabled).toBe(false);

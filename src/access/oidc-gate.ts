@@ -4,6 +4,9 @@ import type { AuthInstance } from "../auth/config";
 import { evaluateAppAccess, loadAppAccessPolicy } from "./policies";
 import { hasActiveTemporalGrant } from "./requests";
 import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
+import { userMustUseMfa, workpassMfaRequired } from "../mfa/policy";
+import { usableSecondFactors } from "../security/step-up";
+import { WORKPASS_CLIENT_ID } from "../auth/workpass";
 
 /** Check every external authorization continuation, not just the consent UI. */
 export async function enforceOidcPolicy(request: Request, env: Env, auth: AuthInstance): Promise<Response | null> {
@@ -34,7 +37,22 @@ export async function enforceOidcPolicy(request: Request, env: Env, auth: AuthIn
       return null;
     }
     if (params.getAll("client_id").length !== 1 || !params.get("client_id")) return Response.json({ error: "invalid_request" }, { status: 400 });
-    const policy = await loadAppAccessPolicy(env, `oidc:${params.get("client_id")}`);
+    const clientId = params.get("client_id")!;
+    const sessionUser = session.user as { id: string; role?: unknown };
+    if (clientId === WORKPASS_CLIENT_ID) {
+      // WorkPass itself: a user who can complete a second factor must have done
+      // so. One with no factor yet is let in to enroll.
+      if (
+        await workpassMfaRequired(env, sessionUser) &&
+        (await usableSecondFactors(env, sessionUser.id)).length > 0 &&
+        !(await sessionSatisfiesRequireMfa(env, session))
+      ) {
+        return Response.json({ error: "access_denied", reason: "mfa_required" }, { status: 403 });
+      }
+    } else if (userMustUseMfa(env, sessionUser) && !(await sessionSatisfiesRequireMfa(env, session))) {
+      return Response.json({ error: "access_denied", reason: "mfa_required" }, { status: 403 });
+    }
+    const policy = await loadAppAccessPolicy(env, `oidc:${clientId}`);
     if (policy) {
       if (policy.requireMfa && !(await sessionSatisfiesRequireMfa(env, session))) {
         return Response.json({ error: "access_denied" }, { status: 403 });

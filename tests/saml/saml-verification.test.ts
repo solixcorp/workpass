@@ -18,7 +18,7 @@ import {
 import { verifySamlRedirectSignature } from "../../src/saml/redirect-signature";
 import { buildSignedSamlResponse, type IssuedSamlResponse } from "../../src/saml/assertion";
 import { buildSamlIdpMetadata } from "../../src/saml/metadata";
-import { buildSsoLoginPage } from "../../src/pages/sso-login";
+import { redirectToSignIn } from "../../src/pages/sso-login";
 import { buildCertificateDer, derToPem } from "../saml/saml-x509";
 
 const SP_ENTITY_ID = "https://sp.example.com/metadata";
@@ -258,26 +258,26 @@ describe("SAML IdP metadata", () => {
   });
 });
 
-describe("SSO login page", () => {
-  test("signs in via the better-auth email or username endpoint and reloads", () => {
-    const page = buildSsoLoginPage({ title: "Sign in to continue", hint: "Authenticate to continue." });
-    expect(page).toContain("/api/auth/sign-in/email");
-    expect(page).toContain("/api/auth/sign-in/username");
-    expect(page).toContain("location.reload()");
-    // The passkey ceremony uses the plugin endpoints with the standard API.
-    expect(page).toContain("/api/auth/passkey/generate-authenticate-options");
-    expect(page).toContain("/api/auth/passkey/verify-authentication");
-    expect(page).toContain("navigator.credentials.get");
-    // The page never navigates away or includes external content.
-    expect(page).not.toMatch(/location\.href|window\.open|http:\/\/|https:\/\//);
-    // The form itself posts nothing; the fetch call is same-origin.
-    expect(page).toContain("credentials:'same-origin'");
-    expect(page).not.toContain("<h1>&lt;"); // no double-escaping of copy
+describe("SSO sign-in handoff", () => {
+  const handoff = (url: string) => {
+    const context = { req: { url }, env: { AUTH_BASE_URL: "https://idp.example.com" } };
+    return redirectToSignIn(context as never);
+  };
+
+  test("sends the browser to the WorkPass sign-in and returns to the same request", () => {
+    const response = handoff("https://idp.example.com/saml/sso?SAMLRequest=abc&RelayState=x%2Fy");
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin).toBe("https://idp.example.com");
+    expect(location.pathname).toBe("/auth/login");
+    expect(location.searchParams.get("redirect")).toBe("/saml/sso?SAMLRequest=abc&RelayState=x%2Fy");
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
-  test("escapes page copy", () => {
-    const page = buildSsoLoginPage({ title: 'Title "quoted" & <tag>', hint: "ok" });
-    expect(page).toContain("Title &quot;quoted&quot; &amp; &lt;tag&gt;");
+  test("never carries a password form or sign-in call of its own", () => {
+    const response = handoff("https://idp.example.com/saml/sso");
+    expect(response.headers.get("content-type")).toBeNull();
+    expect(response.body).toBeNull();
   });
 });
 

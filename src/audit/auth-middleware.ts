@@ -11,6 +11,7 @@ import { revokeTrustedDevices } from "../security/trusted-device-store";
 import { enforceOidcPolicy } from "../access/oidc-gate";
 import { recordSessionMfaProof } from "../mfa/second-factor";
 import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
+import { enforceMfaPolicy } from "../mfa/policy";
 
 const auditEventTypes: Record<string, string> = {
   "POST /api/auth/sign-up/email": "identity.user.public_registration.denied",
@@ -65,6 +66,12 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
 
   const policyRejection = await enforceOidcPolicy(request, env, auth);
   if (policyRejection) return policyRejection;
+
+  if (request.method === "POST" && (path.startsWith("/api/auth/two-factor/") || path.startsWith("/api/auth/passkey/"))) {
+    const actor = await auth.api.getSession({ headers: request.headers }).catch(() => null);
+    const mfaRejection = await enforceMfaPolicy(request, env, actor);
+    if (mfaRejection) return mfaRejection;
+  }
 
   if (request.method === "POST" && twoFactorVerifyPaths.has(path)) {
     return handleTwoFactorVerification(request, env, auth);

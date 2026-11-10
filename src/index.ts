@@ -23,6 +23,10 @@ import { oidcSignInRoutes } from "./pages/sign-in";
 import { swaUserRoutes } from "./swa/routes";
 import { mfaRoutes } from "./mfa/duo-routes";
 import { opaqueRoutes } from "./auth/opaque-routes";
+import { idxRoutes } from "./auth/idx-routes";
+import { workpassRoutes } from "./auth/workpass-routes";
+import { activationRoutes } from "./auth/activation-routes";
+import { cleanupActivationTokens } from "./security/account-activation";
 import { cleanupSessionMfaProofs } from "./mfa/second-factor";
 import { oauth1Routes } from "./oauth1/routes";
 import { cleanupOAuth1Temporaries } from "./oauth1/store";
@@ -44,6 +48,7 @@ import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/requ
 import { cleanupAccessRequests } from "./access/requests";
 import { backupAuditEvents } from "./audit/backup";
 import { dispatchPendingEventNotifications } from "./policies/notifications";
+import { applySettings } from "./settings/store";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -58,6 +63,13 @@ app.use("*", async (context, next) => {
   context.header("X-XSS-Protection", "0");
   context.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   context.header("Referrer-Policy", context.res.headers.get("Referrer-Policy") ?? "no-referrer");
+});
+
+// Admin-stored settings take the place of the matching deployment variables
+// for the rest of the request (cached for 30 seconds per isolate).
+app.use("*", async (context, next) => {
+  if (context.req.path !== "/health") context.env = await applySettings(context.env);
+  await next();
 });
 
 app.onError((error, context) => {
@@ -101,6 +113,11 @@ app.route("/api", mfaRoutes);
 // OPAQUE sessions issue only after the login gate (banned accounts and the
 // shared device-risk pipeline) passes; see src/auth/opaque-login.ts.
 app.route("/", opaqueRoutes);
+// Remediation-driven identify flow + public login config, and the WorkPass
+// authorization-code round trip (BFF; tokens never reach the browser).
+app.route("/", idxRoutes);
+app.route("/", workpassRoutes);
+app.route("/", activationRoutes);
 app.route("/.well-known", webfingerRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin", bootstrapRoutes);
@@ -139,6 +156,7 @@ async function scheduled(
     await cleanupSessionNetworkBindings(env, new Date(controller.scheduledTime));
     await cleanupStepUpChallenges(env, new Date(controller.scheduledTime));
     await cleanupRecoveryTokens(env, new Date(controller.scheduledTime));
+    await cleanupActivationTokens(env, new Date(controller.scheduledTime));
     await cleanupSamlRequestClaims(env, new Date(controller.scheduledTime));
     await cleanupSwaGrants(env, new Date(controller.scheduledTime));
     await cleanupSessionMfaProofs(env, new Date(controller.scheduledTime));

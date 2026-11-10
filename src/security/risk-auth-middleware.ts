@@ -2,6 +2,7 @@ import type { Env } from "../env";
 import type { AuthInstance } from "../auth/config";
 import { updateAuditEvent, insertAuditEvent } from "../audit/store";
 import { getSessionMfaProof } from "../mfa/second-factor";
+import { stepUpUi } from "./step-up-ui";
 import {
   getStepUpChallenge,
   openStepUpChallenge,
@@ -100,7 +101,7 @@ async function stepUpChallengeResponseForSession(input: {
   return Response.json(
     {
       error: "Additional verification is required before continuing",
-      challenge: { required: true, methods, expiresAt: challenge.expiresAt },
+      challenge: { required: true, methods, expiresAt: challenge.expiresAt, ui: stepUpUi(methods) },
     },
     { status: 403 },
   );
@@ -119,7 +120,7 @@ async function annotateStepUpChallenge(
     return new Response(
       JSON.stringify({
         ...(body as Record<string, unknown>),
-        stepUpChallenge: { required: true, ...annotation },
+        stepUpChallenge: { required: true, ...annotation, ui: stepUpUi(annotation.methods) },
       }),
       { status: response.status, statusText: response.statusText, headers },
     );

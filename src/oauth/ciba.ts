@@ -5,7 +5,7 @@
  * (no redirect flows exist in CIBA). The auth_req_id is a high-entropy bearer
  * value stored only as a SHA-256 digest. Fail-closed behind ENABLE_CIBA:
  * routes and the token grant extension both check the flag. Poll-mode only,
- * matching the deployment's notification surface (email) and Okta parity.
+ * matching the deployment's notification surface (email).
  */
 
 import type { Env } from "../env";

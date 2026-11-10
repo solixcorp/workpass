@@ -832,4 +832,32 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       PRIMARY KEY (kind, identifier)
     )`,
   ).run();
+  // Admin-controlled runtime settings (see src/settings/registry.ts). Only keys
+  // defined in the registry are ever read.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  // Account activation links (first password setup; see
+  // docs/design/account-activation.md). Only keyed digests are stored.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS account_activation_tokens (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      token_digest TEXT NOT NULL UNIQUE,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      delivered_to TEXT,
+      delivered_at TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS account_activation_tokens_user_idx ON account_activation_tokens (user_id)",
+  ).run();
 }

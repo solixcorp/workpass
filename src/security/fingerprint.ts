@@ -598,8 +598,14 @@ function parseEvent(value: unknown): FingerprintEvent | null {
   let eventOrigin: string;
   try {
     const parsedEventUrl = new URL(eventUrl);
+    // HTTPS only, except loopback HTTP for local development. The origin
+    // allowlist (AUTH_BASE_URL + FINGERPRINT_ALLOWED_ORIGINS) still decides
+    // whether the event is accepted, and config validation only admits
+    // loopback HTTP origins explicitly.
+    const loopbackHttp = parsedEventUrl.protocol === "http:" &&
+      (parsedEventUrl.hostname === "localhost" || parsedEventUrl.hostname === "127.0.0.1" || parsedEventUrl.hostname === "[::1]");
     if (
-      parsedEventUrl.protocol !== "https:" ||
+      (parsedEventUrl.protocol !== "https:" && !loopbackHttp) ||
       parsedEventUrl.username !== "" ||
       parsedEventUrl.password !== ""
     ) return null;

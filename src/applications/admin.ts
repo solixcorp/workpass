@@ -7,6 +7,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "../env";
+import { WORKPASS_SLUG } from "../auth/workpass";
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
 import {
@@ -37,7 +38,8 @@ applicationAdminRoutes.use("/applications*", async (context, next) => {
 applicationAdminRoutes.get("/applications", async (context) => {
   const admin = await requireAdministrator(context);
   if (admin instanceof Response) return admin;
-  return context.json({ applications: await listApplications(context.env) });
+  const applications = await listApplications(context.env);
+  return context.json({ applications: applications.map((app) => ({ ...app, protected: app.slug === WORKPASS_SLUG })) });
 });
 
 applicationAdminRoutes.get("/applications/:slug", async (context) => {
@@ -45,7 +47,7 @@ applicationAdminRoutes.get("/applications/:slug", async (context) => {
   if (admin instanceof Response) return admin;
   const application = await getApplication(context.env, context.req.param("slug"));
   if (!application) return applicationNotFound(context);
-  return context.json({ application });
+  return context.json({ application: { ...application, protected: application.slug === WORKPASS_SLUG } });
 });
 
 applicationAdminRoutes.post("/applications", async (context) => {
@@ -77,6 +79,9 @@ applicationAdminRoutes.patch("/applications/:slug", async (context) => {
   const slug = context.req.param("slug");
   const input = await readInput(context, "patch");
   if (input instanceof Response) return input;
+  if (slug === WORKPASS_SLUG && (input.input.name !== undefined || input.input.launchUrl !== undefined || input.input.hideFromDashboard === true)) {
+    return context.json({ error: "WorkPass Dashboard의 이름, 주소, 표시 여부는 바꿀 수 없습니다." }, 409);
+  }
   return auditStandaloneOperation(context.env, "app.update", context.req.path, async () => {
     let application;
     try {
@@ -116,6 +121,9 @@ async function withEnabled(
   if (actor instanceof Response) return actor;
   const slug = context.req.param("slug");
   if (!slug) return context.json({ error: "Application not found" }, 404);
+  if (slug === WORKPASS_SLUG && !enabled) {
+    return context.json({ error: "WorkPass Dashboard는 끌 수 없습니다." }, 409);
+  }
   return auditStandaloneOperation(context.env, eventType, context.req.path, async () => {
     const application = await getApplication(context.env, slug);
     if (!application) return { response: await applicationNotFound(context), actorUserId: actor.userId };
@@ -208,6 +216,9 @@ applicationAdminRoutes.delete("/applications/:slug", async (context) => {
   if (actor instanceof Response) return actor;
   const slug = context.req.param("slug");
   if (!slug) return context.json({ error: "Application not found" }, 404);
+  if (slug === WORKPASS_SLUG) {
+    return context.json({ error: "WorkPass Dashboard는 삭제할 수 없습니다." }, 409);
+  }
   return auditStandaloneOperation(context.env, "app.delete", context.req.path, async () => {
     const existing = await getApplication(context.env, slug);
     if (!existing) return { response: await applicationNotFound(context), actorUserId: actor.userId };
