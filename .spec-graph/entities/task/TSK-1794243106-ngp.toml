@@ -5,14 +5,14 @@ title = "Test the access-request lifecycle end to end and document it"
 description = "Lifecycle test covering create, self-review rejection, approval grant, expiry, deny and revocation plus the policy-engine integration; design doc and API reference updates."
 status = "resolved"
 created_at = 2026-11-10T01:51:46+09:00
-updated_at = 2026-11-10T01:59:08+09:00
+updated_at = 2026-11-10T08:58:46+09:00
 
 [metadata]
 acceptance = ["The full suite passes."]
 instructions = ["Write tests/access-requests.test.ts and record the API in the docs."]
 must_not = []
 order = 4.0
-qa = [{command = "bun test tests/", evidence = "tests/access-requests.test.ts", expected = "exit 0"}]
+qa = [{command = "bun test tests/", evidence = "tests/access/access-requests.test.ts", expected = "exit 0"}]
 references = ["docs/design/access-requests.md"]
 
 [[relations]]

@@ -29,6 +29,10 @@ MIGRATION_TOKEN=
 ENABLE_DYNAMIC_CLIENT_REGISTRATION=false
 CLIENT_REGISTRATION_TOKEN=
 ENABLE_SCIM_PROVISIONING=false
+# Outbound SCIM attribute release: delivers user custom attributes to targets
+# as the urn:solixcorp:scim:1.0:CustomAttributes extension. Deliberate
+# operator decision per target (privacy review); fail-closed when unset.
+ENABLE_SCIM_ATTRIBUTE_RELEASE=false
 # Dev-only: permits an http://127.0.0.1|localhost SCIM target for local transport
 # verification. Never enable in production; production targets stay https-only.
 # Sealed storage: sensitive material at rest (e.g. hardware OTP token

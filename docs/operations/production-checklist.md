@@ -128,6 +128,40 @@ removed by the daily cron after 31 days.
 - Legacy password sign-in remains available; migrate accounts by enrolling
   OPAQUE per user (the smoke scripts/opaque-smoke.ts demonstrates the flow).
 
+## Device-risk hardening: GeoIP history, step-up, session binding, lockdown (2026-11)
+
+Implemented across `src/security/` and documented in
+[device risk policy](../security/device-risk-and-trust.md),
+[session-geo-binding.md](../security/session-geo-binding.md) and
+[account-lockdown.md](../security/account-lockdown.md). Rollout order:
+
+1. MFA coverage first. In `enforce` mode, accounts without any enrollable
+   second factor fail closed on `step_up` decisions. Check
+   `session.twoFactorEnabled` / hardware-token / Duo coverage before tightening.
+2. `FINGERPRINT_MODE=observe` with the GeoIP history knobs at defaults
+   (`GEOIP_HISTORY_LOGIN_COUNT=5`, impossible travel on with the built-in
+   1,000 km/h allowance, history distance off). Review
+   `authentication.fingerprint.risk_*` audit events for false positives
+   before touching thresholds.
+3. `SESSION_BINDING_MODE=observe` (network `asn`, GeoIP `country`) and read
+   `authentication.session.location_drift.observe` events; tighten to
+   `asn_and_ip` / `country_and_city` only when drift matches real movement.
+4. Switch to `enforce` gradually: risk decisions (`step_up` opens a
+   `stepUpChallenge` requiring a second factor before SSO issuance —
+   status at `GET /api/security/step-up/challenge`), then session binding.
+5. Keep the emergency paths ready: account lockdown
+   (`POST /api/security/account-lockdown*`), unlock, and admin-issued
+   one-time recovery links (`POST /api/security/account-recovery`,
+   redeem at `/api/security/account-recovery/redeem`). There is no email
+   infrastructure; recovery tokens are delivered out of band and expire in
+   60 minutes by default.
+
+Standing caveats: `request.cf` supplies ASN/geo for session binding — never
+trust client-forwarded headers for it; the OPAQUE path participates in
+step-up and lockdown but its sessions are not geo-bound (no edge context at
+session creation); downstream application sessions cannot be revoked by the
+IdP and must not be described as terminated.
+
 ## OAuth 2.0 Token Exchange (RFC 8693) (2026-11)
 
 Enabled only on a worker running with `ENABLE_TOKEN_EXCHANGE=true`; the grant

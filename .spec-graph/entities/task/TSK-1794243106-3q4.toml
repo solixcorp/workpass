@@ -5,14 +5,16 @@ title = "Implement the access-request engine and temporal grant resolution"
 description = "Eligibility, request creation, review approval/deny with minimum-approver counting, revoke, lazy grant activity, lapse cleanup and webhook notification in src/access/requests.ts; integrate active temporal grants into evaluateAppAccess."
 status = "resolved"
 created_at = 2026-11-10T01:51:46+09:00
-updated_at = 2026-11-10T01:59:07+09:00
+updated_at = 2026-11-10T08:58:46+09:00
+amendment_forced = true
+amendment_reason = "correct the test path reference after the tests/ folder reorganization into per-area folders"
 
 [metadata]
 acceptance = ["Self-review is refused; grants expire by comparison rather than mutation; require_mfa is not bypassed."]
 instructions = ["Implement the engine and wire evaluateAppAccess to pass on an active grant after group-gate failure."]
 must_not = []
 order = 2.0
-qa = [{command = "bun test tests/access-requests.test.ts", evidence = "src/access/requests.ts", expected = "exit 0"}]
+qa = [{command = "bun test tests/access/access-requests.test.ts", evidence = "tests/access/access-requests.test.ts", expected = "exit 0"}]
 references = ["docs/design/access-requests.md"]
 
 [[relations]]
