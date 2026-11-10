@@ -682,4 +682,42 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS account_recovery_tokens_expiry_idx ON account_recovery_tokens (expires_at)",
   ).run();
+  // Authentik-benchmarked policy framework (docs/design/authentik-policies.md).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS policies (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL CHECK (type IN ('expression', 'password', 'password_expiry', 'password_uniqueness', 'reputation', 'geoip', 'event_matcher')),
+      config TEXT NOT NULL DEFAULT '{}',
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      execution_logging INTEGER NOT NULL DEFAULT 0 CHECK (execution_logging IN (0, 1)),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS policy_bindings (
+      id TEXT PRIMARY KEY NOT NULL,
+      target TEXT NOT NULL CHECK (target IN ('application', 'login', 'password_entry', 'user_write', 'notification_rule')),
+      target_ref TEXT NOT NULL,
+      policy_id TEXT REFERENCES policies (id) ON DELETE CASCADE,
+      bind_user_id TEXT,
+      bind_group_id TEXT REFERENCES directory_groups (id) ON DELETE CASCADE,
+      order_index INTEGER NOT NULL DEFAULT 0,
+      mode TEXT NOT NULL DEFAULT 'all' CHECK (mode IN ('all', 'any')),
+      negate INTEGER NOT NULL DEFAULT 0 CHECK (negate IN (0, 1)),
+      failure_result TEXT NOT NULL DEFAULT 'fail' CHECK (failure_result IN ('fail', 'pass')),
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      CHECK (
+        (CASE WHEN policy_id IS NULL THEN 0 ELSE 1 END)
+        + (CASE WHEN bind_user_id IS NULL THEN 0 ELSE 1 END)
+        + (CASE WHEN bind_group_id IS NULL THEN 0 ELSE 1 END) = 1
+      )
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS policy_bindings_target_idx ON policy_bindings (target, target_ref, order_index)",
+  ).run();
 }

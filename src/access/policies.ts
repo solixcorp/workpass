@@ -13,6 +13,8 @@
 
 import type { Env } from "../env";
 import { hasActiveTemporalGrant } from "./requests";
+import { evaluateBoundPolicies, loadUserSnapshot } from "../policies/engine";
+import type { PolicyEvaluationContext } from "../policies/types";
 
 export interface AppAccessPolicy {
   subject: string;
@@ -176,7 +178,18 @@ export async function userFulfillsAccountGate(env: Env, policy: AppAccessPolicy,
 }
 
 /** Evaluate a policy for a user; returns whether the access may proceed. */
-export async function evaluateAppAccess(env: Env, policy: AppAccessPolicy, userId: string): Promise<PolicyEvaluation> {
+export interface AccessPolicyRuntimeContext {
+  clientIp?: string | null;
+  /** Extra caller context surfaced to bound policies (prompt data etc.). */
+  context?: Record<string, unknown>;
+}
+
+export async function evaluateAppAccess(
+  env: Env,
+  policy: AppAccessPolicy,
+  userId: string,
+  runtime: AccessPolicyRuntimeContext = {},
+): Promise<PolicyEvaluation> {
   // The account gate is a membership requirement, not a group grant, so a
   // temporal grant bypasses only the group side, never this gate.
   if (!(await userFulfillsAccountGate(env, policy, userId))) {
@@ -186,12 +199,30 @@ export async function evaluateAppAccess(env: Env, policy: AppAccessPolicy, userI
     return { allowed: false, observedOnly: false, reason: "the user is not a member of the required account" };
   }
   const allowed = await userFulfillsGroupGate(env, policy, userId);
-  if (allowed) return { allowed: true, observedOnly: false, reason: null };
-  // An approved, unexpired access request satisfies the group gate; the grant
-  // never widens the policy beyond the user's own group membership, and
-  // require_mfa / method constraints continue to gate at the call site.
-  if (await hasActiveTemporalGrant(env, policy.subject, userId)) {
-    return { allowed: true, observedOnly: false, reason: null };
+  const temporal = allowed === false && (await hasActiveTemporalGrant(env, policy.subject, userId));
+  if (allowed || temporal) {
+    // Bound policies (application target) run after the structural gates; a
+    // grant or group membership cannot widen what a bound policy denies.
+    const policyResult = await evaluateBoundPolicies(
+      env,
+      "application",
+      policy.subject,
+      {
+        user: userId ? await loadUserSnapshot(env, userId) : null,
+        clientIp: runtime.clientIp ?? null,
+        subject: policy.subject,
+        context: runtime.context ?? {},
+      } satisfies PolicyEvaluationContext,
+    );
+    if (policyResult.passing) return { allowed: true, observedOnly: false, reason: null };
+    if (policy.enforcementMode === "observe") {
+      return { allowed: true, observedOnly: true, reason: "a bound policy would deny (observe mode)" };
+    }
+    return {
+      allowed: false,
+      observedOnly: false,
+      reason: policyResult.messages.join("; ") || "a bound policy denied access",
+    };
   }
   if (policy.enforcementMode === "observe") {
     return { allowed: true, observedOnly: true, reason: "group gate would reject (observe mode)" };
