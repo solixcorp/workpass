@@ -111,7 +111,7 @@ export function AppShell() {
                 <Link to="/">
                   <div className="flex flex-col gap-0.5 leading-none">
                     <span className="font-medium">WorkPass</span>
-                    <span className="text-xs text-muted-foreground">{config?.organization.name}</span>
+                    <span className="text-sm text-muted-foreground">{config?.organization.name}</span>
                   </div>
                 </Link>
               </SidebarMenuButton>
@@ -133,7 +133,7 @@ export function AppShell() {
                     </Avatar>
                     <div className="flex min-w-0 flex-col gap-0.5 leading-none">
                       <span className="truncate font-medium">{user?.name}</span>
-                      <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
+                      <span className="truncate text-sm text-muted-foreground">{user?.email}</span>
                     </div>
                     <ChevronsUpDownIcon className="ml-auto" />
                   </SidebarMenuButton>

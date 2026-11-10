@@ -27,7 +27,7 @@ export function AuthShell({
         <div className="flex min-h-44 flex-col items-center justify-center gap-3 px-6 py-7">
           {data ? (
             <div className="fold-fade flex flex-col items-center gap-3">
-              <span className="text-xs text-muted-foreground">{data.organization.name}</span>
+              <span className="text-base text-muted-foreground">{data.organization.name}</span>
               {data.app.icon ? <img src={data.app.icon} alt="" className="size-12 rounded-xl" /> : null}
               <span className="text-base font-semibold">{data.app.signInTitle}</span>
             </div>
