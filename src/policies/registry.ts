@@ -10,6 +10,15 @@ import {
   evaluateExpression,
 } from "./expression";
 import { buildGlobals } from "./helpers";
+import {
+  getPasswordMeta,
+  markPasswordUnusable,
+  passwordHistoryContains,
+  validateExpiryConfig,
+  validatePasswordComplexity,
+  validatePasswordConfig,
+  validateUniquenessConfig,
+} from "./password";
 import type { PolicyEvaluationContext, PolicyRow } from "./types";
 export interface RuntimePolicyResult { passing: boolean; messages: string[]; rawResult: unknown }
 
@@ -25,7 +34,7 @@ const callDepths = new WeakMap<object, number>();
 const MAX_CALL_DEPTH = 4;
 
 export function implementedTypes(): string[] {
-  return ["expression"];
+  return ["expression", "password", "password_expiry", "password_uniqueness"];
 }
 
 export function validatePolicyConfig(type: string, config: unknown): { config: unknown } {
@@ -43,6 +52,15 @@ export function validatePolicyConfig(type: string, config: unknown): { config: u
       stepBudget = value.step_budget;
     }
     return { config: { expression, step_budget: stepBudget } };
+  }
+  if (type === "password") {
+    return { config: validatePasswordConfig(config) as unknown };
+  }
+  if (type === "password_expiry") {
+    return { config: validateExpiryConfig(config) as unknown };
+  }
+  if (type === "password_uniqueness") {
+    return { config: validateUniquenessConfig(config) as unknown };
   }
   throw new Error(`policy type ${type} is not implemented yet`);
 }
@@ -97,6 +115,37 @@ export async function evaluateTyped(
         throw new Error("expression policies must return a boolean");
       }
       return { passing: result.value, messages };
+    }
+    case "password": {
+      if (typeof context.password !== "string" || context.password.length === 0) {
+        throw new Error("password policy requires a password in the evaluation context");
+      }
+      const validation = await validatePasswordComplexity(context.password, validatePasswordConfig(config));
+      return { passing: validation.passing, messages: validation.messages };
+    }
+    case "password_uniqueness": {
+      if (!context.user) throw new Error("password uniqueness requires a user in the evaluation context");
+      if (typeof context.password !== "string" || context.password.length === 0) {
+        throw new Error("password uniqueness requires a password in the evaluation context");
+      }
+      const uniqueness = validateUniquenessConfig(config);
+      const reused = await passwordHistoryContains(env, context.user.id, context.password, uniqueness.count);
+      return reused ? { passing: false, messages: ["the password was used before"] } : { passing: true, messages: [] };
+    }
+    case "password_expiry": {
+      if (!context.user) throw new Error("password expiry requires a user in the evaluation context");
+      const expiry = validateExpiryConfig(config);
+      const meta = await getPasswordMeta(env, context.user.id);
+      if (!meta) return { passing: true, messages: [] };
+      const ageDays = Math.floor((Date.now() - Date.parse(meta.changedAt)) / 86_400_000);
+      if (ageDays < expiry.days) return { passing: true, messages: [] };
+      if (!expiry.denyOnly) await markPasswordUnusable(env, context.user.id);
+      return {
+        passing: false,
+        messages: [expiry.denyOnly
+          ? `the password expired ${ageDays} days ago`
+          : `the password expired ${ageDays} days ago; set a new one before signing in`],
+      };
     }
     default:
       throw new Error(`policy type ${policy.type} is not implemented yet`);

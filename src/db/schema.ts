@@ -720,4 +720,23 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS policy_bindings_target_idx ON policy_bindings (target, target_ref, order_index)",
   ).run();
+  // Password policy family (docs/design/authentik-policies.md).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS password_meta (
+      user_id TEXT PRIMARY KEY NOT NULL,
+      changed_at TEXT NOT NULL,
+      unusable INTEGER NOT NULL DEFAULT 0 CHECK (unusable IN (0, 1))
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS password_history (
+      user_id TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      digest TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS password_history_user_idx ON password_history (user_id, created_at)",
+  ).run();
 }

@@ -23,6 +23,26 @@
       "head_sampling_rate": 0.01
     }
   },
+  // Frontend SPA (web/). Static asset requests are free and skip the Worker;
+  // only the backend paths below invoke it. Keep this list in sync with
+  // BACKEND_PATHS in web/vite.config.ts.
+  "assets": {
+    "directory": "./web/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/.well-known/*",
+      "/saml/*",
+      "/wsfed/*",
+      "/scim/*",
+      "/sign-in",
+      "/consent",
+      "/health",
+      "/dev/*",
+      "/_internal/*",
+      "/application/*"
+    ]
+  },
   "limits": {
     "cpu_ms": 5000,
     "subrequests": 1000

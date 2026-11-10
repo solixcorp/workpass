@@ -88,7 +88,7 @@ bootstrapRoutes.post("/bootstrap", async (context) => {
           },
         });
         user = result.user;
-      } catch {
+      } catch (creationError) {
         try {
           // Creation can fail after a partial database write. Never reopen the
           // bootstrap gate unless the user table is still known to be empty.
@@ -101,7 +101,7 @@ bootstrapRoutes.post("/bootstrap", async (context) => {
         } catch {
           // Keep the claim if it cannot be released; this fails closed.
         }
-        throw new Error("Administrator bootstrap failed");
+        throw new Error(`Administrator bootstrap failed: ${creationError instanceof Error ? creationError.message : String(creationError)}`);
       }
 
       return {

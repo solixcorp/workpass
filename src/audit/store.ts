@@ -169,7 +169,8 @@ export async function auditStandaloneOperation(
   let result: Awaited<ReturnType<typeof operation>>;
   try {
     result = await operation();
-  } catch {
+  } catch (operationError) {
+    console.error("audit standalone operation failed", operationError instanceof Error ? (operationError.stack ?? operationError.message) : String(operationError));
     try {
       await updateAuditEvent(env, id, {
         actor_user_id: null,

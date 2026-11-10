@@ -4,6 +4,7 @@ import { admin } from "better-auth/plugins/admin";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { passkey } from "@better-auth/passkey";
 import { oauthProvider } from "@better-auth/oauth-provider";
+import { createPasswordPolicyHooks } from "../policies/auth-hooks";
 import type { OAuthResourceInput } from "@better-auth/oauth-provider";
 import type { Env } from "../env";
 import { verifyPassword, hashPassword } from "./password";
@@ -49,8 +50,7 @@ export function createAuth(env: Env) {
     databaseHooks: {
       session: {
         create: {
-          after: async (session, context) => {
-            try {
+          after: async (session, context) => {            try {
               const sessionToken = (session as { token?: unknown }).token;
               const sessionUserId = (session as { userId?: unknown }).userId;
               if (
@@ -77,6 +77,10 @@ export function createAuth(env: Env) {
       },
     },
     trustedOrigins: [baseURL],
+    // Policy framework bridge: password-entry policies run before better-auth
+    // accepts a password write; unusable/expired passwords deny sign-in; and
+    // successful writes record their metadata and reuse history.
+    hooks: createPasswordPolicyHooks(env),
     advanced: {
       useSecureCookies: authBaseUrl.protocol === "https:",
       defaultCookieAttributes: {

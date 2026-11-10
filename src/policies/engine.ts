@@ -156,7 +156,9 @@ export async function evaluateBoundPolicies(
     messages.push(...outcome.messages);
     if (!passing) sawFailure = true;
     if (passing && mode === "any") sawPass = true;
-    if (mode === "all" && sawFailure) break;
+    // `any` mode short-circuits on the first pass; `all` mode keeps evaluating
+    // so every user-visible problem is collected (authentik collects messages
+    // across bindings instead of stopping at the first failure).
     if (mode === "any" && sawPass) break;
   }
   const passing = mode === "all" ? !sawFailure : sawPass;

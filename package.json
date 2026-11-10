@@ -2,6 +2,9 @@
   "name": "internal-auth",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "dev": "wrangler dev",
     "dev:local": "wrangler dev --local",
@@ -11,9 +14,11 @@
     "smoke": "bun run scripts/run-all-smokes.ts",
     "provision:r2": "bun run scripts/ensure-audit-backup-bucket.ts",
     "predeploy": "bun run scripts/ensure-audit-backup-bucket.ts",
-    "build:check": "wrangler deploy --dry-run --outdir .wrangler/deploy",
     "types:worker": "wrangler types --env-interface=WorkerBindings --strict-vars=false",
-    "deploy": "wrangler deploy"
+    "web:dev": "bun run --cwd web dev",
+    "web:build": "bun run --cwd web build",
+    "build:check": "bun run web:build && wrangler deploy --dry-run --outdir .wrangler/deploy",
+    "deploy": "bun run web:build && wrangler deploy"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.18",
