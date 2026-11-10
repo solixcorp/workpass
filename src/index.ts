@@ -29,7 +29,7 @@ import { ssfSenderRoutes, cleanupSsfDeliveries } from "./ssf/sender-routes";
 import { cleanupSsfInbox } from "./ssf/inbox";
 import { attemptPendingSSFDispatch } from "./ssf/dispatch";
 import { accountRoutes } from "./accounts/routes";
-import { cleanupAccountSessionContexts } from "./accounts/store";
+import { cleanupAccountSessionContexts, cleanupAccountInvitations } from "./accounts/store";
 import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
 import { cleanupAccessRequests } from "./access/requests";
 import { backupAuditEvents } from "./audit/backup";
@@ -108,6 +108,7 @@ async function scheduled(
     await cleanupSsfDeliveries(env, controller.scheduledTime);
     await attemptPendingSSFDispatch(env, controller.scheduledTime);
     await cleanupAccountSessionContexts(env, new Date(controller.scheduledTime));
+    await cleanupAccountInvitations(env, new Date(controller.scheduledTime));
     await cleanupAccessRequests(env, controller.scheduledTime);
     try {
       // Independent audit backup: watermark-guarded R2 export; fails safe
