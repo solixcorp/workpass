@@ -230,6 +230,23 @@ describe("second-factor enrollment", () => {
     expect(((await (await call(path)).json()) as any).attributes).toEqual({});
   });
 
+  test("policies: create, bind, a bound policy cannot be deleted, unbind then delete", async () => {
+    const bad = await call("/api/admin/policies", { method: "POST", body: { name: "rep", type: "reputation", config: { check: "ip", threshold: 500 } } });
+    expect(bad.status).toBe(400);
+    const created = await call("/api/admin/policies", { method: "POST", body: { name: "rep", type: "reputation", config: { check: "both", threshold: -5 } } });
+    expect(created.status).toBe(201);
+    const policy = (await created.json() as any).policy;
+    expect((await call("/api/admin/policies", { method: "POST", body: { name: "rep", type: "reputation", config: { check: "ip" } } })).status).toBe(409);
+
+    const bound = await call("/api/admin/policy-bindings", { method: "POST", body: { target: "login", targetRef: "default", policyId: policy.id, order: 0 } });
+    expect(bound.status).toBe(201);
+    const binding = (await bound.json() as any).binding;
+    expect((await call(`/api/admin/policies/${policy.id}`, { method: "DELETE" })).status).toBe(409);
+
+    expect((await call(`/api/admin/policy-bindings/${binding.id}`, { method: "DELETE" })).status).toBe(200);
+    expect((await call(`/api/admin/policies/${policy.id}`, { method: "DELETE" })).status).toBe(200);
+  });
+
   test("an administrator can attach a hardware token seed for a user", async () => {
     const me = await (await call("/api/auth/get-session")).json() as any;
     const bad = await call(`/api/admin/users/${me.user.id}/mfa/hotp`, { method: "POST", body: { label: "x", secretBase32: "short" } });

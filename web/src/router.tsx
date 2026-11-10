@@ -15,6 +15,7 @@ import { AccountsAdminPage } from '@/features/admin/accounts-admin-page'
 import { AccountsPage } from '@/features/accounts/accounts-page'
 import { ApplicationsPage } from '@/features/admin/applications-page'
 import { AuditPage } from '@/features/admin/audit-page'
+import { PoliciesPage } from '@/features/admin/policies-page'
 import { SettingsPage } from '@/features/admin/settings-page'
 import { AdminOverviewPage } from '@/features/admin/overview-page'
 import { UsersPage } from '@/features/admin/users-page'
@@ -182,6 +183,12 @@ const adminApplicationsRoute = createRoute({
   component: ApplicationsPage,
 })
 
+const adminPoliciesRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/policies',
+  component: PoliciesPage,
+})
+
 const adminSettingsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/settings',
@@ -210,6 +217,7 @@ const routeTree = rootRoute.addChildren([
       adminApplicationsRoute,
       adminRequestsRoute,
       adminAuditRoute,
+      adminPoliciesRoute,
       adminSettingsRoute,
     ]),
   ]),

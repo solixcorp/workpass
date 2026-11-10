@@ -11,6 +11,7 @@ import {
   InboxIcon,
   LayoutDashboardIcon,
   LogOutIcon,
+  ScaleIcon,
   SettingsIcon,
   ShieldCheckIcon,
   UsersIcon,
@@ -63,6 +64,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/applications', label: '앱', icon: BlocksIcon },
   { to: '/admin/access-requests', label: '접근 요청', icon: InboxIcon },
   { to: '/admin/audit', label: '감사 로그', icon: ActivityIcon },
+  { to: '/admin/policies', label: '정책', icon: ScaleIcon },
   { to: '/admin/settings', label: '설정', icon: SettingsIcon },
 ]
 
