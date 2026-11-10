@@ -3,21 +3,29 @@ id = "TSK-1794273539-48m"
 type = "task"
 title = "Implement reputation and geoip policy types on the login pipeline"
 description = "reputation_scores ledger updates on login outcomes with expiry, geoip policy evaluation over the existing geo engine and device observations, and login-surface binding evaluation in the shared gate."
-status = "draft"
+status = "resolved"
 created_at = 2026-11-10T10:18:59+09:00
-updated_at = 2026-11-10T10:18:59+09:00
+updated_at = 2026-11-10T10:59:34+09:00
 
 [metadata]
 acceptance = ["Failing reputation or geoip policies block login issuance in tests."]
 instructions = ["Bind reputation/geoip at the login surface."]
 must_not = []
 order = 3.0
-qa = [{command = "bun test tests/policies/", evidence = "", expected = "exit 0"}]
+qa = [{command = "bun test tests/policies/", evidence = "tests/policies/reputation-geoip.test.ts", expected = "exit 0"}]
 references = ["docs/design/authentik-policies.md"]
 
 [[relations]]
 to = "PHS-1794273531-160"
 type = "belongs_to"
+
+[[relations]]
+to = "DEC-1794273531-pyp"
+type = "covers"
+
+[[relations]]
+to = "DEC-1794273531-pyp"
+type = "delivers"
 
 [[relations]]
 to = "TSK-1794273539-8wn"

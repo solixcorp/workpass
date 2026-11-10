@@ -5,12 +5,14 @@ title = "Phase 9: Authentik-benchmarked policy framework"
 description = "Policy objects, authentik binding semantics, the expression interpreter, typed policies (password family, reputation, geoip, event matcher with AKQL), notification rules, and surface integrations."
 status = "active"
 created_at = 2026-11-10T10:18:51+09:00
-updated_at = 2026-11-10T10:19:00+09:00
+updated_at = 2026-11-10T10:59:41+09:00
+amendment_forced = true
+amendment_reason = "Correct the phase order: a Multi-provider mail delivery phase resolved with order 9 in a parallel session, so this policy framework phase takes order 11 to keep the sequence unique. Metadata-only correction; no scope change."
 
 [metadata]
 exit_criteria = ["Binding engine semantics covered by tests", "Expression interpreter is host-isolated, bounded, and helper-tested", "Password/reputation/geoip/event-matcher policies enforced at their surfaces", "Notification rules dispatch transports", "typecheck and the full suite pass"]
 goal = "Deliver the policy framework with typed policies integrated into login, password, access evaluation, and event notifications."
-order = 9.0
+order = 11.0
 
 [[relations]]
 to = "PLN-1794159216-par"
