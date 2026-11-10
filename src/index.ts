@@ -33,6 +33,7 @@ import { attemptPendingSSFDispatch } from "./ssf/dispatch";
 import { accountRoutes } from "./accounts/routes";
 import { cleanupAccountSessionContexts, cleanupAccountInvitations } from "./accounts/store";
 import { dispatchPendingScimOperations } from "./scim/executor";
+import { devMockRoutes } from "./dev/mock-mail";
 import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
 import { cleanupAccessRequests } from "./access/requests";
 import { backupAuditEvents } from "./audit/backup";
@@ -93,6 +94,7 @@ app.route("/", oauth1Routes);
 app.route("/", ssfReceiverRoutes);
 app.route("/", ssfSenderRoutes);
 app.route("/", accountRoutes);
+app.route("/", devMockRoutes);
 app.route("/api/admin", accessRequestAdminRoutes);
 app.route("/", accessRequestUserRoutes);
 

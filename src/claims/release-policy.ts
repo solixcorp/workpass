@@ -20,13 +20,32 @@ export interface ClaimReleasePolicy {
   allowUserAttributes: boolean;
   /** null = the full attribute set the flags permit. */
   attributeAllowlist: string[] | null;
+  allowAccountAttributes: boolean;
+  allowGroupAttributes: boolean;
 }
 
 const SUBJECT_PATTERN = /^(saml|oidc|wsfed):[A-Za-z0-9_.:\/-]{1,2000}$/;
 const ATTRIBUTE_KEY_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
 const MAX_ALLOWLIST_KEYS = 32;
 
-export type ClaimKind = "account" | "attributes";
+export type ClaimKind =
+  | "account"
+  | "attributes"
+  | "accountAttributes"
+  | "groupAttributes";
+
+/** The (global flag, policy column) each released claim kind maps to. */
+function kindGate(env: Env, kind: ClaimKind): { flag: boolean } {
+  switch (kind) {
+    case "account":
+      return { flag: env.ENABLE_ACCOUNT_CLAIMS === "true" };
+    case "accountAttributes":
+      return { flag: env.ENABLE_ACCOUNT_CLAIMS === "true" };
+    case "groupAttributes":
+    case "attributes":
+      return { flag: env.ENABLE_ATTRIBUTE_CLAIMS === "true" };
+  }
+}
 
 export type AttributeAllowlistInput = string[] | null | undefined;
 
@@ -56,6 +75,8 @@ export async function upsertClaimReleasePolicy(
     allowAccountClaims: boolean;
     allowUserAttributes: boolean;
     attributeAllowlist?: AttributeAllowlistInput;
+    allowAccountAttributes?: boolean;
+    allowGroupAttributes?: boolean;
   },
   updatedBy: string,
 ): Promise<void> {
@@ -65,21 +86,34 @@ export async function upsertClaimReleasePolicy(
   const allowlist = parseAllowlist(input.attributeAllowlist);
   await env.DB.prepare(
     `INSERT INTO claim_release_policies
-       (subject, allow_account_claims, allow_user_attributes, attribute_allowlist, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+       (subject, allow_account_claims, allow_user_attributes, attribute_allowlist,
+        allow_account_attributes, allow_group_attributes, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (subject) DO UPDATE SET
        allow_account_claims = excluded.allow_account_claims,
        allow_user_attributes = excluded.allow_user_attributes,
        attribute_allowlist = excluded.attribute_allowlist,
+       allow_account_attributes = excluded.allow_account_attributes,
+       allow_group_attributes = excluded.allow_group_attributes,
        updated_by = excluded.updated_by,
        updated_at = excluded.updated_at`,
   )
     .bind(input.subject, input.allowAccountClaims ? 1 : 0, input.allowUserAttributes ? 1 : 0,
-      allowlist === null ? null : JSON.stringify(allowlist), updatedBy, new Date().toISOString())
+      allowlist === null ? null : JSON.stringify(allowlist),
+      input.allowAccountAttributes === false ? 0 : 1,
+      input.allowGroupAttributes === false ? 0 : 1,
+      updatedBy, new Date().toISOString())
     .run();
 }
 
-function rowToPolicy(row: { subject: string; allowAccountClaims: number; allowUserAttributes: number; attributeAllowlist: string | null }): ClaimReleasePolicy {
+function rowToPolicy(row: {
+  subject: string;
+  allowAccountClaims: number;
+  allowUserAttributes: number;
+  attributeAllowlist: string | null;
+  allowAccountAttributes: number | null;
+  allowGroupAttributes: number | null;
+}): ClaimReleasePolicy {
   let attributeAllowlist: string[] | null = null;
   if (row.attributeAllowlist) {
     try {
@@ -97,24 +131,28 @@ function rowToPolicy(row: { subject: string; allowAccountClaims: number; allowUs
     allowAccountClaims: row.allowAccountClaims === 1,
     allowUserAttributes: row.allowUserAttributes === 1,
     attributeAllowlist,
+    allowAccountAttributes: row.allowAccountAttributes === null || row.allowAccountAttributes === undefined ? true : row.allowAccountAttributes === 1,
+    allowGroupAttributes: row.allowGroupAttributes === null || row.allowGroupAttributes === undefined ? true : row.allowGroupAttributes === 1,
   };
 }
 
 export async function getClaimReleasePolicy(env: Env, subject: string): Promise<ClaimReleasePolicy | null> {
   const row = await env.DB.prepare(
     `SELECT subject, allow_account_claims AS allowAccountClaims, allow_user_attributes AS allowUserAttributes,
-            attribute_allowlist AS attributeAllowlist
+            attribute_allowlist AS attributeAllowlist, allow_account_attributes AS allowAccountAttributes,
+            allow_group_attributes AS allowGroupAttributes
      FROM claim_release_policies WHERE subject = ?`,
-  ).bind(subject).first<{ subject: string; allowAccountClaims: number; allowUserAttributes: number; attributeAllowlist: string | null }>();
+  ).bind(subject).first<{ subject: string; allowAccountClaims: number; allowUserAttributes: number; attributeAllowlist: string | null; allowAccountAttributes: number | null; allowGroupAttributes: number | null }>();
   return row ? rowToPolicy(row) : null;
 }
 
 export async function listClaimReleasePolicies(env: Env): Promise<ClaimReleasePolicy[]> {
   const result = await env.DB.prepare(
     `SELECT subject, allow_account_claims AS allowAccountClaims, allow_user_attributes AS allowUserAttributes,
-            attribute_allowlist AS attributeAllowlist
+            attribute_allowlist AS attributeAllowlist, allow_account_attributes AS allowAccountAttributes,
+            allow_group_attributes AS allowGroupAttributes
      FROM claim_release_policies ORDER BY subject ASC LIMIT 200`,
-  ).all<{ subject: string; allowAccountClaims: number; allowUserAttributes: number; attributeAllowlist: string | null }>();
+  ).all<{ subject: string; allowAccountClaims: number; allowUserAttributes: number; attributeAllowlist: string | null; allowAccountAttributes: number | null; allowGroupAttributes: number | null }>();
   return result.results.map(rowToPolicy);
 }
 
@@ -129,13 +167,17 @@ export async function deleteClaimReleasePolicy(env: Env, subject: string): Promi
  * closed.
  */
 export async function claimReleaseDecision(env: Env, subject: string | null | undefined, kind: ClaimKind): Promise<boolean> {
-  const flag = kind === "account" ? env.ENABLE_ACCOUNT_CLAIMS === "true" : env.ENABLE_ATTRIBUTE_CLAIMS === "true";
-  if (!flag) return false;
+  if (!kindGate(env, kind).flag) return false;
   if (!subject) return true;
   try {
     const policy = await getClaimReleasePolicy(env, subject);
     if (!policy) return true;
-    return kind === "account" ? policy.allowAccountClaims : policy.allowUserAttributes;
+    switch (kind) {
+      case "account": return policy.allowAccountClaims;
+      case "attributes": return policy.allowUserAttributes;
+      case "accountAttributes": return policy.allowAccountAttributes;
+      case "groupAttributes": return policy.allowGroupAttributes;
+    }
   } catch {
     return false;
   }

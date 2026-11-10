@@ -44,6 +44,8 @@ claimReleasePolicyRoutes.put("/claim-release-policies/:encodedSubject", async (c
     subject,
     allowAccountClaims: value.allowAccountClaims === undefined ? true : value.allowAccountClaims === true,
     allowUserAttributes: value.allowUserAttributes === undefined ? true : value.allowUserAttributes === true,
+    allowAccountAttributes: value.allowAccountAttributes === undefined ? true : value.allowAccountAttributes === true,
+    allowGroupAttributes: value.allowGroupAttributes === undefined ? true : value.allowGroupAttributes === true,
     attributeAllowlist: value.attributeAllowlist === undefined ? undefined
       : value.attributeAllowlist === null ? null
       : Array.isArray(value.attributeAllowlist) ? (value.attributeAllowlist as string[]) : undefined,

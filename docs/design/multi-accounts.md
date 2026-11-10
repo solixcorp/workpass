@@ -29,7 +29,7 @@ All routes live under `/api/admin/accounts`, require an administrator session an
 | `POST /api/admin/accounts/{id}/invitations` | `{role?, ttlDays?}` (default `member`, default 7 days, cap 30) → 201 with the opaque, full-entropy token **returned exactly once**. Audited (`account.invitation.create`). |
 | `GET /api/admin/accounts/{id}/invitations` | Pending/consumed/expired view with masked token prefixes (read-only, session-gated). |
 | `DELETE /api/admin/accounts/{id}/invitations/{token}` | 200 revocation of a pending invitation; 404 when absent or already consumed. Audited (`account.invitation.revoke`). |
-| **Token delivery.** `POST /api/admin/accounts/{id}/invitations/{token}/deliver` emails the token to `{to}` through the deployment's Resend credentials (sender address: `INVITATION_EMAIL_FROM`, falling back to `MFA_OTP_EMAIL_FROM`) and records `deliverTo`/`deliveredAt` on the row; re-delivery updates them. 503 when no sender is configured, 409 for an expired invitation, 502 on a failed send (audited either way, `account.invitation.email`). The token is still handed over manually in deployments without a mail sender. |
+| `POST /api/admin/accounts/{id}/invitations/{token}/deliver` | `{to}` emails the invitation through the deployment's Resend credentials or — for headless local testing — points at the built-in mock mailbox `/dev/mocks/invitation-email` (only with the `ENABLE_DEV_MOCKS` flag; it records messages for retrieval and must never be enabled in production, since bodies carry invitation tokens). Records `deliverTo`/`deliveredAt` on the invitation row; 503 without a configured channel, 409 expired, 502 failed send. Audited (`account.invitation.email`). |
 | `PATCH /api/admin/accounts/{id}/members/{userId}` | `{role}` → 200; 404 when the membership is absent; 409 when demoting the last `admin` member. Audited (`account.member.role.update`). |
 | `DELETE /api/admin/accounts/{id}/members/{userId}` | 200; 404 when the membership is absent; 409 when removing the last `admin` member. Also drops the removed member's session contexts for the account. |
 
@@ -56,4 +56,4 @@ The optional **attribute allowlist** on a claim release policy narrows the *keys
 
 ## What remains open
 
-- Invitation email sender: Resend production channel or the dev webhook (`INVITATION_EMAIL_WEBHOOK_URL`) already cover delivery; a built-in mock receiver endpoint inside this Worker would remove the need to run an external receiver during smoke tests.
+- (None in code scope; the mock mailbox must be disabled in production deployments — it is fail-closed behind `ENABLE_DEV_MOCKS`.)

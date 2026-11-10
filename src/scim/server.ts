@@ -22,6 +22,7 @@ import {
   type AttributeValue,
 } from "../objects/attributes";
 import { scheduleScimAttributeSync } from "./executor";
+import { emitAttributeChangedEvent } from "../ssf/attribute-events";
 
 export const inboundScimRoutes = new Hono<{ Bindings: Env }>();
 
@@ -231,6 +232,12 @@ inboundScimRoutes.post(`${SCIM_PATH}/Users`, async (context) => {
     if (attributes.attributes !== null) {
       await setObjectAttributes(context.env, "user", id, attributes.attributes, null);
       await scheduleScimAttributeSync(context.env, id).catch(() => undefined);
+      await emitAttributeChangedEvent(context.env, {
+        userId: id,
+        objectType: "user",
+        objectId: id,
+        changedKeys: Object.keys(attributes.attributes),
+      }).catch(() => undefined);
     }
     const row = await loadUser(context.env, id);
     const stored = await getObjectAttributes(context.env, "user", id);

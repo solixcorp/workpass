@@ -133,6 +133,58 @@ describe("per-attribute allowlist", () => {
   });
 });
 
+describe("group and account attribute release", () => {
+  test("the active account's attributes ride on the account gate", async () => {
+    const env = await seededEnv();
+    const { accountAttributesClaimForSubject } = await import("../src/claims/protocol-claims");
+    // No account attributes yet → no claim.
+    expect(await accountAttributesClaimForSubject(env, "sess-1", undefined)).toEqual({});
+    const accountId = (await env.DB.prepare("SELECT account_id AS id FROM account_members WHERE user_id='u1'").first<{ id: string }>())!.id;
+    const { setObjectAttributes } = await import("../src/objects/attributes");
+    await setObjectAttributes(env, "account", accountId, { department: "eng" }, "u1");
+    // Released when the flag is on, subject-gated with the account kind.
+    const open = await accountAttributesClaimForSubject(env, "sess-1", undefined);
+    expect(open).toEqual({ "https://auth.example.test/claims/account-attributes": { department: "eng" } });
+    await upsertClaimReleasePolicy(env, { subject: "oidc:client-1", allowAccountClaims: true, allowUserAttributes: true, allowAccountAttributes: false }, "u1");
+    expect(await accountAttributesClaimForSubject(env, "sess-1", "oidc:client-1")).toEqual({});
+  });
+
+  test("group attributes release only the user's membered groups within the size cap", async () => {
+    const env = await seededEnv();
+    const { groupAttributesClaimForSubject } = await import("../src/claims/protocol-claims");
+    for (let index = 1; index <= 3; index += 1) {
+      await env.DB.prepare(
+        `INSERT INTO directory_groups (id, name, description, created_by, created_at, updated_at)
+         VALUES ('grp-${index}', 'g${index}', '', 'u1', '2026-01-01', '2026-01-01')`,
+      ).run();
+    }
+    await env.DB.prepare(
+      "INSERT INTO directory_group_members (group_id, user_id, granted_by, granted_at) VALUES ('grp-1', 'u1', 'u1', '2026-01-01')",
+    ).run();
+    const accountId = await env.DB.prepare(
+      "SELECT account_id AS id FROM account_members WHERE user_id='u1'",
+    ).first<{ id: string }>();
+    void accountId;
+    await env.DB.prepare(
+      `INSERT INTO object_attributes (object_type, object_id, attributes, updated_at)
+       VALUES ('group', 'grp-2', '{"cost_center":"c1"}', '2026-01-01')`,
+    ).run();
+    // The user's groups: only grp-1 (member) and grp-2 (member? no) — grp-2's
+    // attributes exist but the user is not its member, so nothing releases.
+    expect(await groupAttributesClaimForSubject(env, "u1", undefined)).toEqual({});
+    await env.DB.prepare(
+      "INSERT INTO directory_group_members (group_id, user_id, granted_by, granted_at) VALUES ('grp-2', 'u1', 'u1', '2026-01-01')",
+    ).run();
+    const released = await groupAttributesClaimForSubject(env, "u1", undefined);
+    expect(released).toEqual({
+      "https://auth.example.test/claims/group-attributes": { "grp-2": { cost_center: "c1" } },
+    });
+    // With the flag off nothing releases.
+    delete (env as Record<string, unknown>).ENABLE_ATTRIBUTE_CLAIMS;
+    expect(await groupAttributesClaimForSubject(env, "u1", undefined)).toEqual({});
+  });
+});
+
 describe("subject-aware release surfaces", () => {
   test("the user-surface helpers keep working without a subject", async () => {
     const env = await seededEnv();

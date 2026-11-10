@@ -407,6 +407,18 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   } catch {
     // Column already present.
   }
+  // Group/account attributes release: per-application columns added in place
+  // (an AND with the operator flags, like the other release kinds).
+  try {
+    await env.DB.prepare("ALTER TABLE claim_release_policies ADD COLUMN allow_account_attributes INTEGER").run();
+  } catch {
+    // Column already present.
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE claim_release_policies ADD COLUMN allow_group_attributes INTEGER").run();
+  } catch {
+    // Column already present.
+  }
   // Account invitations: opaque single-use join tokens created by the admin
   // surface and redeemed by a signed-in user (see docs/design/multi-accounts.md).
   await env.DB.prepare(

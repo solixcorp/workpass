@@ -98,6 +98,8 @@ export interface Env extends Partial<WorkerBindings> {
   INVITATION_EMAIL_FROM?: string;
   /** Dev/mock webhook that records invitation emails instead of delivering them (headless local testing). */
   INVITATION_EMAIL_WEBHOOK_URL?: string;
+  /** Built-in development mock mailbox at /dev/mocks/invitation-email; never enable in production. */
+  ENABLE_DEV_MOCKS?: string;
   /** Access requests (docs/design/access-requests.md): best-effort reviewer notification webhook. */
   ACCESS_REQUEST_WEBHOOK_URL?: string;
   /**

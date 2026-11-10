@@ -25,7 +25,10 @@ export interface SsfKey {
   publicJwk: Record<string, unknown>;
 }
 
-let ensured: Promise<void> | null = null;
+// Per-database key cache: one D1 instance keeps one key generation. A
+// process-wide singleton would leak a key generated (and sealed) for one
+// deployment's secret into another database's key lookup in tests.
+const ensuredKeys = new WeakMap<D1Database, Promise<void>>();
 
 async function ensureTable(db: D1Database): Promise<void> {
   await db.prepare(`CREATE TABLE IF NOT EXISTS ssf_signing_keys (
@@ -40,24 +43,28 @@ async function ensureTable(db: D1Database): Promise<void> {
 /** Single-generation key kept deliberately small; rotation is a destructive
  * re-enrollment for receivers, so it stays an operator action. */
 export async function ensureSsfSigningKey(env: Env): Promise<SsfKey> {
-  ensured ??= (async () => {
-    await ensureTable(env.DB);
-    const existing = await env.DB.prepare("SELECT generation, sealed_private_key, public_jwk FROM ssf_signing_keys WHERE generation = 1")
-      .bind().first<SsfKeyRow>();
-    if (!existing) {
-      const pair = await crypto.subtle.generateKey(
-        { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
-        true, ["sign", "verify"],
-      );
-      const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
-      const publicJwk = { kty: privateJwk.kty, n: privateJwk.n, e: privateJwk.e, alg: "RS256", kid: "ssf-1", use: "sig" };
-      const sealed = await sealString(env, JSON.stringify(privateJwk), SSF_KEY_AAD);
-      const result = await env.DB.prepare(
-        "INSERT INTO ssf_signing_keys (generation, sealed_private_key, public_jwk, retired, created_at) VALUES (1, ?, ?, 0, ?)",
-      ).bind(sealed, JSON.stringify(publicJwk), Date.now()).run();
-      if (!result.success || result.meta?.changes !== 1) throw new Error("SSF signing key storage failed");
-    }
-  })();
+  let ensured = ensuredKeys.get(env.DB);
+  if (!ensured) {
+    ensured = (async () => {
+      await ensureTable(env.DB);
+      const existing = await env.DB.prepare("SELECT generation, sealed_private_key, public_jwk FROM ssf_signing_keys WHERE generation = 1")
+        .bind().first<SsfKeyRow>();
+      if (!existing) {
+        const pair = await crypto.subtle.generateKey(
+          { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+          true, ["sign", "verify"],
+        );
+        const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+        const publicJwk = { kty: privateJwk.kty, n: privateJwk.n, e: privateJwk.e, alg: "RS256", kid: "ssf-1", use: "sig" };
+        const sealed = await sealString(env, JSON.stringify(privateJwk), SSF_KEY_AAD);
+        const result = await env.DB.prepare(
+          "INSERT INTO ssf_signing_keys (generation, sealed_private_key, public_jwk, retired, created_at) VALUES (1, ?, ?, 0, ?)",
+        ).bind(sealed, JSON.stringify(publicJwk), Date.now()).run();
+        if (!result.success || result.meta?.changes !== 1) throw new Error("SSF signing key storage failed");
+      }
+    })();
+    ensuredKeys.set(env.DB, ensured);
+  }
   await ensured;
   const row = await env.DB.prepare("SELECT generation, sealed_private_key, public_jwk FROM ssf_signing_keys WHERE generation = 1")
     .bind().first<SsfKeyRow>();

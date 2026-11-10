@@ -34,14 +34,27 @@ Group reads surface the attributes inline: `GET /api/admin/directory-groups/{id}
 
 - **Surfaces.** The same claim surfaces as active-account claims: OIDC access/ID tokens (and the UserInfo response entry point), the JWT plugin payload, and SAML 2.0/WS-Federation assertion attributes at `/saml/sso` and `/wsfed/signin`.
 - **Shape.** One URI-namespaced JSON claim `<IdP origin>/claims/attributes` carrying the flat attribute object (primitive values, `null` included); SAML emits one simple-string attribute per entry named `<origin>/claims/attributes/<key>`, skipping `null` entries and stringifying primitives.
-- **Deliberate exclusions.** Group and account attributes are **not** released: groups are claim-release candidates owned by the later per-application binding and release policy (docs/design/directory-groups.md), and account attributes describe shared objects whose audiences require their own allow/deny decision.
+- **Deliberate exclusions (superseded):** group and account attributes initially stayed unreleased; they now release under their own policy columns (below).
 
 ## Per-application claim release policy
 
-The global flags make release possible; a **claim release policy** row decides which kinds one application receives, evaluated as an AND with the flags (a row can only narrow, never widen). Subjects use the same namespace as app-access policies: `saml:<entityId>`, `oidc:<clientId>`, `wsfed:<realm>`. No row keeps the flag-only default, and a policy evaluation failure fails closed. Admin surface: `GET/PUT/DELETE /api/admin/claim-release-policies/{subject}` with `{allowAccountClaims?, allowUserAttributes?}` (absent keys default to allowed), audited (`claim.policy.update`, `claim.policy.delete`).
+The global flags make release possible; a **claim release policy** row decides which kinds one application receives, evaluated as an AND with the flags (a row can only narrow, never widen). Subjects use the same namespace as app-access policies: `saml:<entityId>`, `oidc:<clientId>`, `wsfed:<realm>`. No row keeps the flag-only default, and a policy evaluation failure fails closed. Admin surface: `GET/PUT/DELETE /api/admin/claim-release-policies/{subject}` with `{allowAccountClaims?, allowUserAttributes?, allowAccountAttributes?, allowGroupAttributes?, attributeAllowlist?}` (absent keys default to allowed; the optional allowlist releases only listed user-attribute keys), audited (`claim.policy.update`, `claim.policy.delete`).
+
+## Group and account attribute release
+
+Within a token, the active account's attribute set is released as `<origin>/claims/account-attributes` (an AND of `ENABLE_ACCOUNT_CLAIMS` and the policy's `allowAccountAttributes`), and the acting user's own directory groups' attributes as `<origin>/claims/group-attributes` (an AND of `ENABLE_ATTRIBUTE_CLAIMS` and `allowGroupAttributes`), deterministically capped to a 4 KiB bundle in ascending group-id order. On SAML 2.0/WS-Federation they surface as per-key attribute URNs (`.../attributes-account/<key>`, `.../attributes-group/<groupId>/<key>`). Group membership changes or group-attribute writes take effect on the next token issuance; empty sets release no claim.
+
+## SCIM attribute push and self-propagation
+
+Outbound SCIM attribute push runs behind `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: create/patch payloads to targets carry the user's custom attributes as the `urn:solixcorp:scim:1.0:CustomAttributes` extension (patch as a path-scoped operation, deactivation never carries profile data). Fail-closed default; it remains a deliberate per-target operator decision (privacy review). Attribute changes self-propagate: writes through the admin API and inbound SCIM queue an `update` operation and the daily Worker Cron drains pending operations through the shared executor — no manual trigger is needed anymore.
+
+## Update events (SSF SET)
+
+Attribute changes emit a SET through the SSF sender when a recipient's registered `event_types` include the URN:
+
+- Event type: `urn:solixcorp:internal-auth:attributes-changed:1.0`; subject `{"user": {"user_id": ...}}`; event payload `{object_type, object_id, changed_keys (≤ 32)}`.
+- Emission points: the attributes admin API (set and delete), and inbound SCIM attribute writes — best-effort; delivery failures land in the bounded-retry delivery rows, never block the attribute write. The sender flag (`ENABLE_SSF_SENDER`) gates all of it.
 
 ## What remains open
 
-- Group and account attribute release as claims: users release fully (kind gates plus per-attribute allowlist included); group/account attributes describe shared objects whose audiences need their own release decision — still not released.
-- Outbound SCIM attribute push is implemented behind `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: create/patch payloads to targets carry the user's custom attributes as the `urn:solixcorp:scim:1.0:CustomAttributes` extension (patch as a path-scoped operation, deactivation never carries profile data). Fail-closed default; it remains a deliberate per-target operator decision (privacy review). Attribute changes self-propagate: writes through the admin API and inbound SCIM queue an `update` operation and the daily Worker Cron drains pending operations through the shared executor — no manual trigger is needed anymore.
-- Update events for attributes beyond the SCIM queue (an SSF SET event type would let downstream apps follow changes through the Shared Signals Framework).
+- The attribute-change event type is this platform's own namespace — standards registration and per-key payload schemas would be a follow-up standardization task.

@@ -95,6 +95,63 @@ export async function userAttributesClaimForSubject(
   return { [`${claimNamespace(env)}/${ATTRIBUTES_CLAIM_SUFFIX}`]: filtered };
 }
 
+/** The serialized-size ceiling for any released attribute bundle. */
+const GROUP_BUNDLE_LIMIT = 4096;
+
+/**
+ * The account-attributes claim for the session's active account, reusing the
+ * account kind gate. The set is primitive-bounded already; no allowlist is
+ * applied for this kind.
+ */
+export async function accountAttributesClaimForSubject(
+  env: Env,
+  sessionId: string | null,
+  subject: string | undefined,
+): Promise<{ [claim: string]: unknown }> {
+  if (sessionId === null || !(await claimReleaseDecision(env, subject, "accountAttributes"))) return {};
+  const context = await getSessionAccountContext(env, sessionId);
+  if (!context) return {};
+  const { attributes } = await getObjectAttributes(env, "account", context.account.id);
+  if (Object.keys(attributes).length === 0) return {};
+  return { [`${claimNamespace(env)}/account-attributes`]: attributes };
+}
+
+/**
+ * Group-attribute release: the user's own directory groups only, capped to a
+ * deterministic 4 KiB bundle (ascending group id order) so a member of many
+ * groups cannot blow up a token.
+ */
+export async function groupAttributesClaimForSubject(
+  env: Env,
+  userId: string | null | undefined,
+  subject: string | undefined,
+): Promise<{ [claim: string]: unknown }> {
+  if (!userId || !(await claimReleaseDecision(env, subject, "groupAttributes"))) return {};
+  const rows = await env.DB.prepare(
+    `SELECT g.id, o.attributes
+     FROM directory_group_members m
+     JOIN directory_groups g ON g.id = m.group_id
+     LEFT JOIN object_attributes o ON o.object_type = 'group' AND o.object_id = g.id
+     WHERE m.user_id = ?
+     ORDER BY g.id ASC LIMIT 100`,
+  ).bind(userId).all<{ id: string; attributes: string | null }>();
+  const bundle: Record<string, unknown> = {};
+  let size = 0;
+  for (const row of rows.results) {
+    if (!row.attributes) continue;
+    let attributes: unknown;
+    try { attributes = JSON.parse(row.attributes); } catch { continue; }
+    if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) continue;
+    const serialized = JSON.stringify({ [row.id]: attributes });
+    const encoded = new TextEncoder().encode(serialized).byteLength;
+    if (size + encoded > GROUP_BUNDLE_LIMIT) break;
+    bundle[row.id] = attributes;
+    size += encoded;
+  }
+  if (Object.keys(bundle).length === 0) return {};
+  return { [`${claimNamespace(env)}/group-attributes`]: bundle };
+}
+
 /** The merged OIDC claim set for both the access-token and ID-token paths. */
 export async function oidcClaimRelease(
   env: Env,
@@ -114,7 +171,9 @@ export async function oidcClaimReleaseForSubject(
   if (!accountClaimsEnabled(env) && !attributeClaimsEnabled(env)) return {};
   return {
     ...(await activeAccountClaimForSubject(env, sessionId ?? null, subject)),
+    ...(await accountAttributesClaimForSubject(env, sessionId ?? null, subject)),
     ...(await userAttributesClaimForSubject(env, userId, subject)),
+    ...(await groupAttributesClaimForSubject(env, userId, subject)),
   };
 }
 
@@ -170,6 +229,15 @@ export async function samlAttributeRelease(
         { name: names.accountName, value: context.account.name },
         { name: names.accountRole, value: context.role },
       );
+      if (await claimReleaseDecision(env, subject, "accountAttributes")) {
+        const accountAttributes = await getObjectAttributes(env, "account", context.account.id);
+        for (const key of Object.keys(accountAttributes.attributes).sort()) {
+          const value = attributeValue(accountAttributes.attributes, key);
+          if (value !== null) {
+            attributes.push({ name: `${names.attributePrefix}-account/${key}`, value });
+          }
+        }
+      }
     }
   }
   if (attributeClaimsEnabled(env) && userId && (await claimReleaseDecision(env, subject, "attributes"))) {
@@ -179,6 +247,23 @@ export async function samlAttributeRelease(
       const value = attributeValue(filtered, key);
       if (value !== null) {
         attributes.push({ name: `${names.attributePrefix}/${key}`, value });
+      }
+    }
+  }
+  // Group attributes ride on the attribute claim: the acting user's own
+  // groups, keyed by group id in the attribute name.
+  if (attributeClaimsEnabled(env) && userId && (await claimReleaseDecision(env, subject, "groupAttributes"))) {
+    const groupBundle = await groupAttributesClaimForSubject(env, userId, subject);
+    const bundle = groupBundle[`${claimNamespace(env)}/group-attributes`];
+    if (bundle && typeof bundle === "object") {
+      for (const [groupId, groupAttributes] of Object.entries(bundle as Record<string, unknown>)) {
+        if (!groupAttributes || typeof groupAttributes !== "object") continue;
+        for (const key of Object.keys(groupAttributes).sort()) {
+          const value = attributeValue(groupAttributes as Record<string, AttributeValue>, key);
+          if (value !== null) {
+            attributes.push({ name: `${names.attributePrefix}-group/${groupId}/${key}`, value });
+          }
+        }
       }
     }
   }

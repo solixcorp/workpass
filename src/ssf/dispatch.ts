@@ -42,35 +42,45 @@ interface DeliveryRow {
 
 export const SSF_MAX_ATTEMPTS = 10;
 
-let ensured: Promise<void> | null = null;
+// The table-creation cache is per database (WeakMap), not a process-wide
+// singleton: tests and multi-tenant runtimes create SSF tables on several
+// D1 instances in one process, and a shared promise would leave the second
+// database without its tables.
+const ensuredTables = new WeakMap<D1Database, Promise<void>>();
 
 export function ensureSsfDispatchTables(db: D1Database): Promise<void> {
-  ensured ??= (async () => {
-    await db.prepare(`CREATE TABLE IF NOT EXISTS ssf_recipients (
-      id TEXT PRIMARY KEY NOT NULL,
-      audience TEXT NOT NULL,
-      endpoint TEXT NOT NULL,
-      event_types TEXT NOT NULL,
-      delivery_token TEXT,
-      disabled INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL
-    )`).run();
-    await db.prepare(`CREATE TABLE IF NOT EXISTS ssf_deliveries (
-      id TEXT PRIMARY KEY NOT NULL,
-      recipient_id TEXT NOT NULL,
-      set_id TEXT NOT NULL,
-      set_token TEXT NOT NULL,
-      state TEXT NOT NULL,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      next_attempt_at INTEGER NOT NULL,
-      last_status INTEGER,
-      last_error TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    )`).run();
-    await db.prepare("CREATE INDEX IF NOT EXISTS ssf_deliveries_pending_idx ON ssf_deliveries (state, next_attempt_at)").run();
-  })();
+  let ensured = ensuredTables.get(db);
+  if (!ensured) {
+    ensured = ensureTables(db);
+    ensuredTables.set(db, ensured);
+  }
   return ensured;
+}
+
+async function ensureTables(db: D1Database): Promise<void> {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS ssf_recipients (
+    id TEXT PRIMARY KEY NOT NULL,
+    audience TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    event_types TEXT NOT NULL,
+    delivery_token TEXT,
+    disabled INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS ssf_deliveries (
+    id TEXT PRIMARY KEY NOT NULL,
+    recipient_id TEXT NOT NULL,
+    set_id TEXT NOT NULL,
+    set_token TEXT NOT NULL,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at INTEGER NOT NULL,
+    last_status INTEGER,
+    last_error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`).run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS ssf_deliveries_pending_idx ON ssf_deliveries (state, next_attempt_at)").run();
 }
 
 export async function upsertSsfRecipient(
@@ -90,6 +100,18 @@ export async function deleteSsfRecipient(env: Env, id: string): Promise<boolean>
   const result = await env.DB.prepare("DELETE FROM ssf_recipients WHERE id = ?").bind(id).run();
   if (!result.success || typeof result.meta?.changes !== "number") throw new Error("Recipient delete failed");
   return result.meta.changes > 0;
+}
+
+/** Every enabled recipient (bounded); used by automated event emitters. */
+export async function listEnabledSsfRecipients(env: Env, limit = 200): Promise<SsfRecipient[]> {
+  await ensureSsfDispatchTables(env.DB);
+  const rows = await env.DB.prepare(
+    "SELECT id, audience, endpoint, event_types, delivery_token, disabled FROM ssf_recipients WHERE disabled = 0 LIMIT ?",
+  ).bind(limit).all<RecipientRow>();
+  return rows.results.map((row) => ({
+    id: row.id, audience: row.audience, endpoint: row.endpoint,
+    eventTypes: JSON.parse(row.event_types) as string[], deliveryToken: row.delivery_token, disabled: false,
+  }));
 }
 
 async function loadSsfRecipient(env: Env, id: string): Promise<SsfRecipient | null> {

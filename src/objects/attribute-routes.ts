@@ -12,6 +12,7 @@ import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
 import { scheduleScimAttributeSync } from "../scim/executor";
+import { emitAttributeChangedEvent } from "../ssf/attribute-events";
 import {
   deleteObjectAttributes,
   getObjectAttributes,
@@ -99,14 +100,21 @@ objectAttributeRoutes.put("/attributes/:objectType/:objectId", async (context) =
       };
     }
     const stored = await getObjectAttributes(context.env, target.type, target.objectId);
-    // Attribute changes propagate to SCIM targets that already map the user:
-    // one queued update op best-effort; the cron dispatcher drains the queue.
+    // Attribute changes propagate two ways: SCIM targets that already map
+    // the user get a queued update op drained by the cron dispatcher, and
+    // SSF recipients subscribed to the attribute-change URN get a SET event.
     if (target.type === "user") {
       const synced = await scheduleScimAttributeSync(context.env, target.objectId).catch(() => false);
       if (!synced) {
         console.warn("SCIM attribute propagation not queued", { userId: target.objectId });
       }
     }
+    await emitAttributeChangedEvent(context.env, {
+      userId: actor.userId,
+      objectType: target.type,
+      objectId: target.objectId,
+      changedKeys: Object.keys(parsed.attributes),
+    }).catch(() => undefined);
     return {
       response: Response.json({ objectType: target.type, objectId: target.objectId, ...stored }),
       actorUserId: actor.userId,
@@ -127,6 +135,14 @@ objectAttributeRoutes.delete("/attributes/:objectType/:objectId", async (context
     const removed = await deleteObjectAttributes(context.env, target.type, target.objectId);
     if (removed && target.type === "user") {
       await scheduleScimAttributeSync(context.env, target.objectId).catch(() => undefined);
+    }
+    if (removed) {
+      await emitAttributeChangedEvent(context.env, {
+        userId: actor.userId,
+        objectType: target.type,
+        objectId: target.objectId,
+        changedKeys: [],
+      }).catch(() => undefined);
     }
     return {
       response: removed

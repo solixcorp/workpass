@@ -2,13 +2,14 @@
  * Operator tooling: verify the outbound SCIM 2.0 transport over REAL HTTP
  * against a local mock target, with genuine HTTP semantics (201/200 bodies,
  * bearer auth, a 500 mode to exercise the outcome-unknown path and the
- * single-active journal block).
+ * single-active journal block), plus the custom-attributes extension
+ * release (create/update carry it, deactivation does not).
  *
  * The identity provider dev server must be running with the SCIM variables
  * configured (ENABLE_SCIM_PROVISIONING=true, SCIM_TARGET_ID=localmock,
  * SCIM_BASE_URL=http://127.0.0.1:18080/scim, SCIM_BEARER_TOKEN=smoke-target-token,
- * SCIM_DEV_LOOPBACK_TARGET=true). The mock target is started and stopped by
- * this script itself.
+ * SCIM_DEV_LOOPBACK_TARGET=true, ENABLE_SCIM_ATTRIBUTE_RELEASE=true). The mock
+ * target is started and stopped by this script itself.
  *
  *   bun run scripts/scim-smoke.ts [--migrate-token t] [--admin-token t]
  *
@@ -53,6 +54,11 @@ function expect(step: string, condition: boolean, detail?: unknown): void {
 // --- mock SCIM target -------------------------------------------------------
 let failMode = false;
 const createdExternalIds = new Set<string>();
+let lastCreateBody: Record<string, unknown> | null = null;
+let lastPatchOperations: Array<Record<string, unknown>> | null = null;
+let lastCreateHasAttributes = false;
+let lastPatchHasAttributeOp = false;
+let lastPatchDeactivates = false;
 const bearer = "smoke-target-token";
 
 const mockServer = Bun.serve({
@@ -65,15 +71,21 @@ const mockServer = Bun.serve({
     }
     if (failMode) return new Response("simulated target outage", { status: 500 });
     if (request.method === "POST" && url.pathname === "/scim/Users") {
+      lastCreateBody = await request.json() as Record<string, unknown>;
+      lastCreateHasAttributes = Object.hasOwn(lastCreateBody ?? {}, "urn:solixcorp:scim:1.0:CustomAttributes");
       const externalId = `mock-ext-${crypto.randomUUID().slice(0, 8)}`;
       createdExternalIds.add(externalId);
       return Response.json({ schemas: [ "urn:ietf:params:scim:schemas:core:2.0:User" ], id: externalId }, { status: 201 });
     }
     const match = /^\/scim\/Users\/(.+)$/.exec(url.pathname);
     if (request.method === "PATCH" && match) {
-      const body = await request.json() as { Operations?: Array<{ path?: string }> };
-      const deactivates = (body.Operations ?? []).some((op) => op.path === "active");
-      if (deactivates) createdExternalIds.delete(match[1]!);
+      const body = await request.json() as { Operations?: Array<Record<string, unknown>> };
+      lastPatchOperations = body.Operations ?? null;
+      const ops = body.Operations ?? [];
+      lastPatchHasAttributeOp = ops.some((op) => op.path === "urn:solixcorp:scim:1.0:CustomAttributes");
+      lastPatchDeactivates = ops.some((op) =>
+        op.path === "active" || (op.value !== null && typeof op.value === "object" && (op.value as Record<string, unknown>).active === false));
+      if (lastPatchDeactivates) createdExternalIds.delete(match[1]!);
       return new Response("{}", { status: 200 });
     }
     return new Response("not found", { status: 404 });
@@ -149,19 +161,32 @@ expect("victim id present", victimId.length > 0, victimId);
 for (const key of [...jar.keys()]) jar.delete(key);
 if (adminCookie) for (const pair of adminCookie.split("; ")) { const i = pair.indexOf("="); if (i > 0) jar.set(pair.slice(0, i), pair.slice(i + 1)); }
 
-// Create operation: the transport POSTs to the mock target.
+// Custom attributes are set BEFORE provisioning: the user has no mapping
+// yet, so the write must NOT queue an update operation (nothing to sync).
+const attributeSet = await call("/api/admin/attributes/user/" + victimId, {
+  method: "PUT",
+  origin: true,
+  body: { attributes: { employeeType: "contractor", badge_number: 4711 } },
+});
+expect("custom attributes written", attributeSet.status === 200, await attributeSet.clone().text());
+
+// Create operation: the transport POSTs to the mock target. With
+// ENABLE_SCIM_ATTRIBUTE_RELEASE=true the payload carries the extension.
 const createOp = await call("/api/admin/scim-operations", { method: "POST", origin: true, body: { userId: victimId, operation: "create" } });
 const createBody = await createOp.json().catch(() => ({})) as { operationId?: string; status?: string };
 expect("create operation succeeded over real HTTP", createOp.status === 200 && createBody.status === "succeeded", { status: createOp.status, body: createBody });
 expect("mock target received the POST", createdExternalIds.size === 1, Array.from(createdExternalIds));
+expect("create payload carries the custom-attributes extension", lastCreateHasAttributes === true, lastCreateBody);
 
 // Update operation.
 const updateOp = await call("/api/admin/scim-operations", { method: "POST", origin: true, body: { userId: victimId, operation: "update" } });
 expect("update operation succeeded", updateOp.status === 200, await updateOp.clone().text());
+expect("update patch carries a path-scoped attribute operation", lastPatchHasAttributeOp === true, lastPatchOperations);
 
 // Deactivate operation.
 const deactivateOp = await call("/api/admin/scim-operations", { method: "POST", origin: true, body: { userId: victimId, operation: "deactivate" } });
 expect("deactivate operation succeeded", deactivateOp.status === 200, await deactivateOp.clone().text());
+expect("deactivation payload never carries attribute data", lastPatchHasAttributeOp === false && lastPatchDeactivates === true, lastPatchOperations);
 
 // Now an outage: the target returns 500; the outcome is unknown and the
 // journal blocks everything for this target/user until reconciliation.
@@ -189,4 +214,4 @@ expect(
 );
 
 mockServer.stop(true);
-console.log(`scim smoke OK on ${base}: real HTTP transport, mapping lifecycle, outcome-unknown journaling and the single-active block.`);
+console.log(`scim smoke OK on ${base}: real HTTP transport, mapping lifecycle, custom-attributes extension release, outcome-unknown journaling and the single-active block.`);
