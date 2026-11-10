@@ -397,6 +397,16 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       updated_at TEXT NOT NULL
     )`,
   ).run();
+  // Per-application claim release policy: when a row exists for a subject it
+  // gates which released claim kinds reach that application (an AND with the
+  // global operator flags; no row keeps flag-only behavior). The optional
+  // attribute allowlist narrows the released user-attribute keys further
+  // (in-place column).
+  try {
+    await env.DB.prepare("ALTER TABLE claim_release_policies ADD COLUMN attribute_allowlist TEXT").run();
+  } catch {
+    // Column already present.
+  }
   // Account invitations: opaque single-use join tokens created by the admin
   // surface and redeemed by a signed-in user (see docs/design/multi-accounts.md).
   await env.DB.prepare(
@@ -422,21 +432,6 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   }
   try {
     await env.DB.prepare("ALTER TABLE account_invitations ADD COLUMN delivered_at TEXT").run();
-  } catch {
-    // Column already present.
-  }
-    `CREATE TABLE IF NOT EXISTS claim_release_policies (
-      subject TEXT PRIMARY KEY NOT NULL,
-      allow_account_claims INTEGER NOT NULL DEFAULT 1 CHECK (allow_account_claims IN (0, 1)),
-      allow_user_attributes INTEGER NOT NULL DEFAULT 1 CHECK (allow_user_attributes IN (0, 1)),
-      updated_by TEXT,
-      updated_at TEXT NOT NULL
-    )`,
-  ).run();
-  // The optional attribute allowlist narrows the released user-attribute keys further
-  // (in-place column).
-  try {
-    await env.DB.prepare("ALTER TABLE claim_release_policies ADD COLUMN attribute_allowlist TEXT").run();
   } catch {
     // Column already present.
   }
