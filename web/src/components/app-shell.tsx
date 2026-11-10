@@ -10,6 +10,7 @@ import {
   SettingsIcon,
   ShieldCheckIcon,
   UsersIcon,
+  UsersRoundIcon,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -51,6 +52,7 @@ const PORTAL_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin', label: '개요', icon: LayoutDashboardIcon, exact: true },
   { to: '/admin/users', label: '사용자', icon: UsersIcon },
+  { to: '/admin/groups', label: '그룹', icon: UsersRoundIcon },
   { to: '/admin/applications', label: '앱', icon: BlocksIcon },
   { to: '/admin/audit', label: '감사 로그', icon: ActivityIcon },
   { to: '/admin/settings', label: '설정', icon: SettingsIcon },

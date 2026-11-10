@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-router'
 import { AppShell } from '@/components/app-shell'
 import { enrollmentQuery } from '@/lib/mfa'
+import { GroupsPage } from '@/features/admin/groups-page'
 import { LoadingScreen } from '@/components/loading-screen'
 import { ApplicationsPage } from '@/features/admin/applications-page'
 import { AuditPage } from '@/features/admin/audit-page'
@@ -141,6 +142,12 @@ const adminUsersRoute = createRoute({
   component: UsersPage,
 })
 
+const adminGroupsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/groups',
+  component: GroupsPage,
+})
+
 const adminApplicationsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/applications',
@@ -168,6 +175,7 @@ const routeTree = rootRoute.addChildren([
     adminRoute.addChildren([
       adminIndexRoute,
       adminUsersRoute,
+      adminGroupsRoute,
       adminApplicationsRoute,
       adminAuditRoute,
       adminSettingsRoute,
