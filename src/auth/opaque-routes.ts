@@ -389,6 +389,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
         event_type: "authentication.opaque.login",
         outcome: "failure",
         request_path: "/api/opaque/auth/finish",
+        client_ip: clientIp(context),
       }).catch(() => {});
       return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 503);
     }
@@ -404,6 +405,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
     event_type: "authentication.opaque.login",
     outcome: "success",
     request_path: "/api/opaque/auth/finish",
+    client_ip: clientIp(context),
   });
   const headers = new Headers({
     "Cache-Control": "no-store",

@@ -10,15 +10,30 @@ export interface AuditEvent {
   event_type: string;
   outcome: AuditOutcome;
   request_path: string;
+  /** New in the policy-framework era; covered by content-hash v2. */
+  client_ip?: string | null;
+  /** JSON-serializable context snapshot for event matching. */
+  event_context?: Record<string, unknown> | null;
 }
 
+/**
+ * The tamper-evidence hash: v2 adds the client IP and the event-context JSON
+ * so the policy framework's matcher surface stays covered by the chain.
+ */
 /**
  * Tamper evidence over the audit content: a per-entry hash recomputed and
  * verified by walking the log. Rows are never deleted before one year, and D1
  * itself is NOT claimed to be immutable — the hash detects modification or
  * deletion of finalized rows when operators verify the log or exports.
+ *
+ * v2 adds the client IP and the event-context JSON (both fields the policy
+ * framework's event matcher reads); rows written by newer code carry
+ * hash_version 2 while legacy rows keep v1.
  */
-function auditContentHash(fields: AuditEvent): Promise<string> {
+export async function auditContentHash(
+  fields: AuditEvent & { hash?: string | null },
+  version: number,
+): Promise<string> {
   const canonical = JSON.stringify([
     fields.id,
     fields.occurred_at,
@@ -27,10 +42,10 @@ function auditContentHash(fields: AuditEvent): Promise<string> {
     fields.event_type,
     fields.outcome,
     fields.request_path,
+    ...(version >= 2 ? [fields.client_ip ?? null, fields.event_context ?? null] : []),
   ]);
-  return crypto.subtle
-    .digest("SHA-256", new TextEncoder().encode(canonical))
-    .then((bytes) => toBase64(new Uint8Array(bytes)));
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return toBase64(new Uint8Array(bytes));
 }
 
 function toBase64(bytes: Uint8Array): string {
@@ -41,16 +56,19 @@ function toBase64(bytes: Uint8Array): string {
 
 export async function insertAuditEvent(
   env: Env,
-  event: Pick<AuditEvent, "id" | "actor_user_id" | "target_user_id" | "event_type" | "outcome" | "request_path">,
+  event: Pick<AuditEvent, "id" | "actor_user_id" | "target_user_id" | "event_type" | "outcome" | "request_path"> &
+    Partial<Pick<AuditEvent, "client_ip" | "event_context">>,
 ): Promise<void> {
   const occurredAt = new Date().toISOString();
-  const contentHash = await auditContentHash({ ...event, occurred_at: occurredAt });
+  const eventContext = event.event_context ?? undefined;
+  const contentHash = await auditContentHash({ ...event, occurred_at: occurredAt }, 2);
   // Single statement: the log position is assigned inside SQL so concurrent
   // inserts cannot claim the same position.
   await env.DB.prepare(
     `INSERT INTO audit_events
-      (id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path, log_pos, content_hash)
-     SELECT ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(log_pos), 0) + 1 FROM audit_events), ?`,
+      (id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path,
+       client_ip, event_context, hash_version, log_pos, content_hash)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 2, (SELECT COALESCE(MAX(log_pos), 0) + 1 FROM audit_events), ?`,
   )
     .bind(
       event.id,
@@ -60,9 +78,25 @@ export async function insertAuditEvent(
       event.event_type,
       event.outcome,
       event.request_path,
+      event.client_ip ?? null,
+      eventContext === undefined ? null : JSON.stringify(eventContext),
       contentHash,
     )
     .run();
+  // Notification rules evaluate best-effort: enqueue failures must never
+  // break the audit write (the deferred import avoids a module cycle).
+  try {
+    const { enqueueEventNotifications } = await import("../policies/notifications");
+    await enqueueEventNotifications(env, {
+      ...event,
+      occurred_at: occurredAt,
+      client_ip: event.client_ip ?? null,
+      event_context: eventContext ?? null,
+      hash_version: 2,
+    } as AuditEvent & { hash_version: number });
+  } catch {
+    // Queue-less behavior is the documented failsafe.
+  }
 }
 
 export async function updateAuditEvent(
@@ -71,15 +105,18 @@ export async function updateAuditEvent(
   update: Pick<AuditEvent, "actor_user_id" | "target_user_id" | "outcome">,
 ): Promise<void> {
   const row = await env.DB.prepare(
-    "SELECT id, occurred_at, event_type, request_path FROM audit_events WHERE id = ?",
-  ).bind(id).first<AuditEvent>();
+    `SELECT id, occurred_at, event_type, request_path, client_ip, event_context,
+            COALESCE(hash_version, 1) AS hash_version
+     FROM audit_events WHERE id = ?`,
+  ).bind(id).first<AuditEvent & { client_ip: string | null; event_context: string | null; hash_version: number }>();
   if (!row) throw new Error("Audit event is missing");
   const contentHash = await auditContentHash({
     ...row,
+    event_context: row.event_context === null ? null : JSON.parse(row.event_context) as Record<string, unknown>,
     actor_user_id: update.actor_user_id,
     target_user_id: update.target_user_id,
     outcome: update.outcome,
-  });
+  }, row.hash_version);
   const result = await env.DB.prepare(
     `UPDATE audit_events
      SET actor_user_id = ?, target_user_id = ?, outcome = ?, content_hash = ?
@@ -102,7 +139,9 @@ export interface AuditChainVerification {
 /** Walk every positioned entry: content hash must match and positions must be contiguous. */
 export async function verifyAuditEventChain(env: Env): Promise<AuditChainVerification> {
   const rows = await env.DB.prepare(
-    `SELECT id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path, log_pos, content_hash
+    `SELECT id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path,
+            log_pos, content_hash, client_ip, event_context,
+            COALESCE(hash_version, 1) AS hash_version
      FROM audit_events WHERE log_pos IS NOT NULL ORDER BY log_pos ASC LIMIT 50000`,
   ).all<{
     id: string;
@@ -114,12 +153,18 @@ export async function verifyAuditEventChain(env: Env): Promise<AuditChainVerific
     request_path: string;
     log_pos: number;
     content_hash: string | null;
+    client_ip: string | null;
+    event_context: string | null;
+    hash_version: number;
   }>();
   const positioned = rows.results;
   let firstProblem: string | null = null;
   for (let index = 0; index < positioned.length; index += 1) {
     const row = positioned[index]!;
-    const recomputed = await auditContentHash(row);
+    const recomputed = await auditContentHash({
+      ...row,
+      event_context: row.event_context === null ? null : JSON.parse(row.event_context) as Record<string, unknown>,
+    }, row.hash_version);
     if (recomputed !== row.content_hash) {
       firstProblem = `entry at log position ${row.log_pos} has a modified content hash`;
       break;

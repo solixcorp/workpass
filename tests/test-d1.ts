@@ -32,7 +32,12 @@ export function createTestD1(): TestD1 {
       const results = statement.all(...(params as never[])) as Record<string, unknown>[];
       return { success: true, results, meta: { changes: 0, last_row_id: 0 } };
     }
-    const result = statement.run(...(params as never[]));
+    try {
+      const result = statement.run(...(params as never[]));
+      return { success: true, results: [] as Record<string, unknown>[], meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } };
+    } catch (error) {
+      throw new Error(`${(error as Error).message} | sql=${sql} ${JSON.stringify(params)}`);
+    }
     return { success: true, results: [] as Record<string, unknown>[], meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } };
   };
 

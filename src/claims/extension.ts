@@ -11,7 +11,7 @@
 
 import type { OAuthProviderExtension } from "@better-auth/oauth-provider";
 import type { Env } from "../env";
-import { oidcClaimRelease, oidcClaimReleaseForSubject } from "./protocol-claims";
+import { oidcClaimRelease, oidcClaimReleaseForSubject, scopeClaimsForSubject } from "./protocol-claims";
 
 function clientSubject(client: { clientId?: unknown } | undefined | null): string | undefined {
   const clientId = client?.clientId;
@@ -19,26 +19,36 @@ function clientSubject(client: { clientId?: unknown } | undefined | null): strin
 }
 
 /** Subject-aware release for one (session, user) pair; never throws. */
-async function releaseFor(env: Env, sessionId: string | null | undefined, userId: string | null | undefined, subject: string | undefined): Promise<Record<string, unknown>> {
-  if (!subject) return await oidcClaimRelease(env, sessionId, userId);
-  try {
-    return await oidcClaimReleaseForSubject(env, sessionId, userId, subject);
-  } catch {
-    // A policy evaluation failure must not become an availability failure:
-    // the flag-only default still applies.
-    return await oidcClaimRelease(env, sessionId, userId);
-  }
+async function releaseFor(
+  env: Env,
+  sessionId: string | null | undefined,
+  user: { id?: string; phoneNumber?: unknown; phoneNumberVerified?: unknown } | null | undefined,
+  subject: string | undefined,
+  scopes: string[] | undefined,
+): Promise<Record<string, unknown>> {
+  const userId = user?.id ?? null;
+  const base = subject
+    ? await oidcClaimReleaseForSubject(env, sessionId, userId, subject).catch(() =>
+        // A policy evaluation failure must not become an availability failure:
+        // the flag-only default still applies.
+        oidcClaimRelease(env, sessionId, userId),
+      )
+    : await oidcClaimRelease(env, sessionId, userId);
+  // Scope-gated claims (phone, groups) ride on top of the released base; they
+  // never throw (a query failure leaves the claim absent).
+  const scoped = await scopeClaimsForSubject(env, userId, subject, scopes, user).catch(() => ({}));
+  return { ...base, ...scoped };
 }
 
 export function claimReleaseExtension(env: Env): OAuthProviderExtension {
   return {
     claims: {
-      accessToken: async ({ sessionId, user, client }) =>
-        await releaseFor(env, sessionId, user?.id, clientSubject(client)),
-      idToken: async ({ sessionId, user, client }) =>
-        await releaseFor(env, sessionId, user?.id, clientSubject(client)),
-      userInfo: async ({ user, client }) =>
-        await releaseFor(env, null, user?.id, clientSubject(client)),
+      accessToken: async ({ sessionId, user, client, scopes }) =>
+        await releaseFor(env, sessionId, user, clientSubject(client), scopes),
+      idToken: async ({ sessionId, user, client, scopes }) =>
+        await releaseFor(env, sessionId, user, clientSubject(client), scopes),
+      userInfo: async ({ user, client, scopes }) =>
+        await releaseFor(env, null, user, clientSubject(client), scopes),
     },
   };
 }

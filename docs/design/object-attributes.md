@@ -44,6 +44,15 @@ The global flags make release possible; a **claim release policy** row decides w
 
 Within a token, the active account's attribute set is released as `<origin>/claims/account-attributes` (an AND of `ENABLE_ACCOUNT_CLAIMS` and the policy's `allowAccountAttributes`), and the acting user's own directory groups' attributes as `<origin>/claims/group-attributes` (an AND of `ENABLE_ATTRIBUTE_CLAIMS` and `allowGroupAttributes`), deterministically capped to a 4 KiB bundle in ascending group-id order. On SAML 2.0/WS-Federation they surface as per-key attribute URNs (`.../attributes-account/<key>`, `.../attributes-group/<groupId>/<key>`). Group membership changes or group-attribute writes take effect on the next token issuance; empty sets release no claim.
 
+## Scope-gated standard claims (phone, groups)
+
+The provider advertises two release scopes on top of the identity trio, both flow only when the client was granted the scope (consented), merged additively into OIDC access tokens, ID tokens, and the UserInfo response by the claim-release extension:
+
+- `phone` → `phone_number` and `phone_number_verified`, straight from the phoneNumber plugin's user record. Standard OIDC scope-based release; no extra flag.
+- `groups` → `groups`, the acting user's directory group **names** (not the attribute bundle). It rides the same gate as the group-attribute bundle — the AND of `ENABLE_ATTRIBUTE_CLAIMS` and the policy's `allowGroupAttributes` — so suppressing group release suppresses both shapes. Empty memberships release no claim.
+
+No `address` scope: the user model has no address source. `request_parameter_supported` stays `false`; a client asking for the claims through the OIDC `claims.userinfo` request parameter instead of scopes gets nothing.
+
 ## SCIM attribute push and self-propagation
 
 Outbound SCIM attribute push runs behind `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: create/patch payloads to targets carry the user's custom attributes as the `urn:solixcorp:scim:1.0:CustomAttributes` extension (patch as a path-scoped operation, deactivation never carries profile data). Fail-closed default; it remains a deliberate per-target operator decision (privacy review). Attribute changes self-propagate: writes through the admin API and inbound SCIM queue an `update` operation and the daily Worker Cron drains pending operations through the shared executor — no manual trigger is needed anymore.

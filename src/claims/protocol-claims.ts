@@ -10,6 +10,10 @@
  * - the JWT plugin's `definePayload` (session token, full session),
  * - SAML assertion attributes (`buildSignedSamlResponse.attributes`).
  *
+ * Scope-gated claims (`phone`, `groups`) release through the same extension on
+ * top of the flag-gated base, only when the client was granted the scope; see
+ * `scopeClaimsForSubject`.
+ *
  * Everything fails closed: without the operator flags the helpers return
  * empty claims and the surfaces are byte-identical to pre-release behavior.
  * Only the acting user's attributes are released; group attributes stay
@@ -150,6 +154,45 @@ export async function groupAttributesClaimForSubject(
   }
   if (Object.keys(bundle).length === 0) return {};
   return { [`${claimNamespace(env)}/group-attributes`]: bundle };
+}
+
+/**
+ * Scope-gated claims: released only when the granted scopes include the
+ * requesting scope, on top of the fail-closed release gates.
+ *
+ * - "groups": the acting user's directory group names. Rides the same gate as
+ *   the group-attribute bundle (ENABLE_ATTRIBUTE_CLAIMS and the per-application
+ *   `allowGroupAttributes` policy), capped to the same 100-group read.
+ * - "phone": the phone number recorded by the phoneNumber plugin, released with
+ *   its verification status per OIDC Core §5.4.
+ */
+export async function scopeClaimsForSubject(
+  env: Env,
+  userId: string | null | undefined,
+  subject: string | undefined,
+  scopes: string[] | undefined,
+  user: { phoneNumber?: unknown; phoneNumberVerified?: unknown } | null | undefined,
+): Promise<{ [claim: string]: unknown }> {
+  if (!userId || !scopes || scopes.length === 0) return {};
+  const claims: { [claim: string]: unknown } = {};
+  if (scopes.includes("groups") && (await claimReleaseDecision(env, subject, "groupAttributes"))) {
+    const result = await env.DB.prepare(
+      `SELECT g.name
+       FROM directory_group_members m
+       JOIN directory_groups g ON g.id = m.group_id
+       WHERE m.user_id = ?
+       ORDER BY g.id ASC LIMIT 100`,
+    ).bind(userId).all<{ name: string }>();
+    const names = result.results.map((row) => row.name);
+    if (names.length > 0) claims.groups = names;
+  }
+  if (scopes.includes("phone") && user) {
+    if (typeof user.phoneNumber === "string" && user.phoneNumber.length > 0) {
+      claims.phone_number = user.phoneNumber;
+      claims.phone_number_verified = user.phoneNumberVerified === true;
+    }
+  }
+  return claims;
 }
 
 /** The merged OIDC claim set for both the access-token and ID-token paths. */

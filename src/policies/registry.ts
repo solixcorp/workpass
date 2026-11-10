@@ -21,6 +21,7 @@ import {
 } from "./password";
 import { evaluateReputation, validateReputationConfig } from "./reputation";
 import { evaluateGeoIp, validateGeoIpConfig } from "./geoip";
+import { eventMatcherEvaluate, validateEventMatcherConfig } from "./event-matcher";
 import type { PolicyEvaluationContext, PolicyRow } from "./types";
 export interface RuntimePolicyResult { passing: boolean; messages: string[]; rawResult: unknown }
 
@@ -36,10 +37,13 @@ const callDepths = new WeakMap<object, number>();
 const MAX_CALL_DEPTH = 4;
 
 export function implementedTypes(): string[] {
-  return ["expression", "password", "password_expiry", "password_uniqueness", "reputation", "geoip"];
+  return ["expression", "password", "password_expiry", "password_uniqueness", "reputation", "geoip", "event_matcher"];
 }
 
 export function validatePolicyConfig(type: string, config: unknown): { config: unknown } {
+  if (type === "event_matcher") {
+    return { config: validateEventMatcherConfig(config) as unknown };
+  }
   if (type === "reputation") {
     return { config: validateReputationConfig(config) as unknown };
   }
@@ -139,6 +143,11 @@ export async function evaluateTyped(
       const uniqueness = validateUniquenessConfig(config);
       const reused = await passwordHistoryContains(env, context.user.id, context.password, uniqueness.count);
       return reused ? { passing: false, messages: ["the password was used before"] } : { passing: true, messages: [] };
+    }
+    case "event_matcher": {
+      if (!context.event) throw new Error("an event matcher policy requires an event in the evaluation context");
+      const matcherConfig = validateEventMatcherConfig(config);
+      return { passing: eventMatcherEvaluate(matcherConfig, context.event), messages: [] };
     }
     case "reputation": {
       const reputationConfig = validateReputationConfig(config);

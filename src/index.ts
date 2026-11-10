@@ -26,6 +26,10 @@ import { opaqueRoutes } from "./auth/opaque-routes";
 import { cleanupSessionMfaProofs } from "./mfa/second-factor";
 import { oauth1Routes } from "./oauth1/routes";
 import { cleanupOAuth1Temporaries } from "./oauth1/store";
+import { deviceFlowRoutes } from "./oauth/device-routes";
+import { cibaRoutes } from "./oauth/ciba-routes";
+import { cleanupDeviceGrants } from "./oauth/device-flow";
+import { cleanupCibaRequests } from "./oauth/ciba";
 import { ssfReceiverRoutes } from "./ssf/routes";
 import { ssfSenderRoutes, cleanupSsfDeliveries } from "./ssf/sender-routes";
 import { cleanupSsfInbox } from "./ssf/inbox";
@@ -39,6 +43,7 @@ import { devMockRoutes } from "./dev/mock-mail";
 import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
 import { cleanupAccessRequests } from "./access/requests";
 import { backupAuditEvents } from "./audit/backup";
+import { dispatchPendingEventNotifications } from "./policies/notifications";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -107,6 +112,8 @@ app.route("/", inboundScimRoutes);
 // OAuth 1.0a and SSF routers fail closed on every request; they are reachable
 // only when their feature flags are set.
 app.route("/", oauth1Routes);
+app.route("/", deviceFlowRoutes);
+app.route("/", cibaRoutes);
 app.route("/", ssfReceiverRoutes);
 app.route("/", ssfSenderRoutes);
 app.route("/", accountRoutes);
@@ -131,12 +138,25 @@ async function scheduled(
     await cleanupSwaGrants(env, new Date(controller.scheduledTime));
     await cleanupSessionMfaProofs(env, new Date(controller.scheduledTime));
     await cleanupOAuth1Temporaries(env, controller.scheduledTime);
+    // Extended grant stores: expired and decided rows are dead weight (the
+    // flags do not gate cleanup — data dies with its expiry either way).
+    await cleanupDeviceGrants(env, new Date(controller.scheduledTime));
+    await cleanupCibaRequests(env, new Date(controller.scheduledTime));
     await cleanupSsfInbox(env.DB, controller.scheduledTime);
     await cleanupSsfDeliveries(env, controller.scheduledTime);
     await attemptPendingSSFDispatch(env, controller.scheduledTime);
     await cleanupAccountSessionContexts(env, new Date(controller.scheduledTime));
     await cleanupAccountInvitations(env, new Date(controller.scheduledTime));
     await dispatchPendingScimOperations(env);
+    try {
+      // Policy notification rules drain from their queue; a failed attempt
+      // retries on the next run with an attempt cap.
+      await dispatchPendingEventNotifications(env, controller.scheduledTime);
+    } catch (error) {
+      console.error("Notification dispatch failed", {
+        name: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
     await cleanupAccessRequests(env, controller.scheduledTime);
     try {
       // Independent audit backup: watermark-guarded R2 export; fails safe

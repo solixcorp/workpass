@@ -60,4 +60,21 @@ export interface PolicyEvaluationContext {
     asn?: number;
     asOrg?: string;
   };
+  /** The audit event being matched at notification-rule surfaces. */
+  event?: EventProjection;
+}
+
+export interface EventProjection {
+  action: string;
+  event_uuid: string;
+  app: string;
+  client_ip: string | null;
+  user: EventUserProjection | null;
+  context: Record<string, unknown>;
+  created: string;
+}
+
+/** The authentik event projection exposes `user.pk` alongside the snapshot. */
+export interface EventUserProjection extends PolicyUserSnapshot {
+  pk: string;
 }

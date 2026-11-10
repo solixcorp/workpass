@@ -59,6 +59,10 @@ export interface Env extends Partial<WorkerBindings> {
   OAUTH_RESOURCES?: string;
   /** OAuth 1.0a server (RFC 5849 HMAC-SHA1 profile); routes fail closed. */
   ENABLE_OAUTH1?: string;
+  /** RFC 8628 device authorization grant (docs/design/device-flow.md); routes and the token grant fail closed. */
+  ENABLE_DEVICE_FLOW?: string;
+  /** OpenID CIBA poll mode (docs/design/ciba.md); routes and the token grant fail closed. */
+  ENABLE_CIBA?: string;
   /** Operator token for /api/oauth1/consumers management; >= 32 bytes when enabled. */
   OAUTH1_MANAGEMENT_TOKEN?: string;
   /** SSF (Shared Signals Framework) push receiver; routes fail closed. */

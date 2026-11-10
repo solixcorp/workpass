@@ -11,6 +11,7 @@ import { usageRoutes } from "./usage";
 import { accountAdminRoutes } from "../accounts/admin";
 import { objectAttributeRoutes } from "../objects/attribute-routes";
 import { policyRoutes } from "../policies/routes";
+import { notificationRuleRoutes } from "../policies/notification-routes";
 import { claimReleasePolicyRoutes } from "../claims/release-policy-routes";
 import { applicationAdminRoutes } from "../applications/admin";
 
@@ -27,5 +28,6 @@ adminRoutes.route("/", usageRoutes);
 adminRoutes.route("/", accountAdminRoutes);
 adminRoutes.route("/", objectAttributeRoutes);
 adminRoutes.route("/", policyRoutes);
+adminRoutes.route("/", notificationRuleRoutes);
 adminRoutes.route("/", claimReleasePolicyRoutes);
 adminRoutes.route("/", applicationAdminRoutes);

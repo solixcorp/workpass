@@ -13,6 +13,8 @@
  */
 
 import type { Env } from "../env";
+import { auditContentHash } from "../audit/store";
+import { eventContextFromRow } from "../policies/event-matcher";
 
 export const AUDIT_BACKUP_PREFIX = "audit-backup/";
 
@@ -30,6 +32,9 @@ interface AuditBackupPayload {
   request_path: string;
   log_pos: number;
   content_hash: string | null;
+  hash_version?: number | null;
+  client_ip?: string | null;
+  event_context?: Record<string, unknown> | null;
 }
 
 function dayKey(ms: number): string {
@@ -73,7 +78,8 @@ export async function backupAuditEvents(env: Env, atMs: number, maxBatch = 5000)
   if (!env.AUDIT_BACKUP) return { exported: 0, watermark: await loadWatermark(env), backup: false };
   const watermark = await loadWatermark(env);
   const rows = await env.DB.prepare(
-    `SELECT id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path, log_pos, content_hash
+    `SELECT id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path, log_pos,
+            content_hash, client_ip, event_context, COALESCE(hash_version, 1) AS hash_version
      FROM audit_events WHERE log_pos > ? ORDER BY log_pos ASC LIMIT ?`,
   ).bind(watermark, maxBatch).all<AuditBackupPayload & AuditBackupRow>();
   if (rows.results.length === 0) return { exported: 0, watermark, backup: true };
@@ -88,6 +94,10 @@ export async function backupAuditEvents(env: Env, atMs: number, maxBatch = 5000)
       target_user_id: row.target_user_id, event_type: row.event_type,
       outcome: row.outcome, request_path: row.request_path,
       log_pos: row.log_pos, content_hash: row.content_hash,
+      client_ip: row.client_ip ?? null,
+      event_context: typeof row.event_context === "string"
+        ? eventContextFromRow(row.event_context) : row.event_context ?? null,
+      hash_version: row.hash_version ?? 2,
     }))
     .join("\n");
 
@@ -136,12 +146,19 @@ export async function verifyAuditBackup(env: Env): Promise<AuditRestoreVerificat
       }
       rows += 1;
       if (row.content_hash === null) continue;
-      const canonical = JSON.stringify([
-        row.id, row.occurred_at, row.actor_user_id, row.target_user_id,
-        row.event_type, row.outcome, row.request_path,
-      ]);
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
-      const expected = btoa(Array.from(new Uint8Array(digest), (byte) => String.fromCharCode(byte)).join(""));
+      // The restored chain re-verifies with the same versioned canonical form
+      // the audit store writes (v2 covers the client IP and event context).
+      const expected = await auditContentHash({
+        id: row.id,
+        occurred_at: row.occurred_at,
+        actor_user_id: row.actor_user_id,
+        target_user_id: row.target_user_id,
+        event_type: row.event_type,
+        outcome: row.outcome as never,
+        request_path: row.request_path,
+        client_ip: row.client_ip ?? null,
+        event_context: row.event_context ?? null,
+      }, row.hash_version ?? 2);
       if (expected !== row.content_hash && firstProblem === null) {
         firstProblem = `row at log position ${row.log_pos} in ${object.key} fails its content hash`;
         continue;

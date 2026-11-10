@@ -14,6 +14,7 @@ import { revokeTrustedDevices } from "../security/trusted-device-store";
 import { bindSessionNetwork, validateSessionBindingConfig } from "../security/session-geo-binding";
 import { validateStepUpConfig } from "../security/step-up";
 import { tokenExchangeExtension } from "../token/grant";
+import { deviceFlowExtension, cibaExtension } from "../oauth/extended-grants";
 import { backchannelFailureEvent } from "../oidc/logout-logging";
 import { jwtPayloadRelease } from "../claims/protocol-claims";
 import { claimReleaseExtension } from "../claims/extension";
@@ -158,7 +159,13 @@ export function createAuth(env: Env) {
       oauthProvider({
         loginPage: "/sign-in",
         consentPage: "/consent",
-        scopes: ["openid", "profile", "email", "offline_access"],
+        // "phone" releases phone_number/phone_number_verified from the
+        // phoneNumber plugin; "groups" releases directory group names. Both
+        // flow only when the client requests the scope (consented); groups
+        // additionally rides the group-attribute release gate. See
+        // src/claims/protocol-claims.ts (scopeClaimsForSubject). No "address"
+        // scope: the user model has no address source.
+        scopes: ["openid", "profile", "email", "offline_access", "phone", "groups"],
         rateLimit: { register: { window: 60, max: 3 } },
         allowDynamicClientRegistration:
           env.ENABLE_DYNAMIC_CLIENT_REGISTRATION === "true",
@@ -184,6 +191,12 @@ export function createAuth(env: Env) {
         // closed on the operator flags.
         extensions: [
           ...(env.ENABLE_TOKEN_EXCHANGE === "true" ? [tokenExchangeExtension(env)] : []),
+          // Extended grant family: RFC 8628 device flow and CIBA poll mode
+          // (docs/design/device-flow.md, docs/design/ciba.md). Both fail
+          // closed when their flags are unset; the discovery advertisement,
+          // the user approval routes, and the token grant share the flag.
+          ...(env.ENABLE_DEVICE_FLOW === "true" ? [deviceFlowExtension(env)] : []),
+          ...(env.ENABLE_CIBA === "true" ? [cibaExtension(env)] : []),
           claimReleaseExtension(env),
         ],
       }),

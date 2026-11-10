@@ -9,8 +9,10 @@ import {
   oidcClaimRelease,
   samlAttributeRelease,
   samlAttributeNames,
+  scopeClaimsForSubject,
   userAttributesClaim,
 } from "../../src/claims/protocol-claims";
+import { upsertClaimReleasePolicy } from "../../src/claims/release-policy";
 import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
 
@@ -122,5 +124,62 @@ describe("claim namespace", () => {
     expect(claimNamespace({ AUTH_BASE_URL: "https://auth.example.test" } as unknown as Env)).toBe(
       "https://auth.example.test/claims",
     );
+  });
+});
+
+describe("scope-gated claims", () => {
+  async function seededWithGroups(flags: { attributes: boolean }): Promise<Env> {
+    const env = await seededEnv({ account: false, attributes: flags.attributes });
+    await env.DB.prepare(
+      `INSERT INTO directory_groups (id, name, description, created_by, created_at, updated_at)
+       VALUES ('g-1', 'platform-dev', '', 'u1', '2026-01-01', '2026-01-01'),
+              ('g-2', 'platform-ops', '', 'u1', '2026-01-01', '2026-01-01')`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO directory_group_members (group_id, user_id, granted_by, granted_at)
+       VALUES ('g-1', 'u1', 'u1', '2026-01-01')`,
+    ).run();
+    return env;
+  }
+
+  const phoneUser = { id: "u1", phoneNumber: "+821012345678", phoneNumberVerified: true };
+
+  test("releases phone_number only when the phone scope was granted", async () => {
+    const env = await seededWithGroups({ attributes: false });
+    expect(await scopeClaimsForSubject(env, "u1", undefined, ["phone"], phoneUser)).toEqual({
+      phone_number: "+821012345678",
+      phone_number_verified: true,
+    });
+    // No scope Granted, no claims — even with an unverified number on file.
+    expect(await scopeClaimsForSubject(env, "u1", undefined, ["profile"], phoneUser)).toEqual({});
+    expect(await scopeClaimsForSubject(env, "u1", undefined, undefined, phoneUser)).toEqual({});
+    // An account without a phone number releases nothing, not empty strings.
+    expect(await scopeClaimsForSubject(env, "u1", undefined, ["phone"], { id: "u1" })).toEqual({});
+  });
+
+  test("releases directory group names only through the group-attribute gate", async () => {
+    const env = await seededWithGroups({ attributes: true });
+    expect(await scopeClaimsForSubject(env, "u1", undefined, ["groups"], null)).toEqual({
+      groups: ["platform-dev"],
+    });
+  });
+
+  test("fails closed without the attribute flag", async () => {
+    const env = await seededWithGroups({ attributes: false });
+    expect(await scopeClaimsForSubject(env, "u1", undefined, ["groups"], null)).toEqual({});
+  });
+
+  test("a per-application policy denying group attributes suppresses the groups claim", async () => {
+    const env = await seededWithGroups({ attributes: true });
+    await upsertClaimReleasePolicy(
+      env,
+      { subject: "oidc:app-1", allowAccountClaims: false, allowUserAttributes: false, allowGroupAttributes: false },
+      "admin-1",
+    );
+    expect(await scopeClaimsForSubject(env, "u1", "oidc:app-1", ["groups"], null)).toEqual({});
+    // Other subjects keep the flag-only default.
+    expect(await scopeClaimsForSubject(env, "u1", "oidc:app-2", ["groups"], null)).toEqual({
+      groups: ["platform-dev"],
+    });
   });
 });

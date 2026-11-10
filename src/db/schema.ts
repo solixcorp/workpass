@@ -58,6 +58,45 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     // Column already present.
   }
   try {
+    await env.DB.prepare("ALTER TABLE audit_events ADD COLUMN client_ip TEXT").run();
+  } catch {
+    // Column already present.
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE audit_events ADD COLUMN event_context TEXT").run();
+  } catch {
+    // Column already present.
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE audit_events ADD COLUMN hash_version INTEGER").run();
+  } catch {
+    // Column already present.
+  }
+  // Notification rules dispatch matched events to transports; the pending
+  // queue drains from the scheduled worker.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS notification_rules (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      transports TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS pending_event_notifications (
+      id TEXT PRIMARY KEY NOT NULL,
+      rule_id TEXT NOT NULL REFERENCES notification_rules (id) ON DELETE CASCADE,
+      event_id TEXT NOT NULL REFERENCES audit_events (id) ON DELETE CASCADE,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS pending_event_notifications_rule_idx ON pending_event_notifications (rule_id, created_at)",
+  ).run();
+  try {
     await env.DB.prepare("ALTER TABLE audit_events ADD COLUMN content_hash TEXT").run();
   } catch {
     // Column already present.
@@ -736,8 +775,51 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       created_at TEXT NOT NULL
     )`,
   ).run();
-  await env.DB.prepare(
+   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS password_history_user_idx ON password_history (user_id, created_at)",
+  ).run();
+  // Extended OAuth grants (docs/design/device-flow.md, docs/design/ciba.md).
+  // Device codes and auth_req_ids are only ever stored hashed; user codes are
+  // the low-entropy surface a human types, so they are stored verbatim to be
+  // enumerable by the approval page.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS oauth_device_grants (
+      device_code_hash TEXT PRIMARY KEY NOT NULL,
+      user_code TEXT NOT NULL UNIQUE,
+      client_id TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'consumed')),
+      user_id TEXT,
+      session_id TEXT,
+      interval_seconds INTEGER NOT NULL DEFAULT 5,
+      last_poll_at INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS oauth_device_grants_expiry_idx ON oauth_device_grants (expires_at)",
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS oauth_ciba_requests (
+      auth_req_id_hash TEXT PRIMARY KEY NOT NULL,
+      client_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      binding_message TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'consumed')),
+      session_id TEXT,
+      interval_seconds INTEGER NOT NULL DEFAULT 5,
+      last_poll_at INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS oauth_ciba_requests_expiry_idx ON oauth_ciba_requests (expires_at)",
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS oauth_ciba_requests_user_idx ON oauth_ciba_requests (user_id)",
   ).run();
   // Reputation ledger (authentik reputation policies): login outcomes move the
   // score of a client IP or username toward or away from the threshold.
