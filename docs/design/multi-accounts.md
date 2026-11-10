@@ -26,8 +26,13 @@ All routes live under `/api/admin/accounts`, require an administrator session an
 | `GET /api/admin/accounts/{id}` | Account detail with members (admin session). |
 | `DELETE /api/admin/accounts/{id}` | 200 and removal of the account with its memberships, session contexts, and custom attributes in one D1 batch; 404 when absent. |
 | `POST /api/admin/accounts/{id}/members` | `{userId, role?}` (default `member`) → 201; rejects unknown users (404), duplicate membership (409). Self-grants are allowed. |
+| `POST /api/admin/accounts/{id}/invitations` | `{role?, ttlDays?}` (default `member`, default 7 days, cap 30) → 201 with the opaque, full-entropy token **returned exactly once**. Audited (`account.invitation.create`). |
+| `GET /api/admin/accounts/{id}/invitations` | Pending/consumed/expired view with masked token prefixes (read-only, session-gated). |
+| `DELETE /api/admin/accounts/{id}/invitations/{token}` | 200 revocation of a pending invitation; 404 when absent or already consumed. Audited (`account.invitation.revoke`). |
 | `PATCH /api/admin/accounts/{id}/members/{userId}` | `{role}` → 200; 404 when the membership is absent; 409 when demoting the last `admin` member. Audited (`account.member.role.update`). |
 | `DELETE /api/admin/accounts/{id}/members/{userId}` | 200; 404 when the membership is absent; 409 when removing the last `admin` member. Also drops the removed member's session contexts for the account. |
+
+- **Per-account authorization.** An app-access policy can additionally require membership in one account (`requiredAccount`): the gate is a membership requirement evaluated before the group gate, it respects the enforcement mode (observe passes through with an observed outcome), and a temporal access request never bypasses it. In the admin surface it is `{requiredAccount}` on the policy (null = platform-wide).
 
 ## User-facing switching API
 
@@ -35,6 +40,7 @@ All routes live under `/api/admin/accounts`, require an administrator session an
 |---|---|
 | `GET /api/accounts` | Session-gated. Every membership of the acting user with its account object and role; `active` flags the session's own account and `activeAccountId` repeats it (null before the first switch). |
 | `POST /api/accounts/switch` | `{accountId}` binds the account to the calling session. Same-origin only (exact `AUTH_BASE_URL` origin), audited (`account.switched`). 403 when the user is not a member — a nonexistent account and a non-membership are indistinguishable, so no account existence oracle leaks over the user surface. |
+| `POST /api/accounts/join` | `{token}` redeems an account invitation: same-origin only, audited (`account.joined`). The token is single-use — the consumed-flag write and the membership insert are one D1 batch, and an already-member user aborts before any write so the token is never burned. Invalid, expired, revoked, replayed and already-member invitations all resolve to one identical 403 so no invitation state leaks to non-members. Roles beyond the invitation's fixed `member`/`admin` grant require the admin surface. |
 
 ## Token claim release (active-account claims)
 
@@ -42,10 +48,9 @@ The active account is released into protocol tokens only when the operator sets 
 
 - **Surfaces.** OIDC access tokens and ID tokens (and UserInfo) through the oauthProvider `claimReleaseExtension` claim contributors, which resolve the account via the `sid`-backed session id for session-backed grants; the JWT plugin's payload through `definePayload`; and SAML 2.0 (`/saml/sso`) and WS-Federation (`/wsfed/signin`) assertions as attributes at their issuance points (resolved through the session token and session id).
 - **Shape.** One structured, URI-namespaced claim `<IdP origin>/claims/active-account` with `{id, name, role}` on the OIDC/JWT surfaces; SAML 2.0 and WS-Federation carry `<origin>/claims/active-account-id`, `-name`, `-role` as simple string attribute URNs. The `role` is the member role inside that account (`admin`/`member`), never the platform role.
-- **Fail-safe properties.** A session that never switched releases no claim, so single-account deployments change nothing; removing a membership drops the session context row, so no token issued later can carry a non-membered account; unknown or session-less grants (client-credentials, deleted sessions) release nothing.
+- **Fail-safe semantics.** The global operator flags make release possible at all; a per-application claim release policy (`/api/admin/claim-release-policies/{subject}`, an AND with the flags) narrows which kinds one application receives, and a row can only narrow, never widen. A session that never switched releases no claim, so single-account deployments change nothing; removing a membership drops the session context row, so no token issued later can carry a non-membered account; unknown or session-less grants (client-credentials, deleted sessions) release nothing.
 - **Schema migration.** `account_session_contexts` gains a nullable `session_id` column (in-place `ALTER` for deployed databases, with an index) because the OIDC path only carries the session id (`sid` = Better Auth session id), while the switch surface keys on the raw session token.
 
 ## What remains open
 
-- Per-account authorization dimensions in the existing surfaces (app policies, SAML/WS-Fed registries) instead of platform-wide scoping.
-- Invitations and self-service join (membership is still grant-based through the admin surface).
+- Email delivery of invitations (admin surfaces hand the token to the operator; no outbound email is sent anywhere in this service).

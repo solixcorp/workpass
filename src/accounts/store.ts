@@ -285,3 +285,145 @@ export async function cleanupAccountSessionContexts(
     .bind(new Date(now.getTime() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString())
     .run();
 }
+
+/** Account invitations: opaque single-use join tokens. */
+export interface AccountInvitationRow {
+  token: string;
+  accountId: string;
+  role: "admin" | "member";
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
+  consumedAt: string | null;
+}
+
+const INVITATION_TOKEN_BYTES = 32;
+export const INVITATION_MAX_TTL_DAYS = 30;
+export const INVITATION_DEFAULT_TTL_DAYS = 7;
+
+/** Create an opaque, unguessable join token bound to one account and role. */
+export async function createAccountInvitation(
+  env: Env,
+  input: { accountId: string; role: "admin" | "member"; ttlDays: number; createdBy: string },
+): Promise<AccountInvitationRow> {
+  const bytes = crypto.getRandomValues(new Uint8Array(INVITATION_TOKEN_BYTES));
+  let token = "";
+  for (const byte of bytes) token += byte.toString(16).padStart(2, "0");
+  const now = new Date();
+  const row: AccountInvitationRow = {
+    token,
+    accountId: input.accountId,
+    role: input.role,
+    createdBy: input.createdBy,
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + Math.min(input.ttlDays, INVITATION_MAX_TTL_DAYS) * 24 * 60 * 60 * 1000).toISOString(),
+    consumedAt: null,
+  };
+  await env.DB.prepare(
+    `INSERT INTO account_invitations (token, account_id, role, created_by, created_at, expires_at, consumed_at)
+     VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+  ).bind(row.token, row.accountId, row.role, row.createdBy, row.createdAt, row.expiresAt).run();
+  return row;
+}
+
+export async function getAccountInvitation(
+  env: Env,
+  token: string,
+): Promise<AccountInvitationRow | null> {
+  const row = await env.DB.prepare(
+    `SELECT token, account_id AS accountId, role, created_by AS createdBy,
+            created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt
+     FROM account_invitations WHERE token = ?`,
+  ).bind(token).first<AccountInvitationRow>();
+  return row ?? null;
+}
+
+export async function listAccountInvitations(
+  env: Env,
+  accountId: string,
+): Promise<AccountInvitationRow[]> {
+  const result = await env.DB.prepare(
+    `SELECT token, account_id AS accountId, role, created_by AS createdBy,
+            created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt
+     FROM account_invitations WHERE account_id = ?
+     ORDER BY created_at ASC, token ASC LIMIT 200`,
+  ).bind(accountId).all<AccountInvitationRow>();
+  return result.results;
+}
+
+export async function revokeAccountInvitation(env: Env, token: string): Promise<boolean> {
+  const removed = await env.DB.prepare(
+    "DELETE FROM account_invitations WHERE token = ? AND consumed_at IS NULL",
+  ).bind(token).run();
+  return removed.meta.changes === 1;
+}
+
+export interface RedeemedAccountInvitation {
+  account: AccountRow;
+  role: "admin" | "member";
+}
+
+/**
+ * Redeem an invited token on behalf of a user. The consumed-flag write and
+ * the membership insert are one D1 batch, so a token is single-use even
+ * under concurrency; an already-member user aborts before the batch and
+ * never burns the token.
+ */
+export async function redeemAccountInvitation(
+  env: Env,
+  token: string,
+  userId: string,
+): Promise<RedeemedAccountInvitation | AccountInvitationReject> {
+  const invitation = await getAccountInvitation(env, token);
+  return await redeemAccountInvitationRow(env, invitation, token, userId);
+}
+
+export type AccountInvitationReject =
+  | { reason: "invalid_token" }
+  | { reason: "expired" }
+  | { reason: "already_consumed" }
+  | { reason: "already_member" };
+
+export async function redeemAccountInvitationRow(
+  env: Env,
+  invitation: AccountInvitationRow | null,
+  token: string,
+  userId: string,
+): Promise<RedeemedAccountInvitation | AccountInvitationReject> {
+  if (!invitation || invitation.consumedAt !== null) {
+    return { reason: invitation && invitation.consumedAt !== null ? "already_consumed" : "invalid_token" };
+  }
+  if (new Date(invitation.expiresAt).getTime() <= new Date().getTime()) {
+    return { reason: "expired" };
+  }
+  if ((await isAccountMember(env, invitation.accountId, userId)) !== null) {
+    return { reason: "already_member" };
+  }
+  const now = new Date().toISOString();
+  const batch = await env.DB.batch([
+    // Single-use: only an unpending token can claim its consumed flag.
+    env.DB.prepare(
+      "UPDATE account_invitations SET consumed_at = ? WHERE token = ? AND consumed_at IS NULL AND expires_at > ?",
+    ).bind(now, token, now),
+    env.DB.prepare(
+      `INSERT INTO account_members (account_id, user_id, role, granted_by, granted_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(invitation.accountId, userId, invitation.role, invitation.createdBy, now),
+  ]);
+  // The consumed-update must claim exactly one row for the grant to stand.
+  if (batch[0]!.meta.changes !== 1) return { reason: "already_consumed" };
+  const account = await getAccount(env, invitation.accountId);
+  if (!account) return { reason: "invalid_token" };
+  return { account, role: invitation.role };
+}
+
+/** Purge invitations expired long enough ago that their retention lapsed. */
+export async function cleanupAccountInvitations(env: Env, now: Date, maxAgeDays = 31): Promise<void> {
+  const table = await env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'account_invitations'",
+  ).first<{ name: string }>();
+  if (!table) return;
+  await env.DB.prepare("DELETE FROM account_invitations WHERE expires_at < ?")
+    .bind(new Date(now.getTime() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString())
+    .run();
+}

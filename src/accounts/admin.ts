@@ -15,12 +15,18 @@ import {
   addAccountMember,
   countAccountAdmins,
   createAccount,
+  createAccountInvitation,
   deleteAccount,
   getAccount,
+  getAccountInvitation,
   isAccountMember,
+  listAccountInvitations,
   listAccountMembers,
   listAccounts,
   removeAccountMember,
+  revokeAccountInvitation,
+  INVITATION_DEFAULT_TTL_DAYS,
+  INVITATION_MAX_TTL_DAYS,
   updateAccount,
   updateAccountMemberRole,
 } from "./store";
@@ -199,6 +205,89 @@ accountAdminRoutes.patch("/accounts/:id/members/:userId", async (context) => {
       response: Response.json({ membership: { accountId, userId, role: memberRole } }),
       actorUserId: actor.userId,
       targetUserId: userId,
+    };
+  });
+});
+
+accountAdminRoutes.post("/accounts/:id/invitations", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const accountId = context.req.param("id");
+  if (!accountId || accountId.length > ID_LIMIT) return context.json({ error: "Account not found" }, 404);
+  let body: unknown;
+  try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON body" }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid body" }, 400);
+  const { role, ttlDays } = body as Record<string, unknown>;
+  const memberRole = toRole(role);
+  const parsedTtl = ttlDays === undefined ? INVITATION_DEFAULT_TTL_DAYS : Number(ttlDays);
+  if (!Number.isSafeInteger(parsedTtl) || parsedTtl < 1 || parsedTtl > INVITATION_MAX_TTL_DAYS) {
+    return badRequest(context, `ttlDays must be an integer between 1 and ${INVITATION_MAX_TTL_DAYS}`);
+  }
+  const account = await getAccount(context.env, accountId);
+  if (!account) return context.json({ error: "Account not found" }, 404);
+  return auditStandaloneOperation(context.env, "account.invitation.create", context.req.path, async () => {
+    const invitation = await createAccountInvitation(context.env, {
+      accountId, role: memberRole, ttlDays: parsedTtl, createdBy: actor.userId,
+    });
+    // The full token is returned exactly once; the list view masks it.
+    return {
+      response: Response.json({
+        invitation: {
+          token: invitation.token,
+          accountId: invitation.accountId,
+          role: invitation.role,
+          createdAt: invitation.createdAt,
+          expiresAt: invitation.expiresAt,
+        },
+      }, { status: 201 }),
+      actorUserId: actor.userId,
+      targetUserId: accountId,
+    };
+  });
+});
+
+accountAdminRoutes.get("/accounts/:id/invitations", async (context) => {
+  const admin = await requireAdministrator(context);
+  if (admin instanceof Response) return admin;
+  const accountId = context.req.param("id");
+  if (!accountId || accountId.length > ID_LIMIT) return context.json({ error: "Account not found" }, 404);
+  const account = await getAccount(context.env, accountId);
+  if (!account) return context.json({ error: "Account not found" }, 404);
+  const invitations = await listAccountInvitations(context.env, accountId);
+  const now = new Date().toISOString();
+  return context.json({
+    invitations: invitations.map((invitation) => ({
+      tokenPrefix: `${invitation.token.slice(0, 6)}…`,
+      accountId: invitation.accountId,
+      role: invitation.role,
+      createdBy: invitation.createdBy,
+      createdAt: invitation.createdAt,
+      expiresAt: invitation.expiresAt,
+      status: invitation.consumedAt !== null ? "consumed" : invitation.expiresAt <= now ? "expired" : "pending",
+    })),
+  });
+});
+
+accountAdminRoutes.delete("/accounts/:id/invitations/:token", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const accountId = context.req.param("id");
+  const token = context.req.param("token");
+  if (!accountId || accountId.length > ID_LIMIT || !token || token.length === 0 || token.length > 256) {
+    return context.json({ error: "Invitation not found" }, 404);
+  }
+  return auditStandaloneOperation(context.env, "account.invitation.revoke", context.req.path, async () => {
+    const invitation = await getAccountInvitation(context.env, token);
+    if (!invitation || invitation.accountId !== accountId || invitation.consumedAt !== null) {
+      return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
+    }
+    const revoked = await revokeAccountInvitation(context.env, token);
+    return {
+      response: revoked
+        ? Response.json({ revoked: true })
+        : Response.json({ error: "Invitation not found" }, { status: 404 }),
+      actorUserId: actor.userId,
+      targetUserId: accountId,
     };
   });
 });

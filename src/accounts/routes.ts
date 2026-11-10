@@ -10,6 +10,7 @@ import type { Env } from "../env";
 import { auditStandaloneOperation } from "../audit/store";
 import {
   listUserAccountMemberships,
+  redeemAccountInvitation,
   switchActiveAccount,
 } from "./store";
 
@@ -87,6 +88,36 @@ accountRoutes.post("/api/accounts/switch", async (context) => {
       response: Response.json({ activeAccount: account }),
       actorUserId: session.user.id,
       targetUserId: account.id,
+    };
+  });
+});
+
+accountRoutes.post("/api/accounts/join", async (context) => {
+  const baseOrigin = new URL(context.env.AUTH_BASE_URL).origin;
+  if (context.req.header("origin") !== baseOrigin) {
+    return context.json({ error: GENERIC_REJECTION }, 403);
+  }
+  const session = await actingSession(context);
+  if (!session) return context.json({ error: GENERIC_REJECTION }, 401);
+  let body: unknown;
+  try { body = await context.req.json(); } catch { return context.json({ error: GENERIC_REJECTION }, 400); }
+  if (!body || typeof body !== "object") return context.json({ error: GENERIC_REJECTION }, 400);
+  const { token } = body as Record<string, unknown>;
+  if (typeof token !== "string" || token.length === 0 || token.length > 256) {
+    return context.json({ error: GENERIC_REJECTION }, 400);
+  }
+  return auditStandaloneOperation(context.env, "account.joined", "/api/accounts/join", async () => {
+    const redeemed = await redeemAccountInvitation(context.env, token, session.user.id);
+    if ("reason" in redeemed) {
+      // Invalid, expired, burned and already-member invitations all resolve
+      // to one identical rejection: the token existence or state must not be
+      // distinguishable to non-members.
+      return { response: Response.json({ error: GENERIC_REJECTION }, { status: 403 }), actorUserId: session.user.id };
+    }
+    return {
+      response: Response.json({ account: redeemed.account, role: redeemed.role }, { status: 201 }),
+      actorUserId: session.user.id,
+      targetUserId: redeemed.account.id,
     };
   });
 });

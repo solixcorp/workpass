@@ -2,14 +2,19 @@ import { describe, expect, test } from "bun:test";
 import { ensureApplicationTables } from "../src/db/schema";
 import {
   addAccountMember,
+  cleanupAccountInvitations,
   cleanupAccountSessionContexts,
   createAccount,
+  createAccountInvitation,
   deleteAccount,
   getAccount,
+  getAccountInvitation,
   getSessionAccountContext,
   isAccountMember,
   listUserAccountMemberships,
+  redeemAccountInvitation,
   removeAccountMember,
+  revokeAccountInvitation,
   switchActiveAccount,
   updateAccount,
   updateAccountMemberRole,
@@ -171,6 +176,58 @@ describe("account and membership updates", () => {
     const env = await seededEnv();
     const account = (await createAccount(env, { name: "platform", description: "", creatorUserId: "u1" }))!;
     expect(await updateAccountMemberRole(env, account.id, "u2", "member")).toBe(false);
+  });
+});
+
+describe("invitations and self-service join", () => {
+  test("a pending invitation grants membership with the invited role exactly once", async () => {
+    const env = await seededEnv();
+    const account = (await createAccount(env, { name: "platform", description: "", creatorUserId: "u1" }))!;
+    const invitation = await createAccountInvitation(env, { accountId: account.id, role: "member", ttlDays: 7, createdBy: "u1" });
+    expect(invitation.token.length).toBe(64);
+
+    const joined = await redeemAccountInvitation(env, invitation.token, "u2");
+    expect("account" in joined && joined.role).toBe("member");
+    expect(await isAccountMember(env, account.id, "u2")).toBe("member");
+    // Single use: the exact same token cannot admit anyone else.
+    const replay = await redeemAccountInvitation(env, invitation.token, "u1");
+    expect(replay).toEqual({ reason: "already_consumed" });
+    await expect(redeemAccountInvitation(env, invitation.token, "u1")).resolves.toEqual({ reason: "already_consumed" });
+  });
+
+  test("an already-member user is rejected without burning the token", async () => {
+    const env = await seededEnv();
+    const account = (await createAccount(env, { name: "platform", description: "", creatorUserId: "u1" }))!;
+    const invitation = await createAccountInvitation(env, { accountId: account.id, role: "member", ttlDays: 7, createdBy: "u1" });
+    await expect(redeemAccountInvitation(env, invitation.token, "u1")).resolves.toEqual({ reason: "already_member" });
+    // Token still pending: another user can still redeem it.
+    await expect(redeemAccountInvitation(env, invitation.token, "u2")).resolves.toMatchObject({ role: "member" });
+  });
+
+  test("expired and revoked invitations are useless, unknown tokens reject", async () => {
+    const env = await seededEnv();
+    const account = (await createAccount(env, { name: "platform", description: "", creatorUserId: "u1" }))!;
+    const expired = await createAccountInvitation(env, { accountId: account.id, role: "member", ttlDays: 7, createdBy: "u1" });
+    await env.DB.prepare("UPDATE account_invitations SET expires_at = ? WHERE token = ?")
+      .bind(new Date(Date.now() - 1000).toISOString(), expired.token).run();
+    await expect(redeemAccountInvitation(env, expired.token, "u2")).resolves.toEqual({ reason: "expired" });
+
+    const revocable = await createAccountInvitation(env, { accountId: account.id, role: "member", ttlDays: 7, createdBy: "u1" });
+    expect(await revokeAccountInvitation(env, revocable.token)).toBe(true);
+    await expect(redeemAccountInvitation(env, revocable.token, "u2")).resolves.toEqual({ reason: "invalid_token" });
+    await expect(redeemAccountInvitation(env, "missing-token", "u2")).resolves.toEqual({ reason: "invalid_token" });
+  });
+
+  test("the daily cleanup prunes invitations whose expiry is past retention", async () => {
+    const env = await seededEnv();
+    const account = (await createAccount(env, { name: "platform", description: "", creatorUserId: "u1" }))!;
+    const stale = await createAccountInvitation(env, { accountId: account.id, role: "member", ttlDays: 7, createdBy: "u1" });
+    await env.DB.prepare("UPDATE account_invitations SET expires_at = ? WHERE token = ?")
+      .bind(new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(), stale.token).run();
+    const fresh = await createAccountInvitation(env, { accountId: account.id, role: "member", ttlDays: 7, createdBy: "u1" });
+    await cleanupAccountInvitations(env, new Date());
+    const remaining = await env.DB.prepare("SELECT token FROM account_invitations").all<{ token: string }>();
+    expect(remaining.results.map((row) => row.token)).toEqual([fresh.token]);
   });
 });
 
