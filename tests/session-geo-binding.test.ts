@@ -75,6 +75,7 @@ describe("session binding configuration", () => {
   test("only interactive identity paths are evaluated", () => {
     expect(isSessionBindingEnforcedPath("/api/auth/get-session")).toBe(true);
     expect(isSessionBindingEnforcedPath("/api/auth/oauth2/authorize")).toBe(true);
+    expect(isSessionBindingEnforcedPath("/api/auth/oauth2/consent")).toBe(true);
     expect(isSessionBindingEnforcedPath("/api/auth/sign-in/email")).toBe(false);
     expect(isSessionBindingEnforcedPath("/api/opaque/auth/finish")).toBe(false);
   });

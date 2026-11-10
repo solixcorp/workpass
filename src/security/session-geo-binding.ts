@@ -67,7 +67,11 @@ export function validateSessionBindingConfig(env: Env): void {
 }
 
 /** Paths where a bound session is actively used on an interactive surface. */
-const enforcedPaths = new Set(["/api/auth/get-session", "/api/auth/oauth2/authorize"]);
+const enforcedPaths = new Set([
+  "/api/auth/get-session",
+  "/api/auth/oauth2/authorize",
+  "/api/auth/oauth2/consent",
+]);
 
 export function isSessionBindingEnforcedPath(path: string): boolean {
   return enforcedPaths.has(path);
