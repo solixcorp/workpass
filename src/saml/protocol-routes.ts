@@ -150,6 +150,7 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
         protocolSessionToken(session),
         sessionUserId(session),
         session.user.id,
+        `saml:${provider.entityId}`,
       );
       const issued = await buildSignedSamlResponse({
         requestId: request.id,

@@ -19,6 +19,7 @@
 import type { Env } from "../env";
 import { getObjectAttributes, type AttributeValue } from "../objects/attributes";
 import { getSessionAccountContext } from "../accounts/store";
+import { claimReleaseDecision } from "./release-policy";
 
 /** URI namespace for released application claims: the configured IdP origin. */
 export function claimNamespace(env: Env): string {
@@ -46,7 +47,20 @@ export async function activeAccountClaim(
   env: Env,
   sessionId: string | null,
 ): Promise<{ [claim: string]: unknown }> {
-  if (!accountClaimsEnabled(env) || sessionId === null) return {};
+  return await activeAccountClaimForSubject(env, sessionId, undefined);
+}
+
+/**
+ * Subject-aware variant: the requesting application's policy narrows (an AND
+ * with the global flags) whether the account claim flows to it. No policy
+ * row keeps flag-only behavior.
+ */
+export async function activeAccountClaimForSubject(
+  env: Env,
+  sessionId: string | null,
+  subject: string | undefined,
+): Promise<{ [claim: string]: unknown }> {
+  if (sessionId === null || !(await claimReleaseDecision(env, subject, "account"))) return {};
   const context = await getSessionAccountContext(env, sessionId);
   if (!context) return {};
   return {
@@ -63,7 +77,18 @@ export async function userAttributesClaim(
   env: Env,
   userId: string | null | undefined,
 ): Promise<{ [claim: string]: unknown }> {
-  if (!attributeClaimsEnabled(env) || !userId) return {};
+  return await userAttributesClaimForSubject(env, userId, undefined);
+}
+
+/** Subject-aware variant of the attributes claim. */
+export async function userAttributesClaimForSubject(
+  env: Env,
+  userId: string | null | undefined,
+  subject: string | undefined,
+): Promise<{ [claim: string]: unknown }> {
+  if (!userId || !(await claimReleaseDecision(env, subject, "attributes"))) {
+    return await Promise.resolve({});
+  }
   const { attributes } = await getObjectAttributes(env, "user", userId);
   if (Object.keys(attributes).length === 0) return {};
   return { [`${claimNamespace(env)}/${ATTRIBUTES_CLAIM_SUFFIX}`]: attributes };
@@ -75,10 +100,20 @@ export async function oidcClaimRelease(
   sessionId: string | null | undefined,
   userId: string | null | undefined,
 ): Promise<Record<string, unknown>> {
+  return await oidcClaimReleaseForSubject(env, sessionId, userId, undefined);
+}
+
+/** Subject-aware merged release: per-application policy over the flags. */
+export async function oidcClaimReleaseForSubject(
+  env: Env,
+  sessionId: string | null | undefined,
+  userId: string | null | undefined,
+  subject: string | undefined,
+): Promise<Record<string, unknown>> {
   if (!accountClaimsEnabled(env) && !attributeClaimsEnabled(env)) return {};
   return {
-    ...(await activeAccountClaim(env, sessionId ?? null)),
-    ...(await userAttributesClaim(env, userId)),
+    ...(await activeAccountClaimForSubject(env, sessionId ?? null, subject)),
+    ...(await userAttributesClaimForSubject(env, userId, subject)),
   };
 }
 
@@ -120,11 +155,13 @@ export async function samlAttributeRelease(
   sessionToken: string | null,
   sessionId: string | null,
   userId: string | null,
+  subject?: string,
 ): Promise<SamlReleasedAttribute[]> {
   if (!accountClaimsEnabled(env) && !attributeClaimsEnabled(env)) return [];
   const names = samlAttributeNames(env);
   const attributes: SamlReleasedAttribute[] = [];
-  if (accountClaimsEnabled(env) && sessionToken && sessionId) {
+  if (accountClaimsEnabled(env) && sessionToken && sessionId &&
+      (await claimReleaseDecision(env, subject, "account"))) {
     const context = await getSessionAccountContext(env, sessionId);
     if (context) {
       attributes.push(
@@ -134,7 +171,7 @@ export async function samlAttributeRelease(
       );
     }
   }
-  if (attributeClaimsEnabled(env) && userId) {
+  if (attributeClaimsEnabled(env) && userId && (await claimReleaseDecision(env, subject, "attributes"))) {
     const userAttributes = await getObjectAttributes(env, "user", userId);
     for (const key of Object.keys(userAttributes.attributes).sort()) {
       const value = attributeValue(userAttributes.attributes, key);

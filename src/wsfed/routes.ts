@@ -214,6 +214,7 @@ wsfedProtocolRoutes.get(WSFED_SIGNIN_PATH, async (context) => {
       wsfedSessionToken(session),
       sessionUserId(session),
       session.user.id,
+      `wsfed:${party.realm}`,
     );
     const issued = await buildWsfedSignInResult({
       wctx,

@@ -377,6 +377,18 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS account_session_contexts_session_idx ON account_session_contexts (session_id)",
   ).run();
+  // Per-application claim release policy: when a row exists for a subject it
+  // gates which released claim kinds reach that application (an AND with the
+  // global operator flags; no row keeps flag-only behavior).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS claim_release_policies (
+      subject TEXT PRIMARY KEY NOT NULL,
+      allow_account_claims INTEGER NOT NULL DEFAULT 1 CHECK (allow_account_claims IN (0, 1)),
+      allow_user_attributes INTEGER NOT NULL DEFAULT 1 CHECK (allow_user_attributes IN (0, 1)),
+      updated_by TEXT,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
   // Account invitations: opaque single-use join tokens created by the admin
   // surface and redeemed by a signed-in user (see docs/design/multi-accounts.md).
   await env.DB.prepare(

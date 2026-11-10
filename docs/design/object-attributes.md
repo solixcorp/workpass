@@ -36,8 +36,12 @@ Group reads surface the attributes inline: `GET /api/admin/directory-groups/{id}
 - **Shape.** One URI-namespaced JSON claim `<IdP origin>/claims/attributes` carrying the flat attribute object (primitive values, `null` included); SAML emits one simple-string attribute per entry named `<origin>/claims/attributes/<key>`, skipping `null` entries and stringifying primitives.
 - **Deliberate exclusions.** Group and account attributes are **not** released: groups are claim-release candidates owned by the later per-application binding and release policy (docs/design/directory-groups.md), and account attributes describe shared objects whose audiences require their own allow/deny decision.
 
+## Per-application claim release policy
+
+The global flags make release possible; a **claim release policy** row decides which kinds one application receives, evaluated as an AND with the flags (a row can only narrow, never widen). Subjects use the same namespace as app-access policies: `saml:<entityId>`, `oidc:<clientId>`, `wsfed:<realm>`. No row keeps the flag-only default, and a policy evaluation failure fails closed. Admin surface: `GET/PUT/DELETE /api/admin/claim-release-policies/{subject}` with `{allowAccountClaims?, allowUserAttributes?}` (absent keys default to allowed), audited (`claim.policy.update`, `claim.policy.delete`).
+
 ## What remains open
 
-- Group and account attribute release as claims, including any per-application allow/deny policy (same open dependency as group claims).
-- SCIM inbound/outbound handling of attributes (custom extension schemas or enterprise schema mapping).
+- Group and account attribute release as claims (user attributes release fully; a per-attribute allow/deny granularity inside a released set would be a further refinement).
+- Outbound SCIM attribute push is implemented behind `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: create/patch payloads to targets carry the user's custom attributes as the `urn:solixcorp:scim:1.0:CustomAttributes` extension (patch as a path-scoped operation, deactivation never carries profile data). Fail-closed default; it is still a deliberate per-target operator decision (privacy review), and attribute changes surface only on the next manually triggered `update` operation — there is no automatic lifecycle trigger yet.
 - Update events for attributes (an SSF SET event type would let downstream apps follow changes).
