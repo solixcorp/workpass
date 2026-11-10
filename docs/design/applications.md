@@ -10,6 +10,8 @@ A unified application registry, modeled on authentik's Applications: one registr
 
 - **Applications are first-party objects.** `applications` holds an immutable UUID `id`, a unique `slug` (1–64 characters from `[a-z0-9-]`, starting with a letter or digit), a 1–128 character `name`, an optional `description`, the `protocol` (`bookmark|saml|wsfed|oidc|swa`), a nullable `binding`, a nullable `launchUrl`, `hide_from_dashboard`, `enabled`, and audit metadata.
 - **Bookmark apps.** `binding` is null and `launchUrl` is required — an https URL the user is sent to directly. No SSO protocol involvement.
+- **Icons.** Two independent options: `icon_url` (operator-provided external https URL) and an uploaded icon in R2 (`APPLICATION_ICONS` binding; key `applications/{slug}/icon`, ≤ 1 MiB, png/jpeg/webp/gif/svg, type decided by magic-byte sniffing — never the client content type). Uploads are administrator-only (`POST/DELETE /api/admin/applications/{slug}/icon`, `app.icon.upload` / `app.icon.delete` audited); the public serve path `GET /application/{slug}/icon` streams the object (never sensitive), with SVG under a restrictive CSP. The user surface resolves `icon` = uploaded path first, external URL second. A missing bucket binding fails the icon surface closed (503/404).
+- **Grouping.** `categoryGroup` (≤ 64 characters, optional) is the dashboard grouping label, surfaced in the user list.
 - **Backed apps.** `binding` is required and must reference a registered provider of the declared protocol (SAML entity id, WS-Fed realm, SWA origin, OIDC client id), validated at write time. Deleting an application never touches the provider registration — the dashboard link and the provider lifecycle stay decoupled.
 - **`launchUrl` for backed apps is optional** — authentik derives launch URLs from providers, but only the bookmark case has a mandatory URL here.
 - **Created disabled** like every registry in this codebase; enablement is a deliberate two-step lifecycle (`/enable`, `/disable`).
@@ -31,7 +33,9 @@ All routes live under `/api/admin/applications` and follow the registry lifecycl
 | `GET /api/admin/applications` | Every application including hidden and disabled, ordered by name. |
 | `POST /api/admin/applications` | `{slug, name, protocol, binding?, launchUrl?, description?, hideFromDashboard?}` → 201; 409 on a duplicate slug; 400 with precise validation messages. Audited (`app.create`). |
 | `GET /api/admin/applications/{slug}` | One application (admin session). |
-| `PATCH /api/admin/applications/{slug}` | Name/description/launchUrl/hideFromDashboard/binding updates; `protocol` is immutable (400) since a change would orphan the stored gate policy. Binding integrity rules re-run on every patch. Audited (`app.update`). |
+| `POST /api/admin/applications/{slug}/icon` | Icon upload: `multipart/form-data` with a `file` field (png/jpeg/webp/gif/svg, ≤ 1 MiB, magic-byte sniffed), stored in R2 (`APPLICATION_ICONS`) at `applications/{slug}/icon`. Re-upload replaces; response carries the stable public path. Audited (`app.icon.upload`). |
+| `DELETE /api/admin/applications/{slug}/icon` | Removes the uploaded object and clears the application's icon key. Audited (`app.icon.delete`). |
+| `PATCH /api/admin/applications/{slug}` | Name/description/launchUrl/iconUrl/categoryGroup/hideFromDashboard/binding updates; `protocol` is immutable (400) since a change would orphan the stored gate policy. Binding integrity rules re-run on every patch. Audited (`app.update`). |
 | `POST /api/admin/applications/{slug}/enable` and `/disable` | Two-step lifecycle, audited (`app.enable`, `app.disable`). |
 | `DELETE /api/admin/applications/{slug}` | 200; removes the dashboard surface only. Audited (`app.delete`). |
 
@@ -39,7 +43,8 @@ All routes live under `/api/admin/applications` and follow the registry lifecycl
 
 | Method and path | Behavior |
 |---|---|
-| `GET /api/applications` | Session-gated, no-store. Enabled, not-hidden applications the user passes, ordered by name: `{slug, name, description, protocol, launchUrl}`. Bookmark apps launch directly by URL; backed apps keep their protocol entry points. |
+| `GET /api/applications` | Session-gated, no-store. Enabled, not-hidden applications the user passes, ordered by name: `{slug, name, description, protocol, launchUrl, categoryGroup, icon}` — `icon` is the uploaded icon's public path (`/application/{slug}/icon`) or the external `iconUrl`. Bookmark apps launch directly by URL; backed apps keep their protocol entry points. |
+| `GET /application/{slug}/icon` | Public (icons are not sensitive): streams the uploaded icon from R2 with the sniffed content type; SVG under a restrictive CSP; 404 when absent or the bucket is unbound. |
 
 ## What remains open
 

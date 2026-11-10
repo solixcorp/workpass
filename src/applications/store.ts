@@ -22,6 +22,12 @@ export interface ApplicationRow {
   protocol: ApplicationProtocol;
   binding: string | null;
   launchUrl: string | null;
+  /** Optional icon: an https URL (favicon-style small image). */
+  iconUrl: string | null;
+  /** R2 object key of an uploaded icon; takes precedence over icon_url. */
+  iconKey: string | null;
+  /** Optional dashboard grouping label (authentik's application group). */
+  categoryGroup: string | null;
   hideFromDashboard: boolean;
   enabled: boolean;
   createdBy: string;
@@ -42,6 +48,8 @@ export interface ValidatedApplicationInput {
   protocol: ApplicationProtocol;
   binding: string | null;
   launchUrl: string | null;
+  iconUrl: string | null;
+  categoryGroup: string | null;
   hideFromDashboard: boolean;
 }
 
@@ -58,6 +66,8 @@ export async function validateApplicationInput(
     protocol?: unknown;
     binding?: unknown;
     launchUrl?: unknown;
+    iconUrl?: unknown;
+    categoryGroup?: unknown;
     hideFromDashboard?: unknown;
   },
   mode: "create" | "patch",
@@ -122,6 +132,32 @@ export async function validateApplicationInput(
     result.launchUrl = launchUrl;
   }
 
+  if (input.iconUrl !== undefined) {
+    const iconUrl = input.iconUrl === null || input.iconUrl === "" ? null : input.iconUrl;
+    if (iconUrl !== null) {
+      if (typeof iconUrl !== "string") throw new Error("iconUrl must be a string or null");
+      try {
+        const url = new URL(iconUrl);
+        if (url.protocol !== "https:" || url.username || url.password || url.hash) {
+          throw new Error("iconUrl must be an https URL without credentials, query or fragment");
+        }
+        if (iconUrl.length > 2048) throw new Error("iconUrl must be at most 2048 characters");
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("iconUrl")) throw error;
+        throw new Error("iconUrl must be a valid https URL");
+      }
+    }
+    result.iconUrl = iconUrl;
+  }
+
+  if (input.categoryGroup !== undefined) {
+    const categoryGroup = input.categoryGroup === null || input.categoryGroup === "" ? null : input.categoryGroup;
+    if (categoryGroup !== null && (typeof categoryGroup !== "string" || categoryGroup.trim().length === 0 || categoryGroup.length > 64 || CONTROL.test(categoryGroup))) {
+      throw new Error("categoryGroup must be at most 64 characters without control characters");
+    }
+    result.categoryGroup = categoryGroup;
+  }
+
   if (input.hideFromDashboard !== undefined) {
     result.hideFromDashboard = input.hideFromDashboard === true;
   }
@@ -167,6 +203,9 @@ export async function createApplication(
     protocol,
     binding: input.binding,
     launchUrl: input.launchUrl,
+    iconUrl: input.iconUrl ?? null,
+    iconKey: null,
+    categoryGroup: input.categoryGroup ?? null,
     hideFromDashboard: input.hideFromDashboard,
     enabled: false,
     createdBy,
@@ -175,11 +214,12 @@ export async function createApplication(
   try {
     await env.DB.prepare(
       `INSERT INTO applications
-         (id, slug, name, description, protocol, binding, launch_url, hide_from_dashboard, enabled, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+         (id, slug, name, description, protocol, binding, launch_url, icon_url, category_group, hide_from_dashboard, enabled, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     ).bind(
       row.id, row.slug, row.name, row.description, protocol, row.binding ?? null,
-      row.launchUrl ?? null, row.hideFromDashboard ? 1 : 0, row.createdBy, row.createdAt, now,
+      row.launchUrl ?? null, row.iconUrl ?? null, row.categoryGroup ?? null,
+      row.hideFromDashboard ? 1 : 0, row.createdBy, row.createdAt, now,
     ).run();
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
@@ -211,6 +251,7 @@ export async function getApplication(env: Env, slug: string): Promise<Applicatio
 export async function listApplications(env: Env, limit = 200): Promise<ApplicationRow[]> {
   const rows = await env.DB.prepare(
     `SELECT id, slug, name, description, protocol, binding, launch_url AS launchUrl,
+            icon_url AS iconUrl, icon_key AS iconKey, category_group AS categoryGroup,
             hide_from_dashboard AS hideRaw, enabled AS enabledRaw,
             created_by AS createdBy, created_at AS createdAt
      FROM applications ORDER BY name ASC, slug ASC LIMIT ?`,
@@ -265,6 +306,9 @@ interface ApplicationRowRow {
   protocol: ApplicationProtocol;
   binding: string | null;
   launchUrl: string | null;
+  iconUrl: string | null;
+  iconKey: string | null;
+  categoryGroup: string | null;
   hideRaw: number;
   enabledRaw: number;
   createdBy: string;
@@ -274,6 +318,7 @@ interface ApplicationRowRow {
 async function loadApplicationRow(env: Env, where: string, value: string): Promise<ApplicationRow | null> {
   const row = await env.DB.prepare(
     `SELECT id, slug, name, description, protocol, binding, launch_url AS launchUrl,
+            icon_url AS iconUrl, icon_key AS iconKey, category_group AS categoryGroup,
             hide_from_dashboard AS hideRaw, enabled AS enabledRaw,
             created_by AS createdBy, created_at AS createdAt
      FROM applications WHERE ${where} LIMIT 1`,

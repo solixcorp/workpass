@@ -137,6 +137,8 @@ export interface Env extends Partial<WorkerBindings> {
   INVITATION_EMAIL_WEBHOOK_URL?: string;
   /** Built-in development mock mailbox at /dev/mocks/invitation-email; never enable in production. */
   ENABLE_DEV_MOCKS?: string;
+  /** R2 bucket holding application icons (uploaded by administrators). */
+  APPLICATION_ICONS?: R2Bucket;
   /** Access requests (docs/design/access-requests.md): best-effort reviewer notification webhook. */
   ACCESS_REQUEST_WEBHOOK_URL?: string;
   /**

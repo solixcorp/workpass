@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { createAuth } from "../auth/config";
 import type { Env } from "../env";
 import { listVisibleApplications } from "./store";
+import { iconDisplayPath } from "./icons";
 
 export const applicationUserRoutes = new Hono<{ Bindings: Env }>();
 
@@ -26,6 +27,8 @@ applicationUserRoutes.get("/api/applications", async (context) => {
       description: application.description,
       protocol: application.protocol,
       launchUrl: application.launchUrl,
+      categoryGroup: application.categoryGroup,
+      icon: iconDisplayPath(application),
     })),
   });
 });

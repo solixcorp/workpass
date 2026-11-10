@@ -19,6 +19,13 @@ import {
   validateApplicationInput,
   validateBindingReference,
 } from "./store";
+import {
+  deleteApplicationIcon,
+  iconDisplayPath,
+  iconObjectKey,
+  ICON_MAX_BYTES,
+  putApplicationIcon,
+} from "./icons";
 
 export const applicationAdminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -123,6 +130,79 @@ async function withEnabled(
   });
 }
 
+applicationAdminRoutes.post("/applications/:slug/icon", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const slug = context.req.param("slug");
+  if (!slug) return context.json({ error: "Application not found" }, 404);
+  return auditStandaloneOperation(context.env, "app.icon.upload", context.req.path, async () => {
+    const contentTypeHeader = context.req.header("content-type") ?? "";
+    if (!contentTypeHeader.toLowerCase().includes("multipart/form-data")) {
+      return {
+        response: Response.json({ error: "Submit the icon as multipart/form-data with a `file` field" }, { status: 400 }),
+        actorUserId: actor.userId,
+      };
+    }
+    if (context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
+      return { response: Response.json({ error: "Invalid origin" }, { status: 403 }), actorUserId: actor.userId };
+    }
+    const form = await context.req.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      // Origin check passed; still rejected before any read (fail-closed).
+      return {
+        response: Response.json({ error: "The `file` field with the icon is required" }, { status: 400 }),
+        actorUserId: actor.userId,
+      };
+    }
+    const application = await getApplication(context.env, slug);
+    if (!application) {
+      return { response: await applicationNotFound(context), actorUserId: actor.userId };
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const stored = await putApplicationIcon(context.env, application, bytes);
+    if (!stored) {
+      return {
+        response: Response.json(
+          { error: `The icon must be png/jpeg/webp/gif/svg at most ${ICON_MAX_BYTES} bytes` },
+          { status: 400 },
+        ),
+        actorUserId: actor.userId,
+        targetUserId: slug,
+      };
+    }
+    return {
+      response: Response.json({
+        icon: { path: iconDisplayPath({ slug, iconKey: iconObjectKey(slug), iconUrl: null }), contentType: stored.contentType },
+      }),
+      actorUserId: actor.userId,
+      targetUserId: slug,
+    };
+  });
+});
+
+applicationAdminRoutes.delete("/applications/:slug/icon", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const slug = context.req.param("slug");
+  if (!slug) return context.json({ error: "Application not found" }, 404);
+  return auditStandaloneOperation(context.env, "app.icon.delete", context.req.path, async () => {
+    const application = await getApplication(context.env, slug);
+    if (!application) {
+      return { response: await applicationNotFound(context), actorUserId: actor.userId };
+    }
+    const removed = await deleteApplicationIcon(context.env, slug);
+    if (!removed) {
+      return { response: await applicationNotFound(context), actorUserId: actor.userId, targetUserId: slug };
+    }
+    return {
+      response: Response.json({ deleted: true }),
+      actorUserId: actor.userId,
+      targetUserId: slug,
+    };
+  });
+});
+
 applicationAdminRoutes.delete("/applications/:slug", async (context) => {
   const actor = await requireAdministrator(context);
   if (actor instanceof Response) return actor;
@@ -131,9 +211,11 @@ applicationAdminRoutes.delete("/applications/:slug", async (context) => {
   return auditStandaloneOperation(context.env, "app.delete", context.req.path, async () => {
     const existing = await getApplication(context.env, slug);
     if (!existing) return { response: await applicationNotFound(context), actorUserId: actor.userId };
-    // A backed protocol's enablement stays in its own registry: deleting an
-    // application does not touch the provider registration, only the
-    // dashboard surface.
+    // Removing the dashboard surface also removes the uploaded icon object;
+    // a provider registration keeps living in its own registry.
+    if (existing.iconKey) {
+      await deleteApplicationIcon(context.env, slug).catch(() => undefined);
+    }
     const removed = await deleteApplication(context.env, slug);
     return {
       response: removed

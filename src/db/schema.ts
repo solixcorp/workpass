@@ -432,6 +432,9 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       protocol TEXT NOT NULL CHECK (protocol IN ('bookmark', 'saml', 'wsfed', 'oidc', 'swa')),
       binding TEXT,
       launch_url TEXT,
+      icon_url TEXT,
+      icon_key TEXT,
+      category_group TEXT,
       hide_from_dashboard INTEGER NOT NULL DEFAULT 0 CHECK (hide_from_dashboard IN (0, 1)),
       enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
       created_by TEXT NOT NULL,
@@ -439,6 +442,13 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       updated_at TEXT NOT NULL
     )`,
   ).run();
+  // The uploaded-icon key column was added after the registry shipped:
+  // in-place ALTER for deployed databases.
+  try {
+    await env.DB.prepare("ALTER TABLE applications ADD COLUMN icon_key").run();
+  } catch {
+    // Column already present.
+  }
   // Account invitations: opaque single-use join tokens created by the admin
   // surface and redeemed by a signed-in user (see docs/design/multi-accounts.md).
   await env.DB.prepare(
