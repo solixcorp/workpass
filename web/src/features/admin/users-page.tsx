@@ -206,7 +206,7 @@ export function UsersPage() {
                       >
                         <MailIcon />
                       </Button>
-                      <UserActions user={user} currentUserId={session?.user.id} />
+                      <UserActions user={user} currentUserId={session?.user.id} onUnlocked={() => sendLink.mutate(user)} />
                     </TableCell>
                   </TableRow>
                 ))}

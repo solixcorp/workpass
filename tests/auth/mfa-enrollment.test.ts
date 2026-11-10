@@ -183,6 +183,21 @@ describe("second-factor enrollment", () => {
     expect(types).toContain("identity.user.sessions_revoke.success_or_failure");
   });
 
+  test("self lockdown blocks the account and an administrator can lift it", async () => {
+    const created = await (await call("/api/admin/users", { method: "POST", body: { email: "lock@mfa.test", name: "Lock", sendEmail: false } })).json() as any;
+    const victim = created.user.id as string;
+    const lock = await call(`/api/security/account-lockdown/user/${victim}`, { method: "POST", body: { reason: "도용 의심" } });
+    expect(lock.status).toBe(200);
+    const history = await (await call(`/api/security/account-lockdown/user/${victim}`)).json() as any;
+    expect(history.lockdowns[0]).toMatchObject({ reason: "도용 의심", liftedAt: null });
+    expect((await db.prepare('SELECT banned FROM "user" WHERE id = ?').bind(victim).first<{ banned: number }>())?.banned).toBe(1);
+
+    expect((await call(`/api/security/account-lockdown/user/${victim}/unlock`, { method: "POST", body: {} })).status).toBe(200);
+    const after = await (await call(`/api/security/account-lockdown/user/${victim}`)).json() as any;
+    expect(after.lockdowns[0].liftedAt).toBeTruthy();
+    expect((await call(`/api/security/account-lockdown/user/${victim}/unlock`, { method: "POST", body: {} })).status).toBe(409);
+  });
+
   test("an administrator can attach a hardware token seed for a user", async () => {
     const me = await (await call("/api/auth/get-session")).json() as any;
     const bad = await call(`/api/admin/users/${me.user.id}/mfa/hotp`, { method: "POST", body: { label: "x", secretBase32: "short" } });

@@ -1,5 +1,5 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { LogOutIcon, MoreHorizontalIcon, ShieldCheckIcon, UserCheckIcon, UserXIcon } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { KeyRoundIcon, LogOutIcon, MoreHorizontalIcon, ShieldCheckIcon, UserCheckIcon, UserXIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -20,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { sessionQuery } from '@/lib/queries'
 
@@ -31,7 +32,9 @@ export type ManagedUser = {
   banned?: boolean | null
 }
 
-type Action = 'ban' | 'unban' | 'grant-admin' | 'revoke-admin' | 'sessions'
+type Action = 'ban' | 'unban' | 'grant-admin' | 'revoke-admin' | 'sessions' | 'unlock'
+
+type Lockdown = { id: string; reason: string; createdAt: string; liftedAt: string | null }
 
 const COPY: Record<Action, { title: (u: ManagedUser) => string; body: string; confirm: string; done: string; destructive?: boolean }> = {
   ban: {
@@ -60,6 +63,12 @@ const COPY: Record<Action, { title: (u: ManagedUser) => string; body: string; co
     done: '관리자 권한을 해제했습니다.',
     destructive: true,
   },
+  unlock: {
+    title: (u) => `${u.email}의 잠금을 풀까요?`,
+    body: '사용자가 직접 잠근 계정이거나 비상 조치로 잠긴 계정입니다. 풀어도 비밀번호 등록이 지워진 상태라서, 풀고 나면 새 비밀번호를 정하는 링크를 바로 보냅니다. 세션과 신뢰한 기기는 이미 끝난 상태 그대로입니다.',
+    confirm: '잠금 해제',
+    done: '잠금을 풀었습니다. 이어서 비밀번호 설정 링크를 보냅니다.',
+  },
   sessions: {
     title: (u) => `${u.email}의 모든 세션을 끝낼까요?`,
     body: '이 사용자가 로그인해 둔 모든 기기에서 로그아웃됩니다. 계정 자체는 그대로입니다.',
@@ -70,14 +79,34 @@ const COPY: Record<Action, { title: (u: ManagedUser) => string; body: string; co
 }
 
 /** Row menu for one user: deactivate, role and session controls. */
-export function UserActions({ user, currentUserId }: { user: ManagedUser; currentUserId: string | undefined }) {
+export function UserActions({
+  user,
+  currentUserId,
+  onUnlocked,
+}: {
+  user: ManagedUser
+  currentUserId: string | undefined
+  /** Called after a lockdown is lifted so the page can offer the password-setup link. */
+  onUnlocked?: (user: ManagedUser) => void
+}) {
   const queryClient = useQueryClient()
   const [action, setAction] = useState<Action | null>(null)
+  const lockdowns = useQuery({
+    queryKey: ['admin', 'lockdown', user.id],
+    queryFn: () => apiFetch<{ lockdowns: Lockdown[] }>(`/api/security/account-lockdown/user/${user.id}`),
+    enabled: Boolean(user.banned),
+    staleTime: 10_000,
+  })
+  const locked = Boolean(user.banned) && Boolean(lockdowns.data?.lockdowns.some((entry) => !entry.liftedAt))
   const isAdmin = Boolean(user.role?.split(',').includes('admin'))
   const isSelf = user.id === currentUserId
 
   const run = useMutation({
     mutationFn: async (kind: Action) => {
+      if (kind === 'unlock') {
+        await apiFetch(`/api/security/account-lockdown/user/${user.id}/unlock`, { method: 'POST', body: '{}' })
+        return
+      }
       const result =
         kind === 'ban'
           ? await authClient.admin.banUser({ userId: user.id })
@@ -91,6 +120,7 @@ export function UserActions({ user, currentUserId }: { user: ManagedUser; curren
     onSuccess: async (_, kind) => {
       toast.success(COPY[kind].done)
       setAction(null)
+      if (kind === 'unlock') onUnlocked?.(user)
       await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
       if (isSelf) await queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey })
     },
@@ -127,7 +157,12 @@ export function UserActions({ user, currentUserId }: { user: ManagedUser; curren
             모든 세션 종료
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          {user.banned ? (
+          {locked ? (
+            <DropdownMenuItem onSelect={() => setAction('unlock')}>
+              <KeyRoundIcon />
+              잠금 해제
+            </DropdownMenuItem>
+          ) : user.banned ? (
             <DropdownMenuItem onSelect={() => setAction('unban')}>
               <UserCheckIcon />
               다시 활성화

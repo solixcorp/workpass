@@ -19,6 +19,8 @@ import { Spinner } from '@/components/ui/spinner'
 import { authClient } from '@/lib/auth-client'
 import { formatDateTime } from '@/lib/format'
 import { sessionQuery } from '@/lib/queries'
+import { TrustedDevicesSection } from './devices-section'
+import { LockdownSection } from './lockdown-section'
 import { MfaSection } from './mfa-section'
 import { loginConfigQuery } from '@/lib/fingerprint'
 
@@ -230,6 +232,8 @@ export function SecurityPage() {
       <MfaSection />
       <PasskeysGate />
       <SessionsSection />
+      <TrustedDevicesSection />
+      <LockdownSection />
     </div>
   )
 }
