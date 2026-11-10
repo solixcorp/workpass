@@ -178,6 +178,14 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 
 ## Database initialization
 
+### Serving the SPA (static assets)
+
+`bun run deploy` builds `web/` and deploys the Worker with `web/dist` as static assets. Asset requests do not invoke the Worker; the paths in `run_worker_first` (`wrangler.jsonc`, kept in sync with `BACKEND_PATHS` in `web/vite.config.ts`) do. Any other path returns `index.html` so client-side routes such as `/security` work on reload.
+
+`web/public/_headers` sets the response headers for the SPA files: a Content-Security-Policy (same-origin scripts, plus the Fingerprint loader and the workspace subdomain), `X-Frame-Options: DENY`, HSTS and a permissions policy, and one-year immutable caching for the hashed `/assets/*` and `/fonts/*`. `index.html` stays `must-revalidate`. If the Fingerprint subdomain changes, update `script-src` and `connect-src` there. Backend responses get their own security headers from the Worker.
+
+Verify a build without a deploy: `bun run build:check` (dry run), or serve it locally with `bunx wrangler dev --local` and no Vite, which exercises the same asset routing as production.
+
 ### Sign-in handoff and the WorkPass client
 
 All interactive sign-in happens in the SPA at `/login`. Protocol endpoints that find no session hand the browser over instead of rendering a login page of their own.
