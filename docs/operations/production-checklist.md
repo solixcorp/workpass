@@ -262,6 +262,8 @@ No external-interop testing has been performed.
 - `ENABLE_DEV_MOCKS`: MUST be `false` in production. It exposes
   `/dev/mocks/invitation-email`, whose recorded bodies contain invitation
   tokens. It exists only for headless local testing.
-- Invitation email delivery: `RESEND_API_KEY` + `INVITATION_EMAIL_FROM` (or
-  `INVITATION_EMAIL_WEBHOOK_URL` / the mock mailbox locally);
+- Invitation email delivery: the selected mail provider (`MAIL_PROVIDER` —
+  smtp/resend/cloudflare/maileroo/ses per `docs/design/email-providers.md`)+
+  `INVITATION_EMAIL_FROM`/`MAIL_FROM` (or `INVITATION_EMAIL_WEBHOOK_URL` /
+  the mock mailbox locally);
   `account.invitation.email` audit events record every delivery attempt.

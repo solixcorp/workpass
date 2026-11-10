@@ -133,7 +133,7 @@ protection); `POST /api/oauth1/token/revoke` revokes an access token;
 | `ENABLE_DYNAMIC_CLIENT_REGISTRATION` | `false` | see flag matrix. |
 | `ENABLE_SCIM_PROVISIONING` / `ENABLE_INBOUND_SCIM` | `false` | SCIM sender/receiver with bearer tokens; `SCIM_DEV_LOOPBACK_TARGET` is dev-only. |
 | `SAML_IDP_*` | unset | signing identity/cert/key (and previous pair during rotation) via `bun run scripts/generate-saml-key.ts`. |
-| `MFA_OTP_EMAIL_WEBHOOK_URL`, `MFA_SMS_WEBHOOK_URL`, `RESEND_API_KEY`, `MFA_OTP_EMAIL_FROM`, `DUO_*` | unset | OTP delivery, email, and Duo Push providers. |
+| `INVITATION_EMAIL_WEBHOOK_URL`, `MFA_OTP_EMAIL_WEBHOOK_URL`, `MFA_SMS_WEBHOOK_URL`, `MAIL_PROVIDER`, `MAIL_FROM*`, per-provider mail credentials (`docs/design/email-providers.md`), `DUO_*` | unset | OTP delivery, mail provider selection (smtp/resend/cloudflare/maileroo/ses), and Duo Push providers. |
 | `OPAQUE_MASTER_KEY` | unset | enables OPAQUE (RFC 9807) zero-password login; its sessions pass the login gate (banned accounts and device risk) before issuance. Rotation = re-enrollment of every credential. |
 
 ## 7. Post-deployment verification

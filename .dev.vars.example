@@ -33,9 +33,28 @@ ENABLE_SCIM_PROVISIONING=false
 # as the urn:solixcorp:scim:1.0:CustomAttributes extension. Deliberate
 # operator decision per target (privacy review); fail-closed when unset.
 ENABLE_SCIM_ATTRIBUTE_RELEASE=false
-# Invitation emails: production delivery through Resend (RESEND_API_KEY +
-# INVITATION_EMAIL_FROM) or a dev/mock webhook that records the message
-# locally at any receiver URL you run (headless testing).
+# Invitation emails: production delivery through the selected mail provider
+# (MAIL_PROVIDER: smtp | resend | cloudflare | maileroo | ses — see
+# docs/design/email-providers.md) or a dev/mock webhook that records the
+# message locally at any receiver URL you run (headless testing).
+# Legacy deployments that only set RESEND_API_KEY keep using Resend.
+MAIL_PROVIDER=
+MAIL_FROM=
+MAIL_FROM_NAME=
+MAIL_REPLY_TO=
+MAIL_RESEND_API_KEY=
+MAIL_CLOUDFLARE_ACCOUNT_ID=
+MAIL_CLOUDFLARE_API_TOKEN=
+MAIL_MAILEROO_API_KEY=
+MAIL_SES_REGION=
+MAIL_SES_ACCESS_KEY_ID=
+MAIL_SES_SECRET_ACCESS_KEY=
+MAIL_SMTP_HOST=
+MAIL_SMTP_PORT=
+MAIL_SMTP_SECURE=
+MAIL_SMTP_STARTTLS=
+MAIL_SMTP_USERNAME=
+MAIL_SMTP_PASSWORD=
 INVITATION_EMAIL_FROM=
 # INVITATION_EMAIL_WEBHOOK_URL=http://127.0.0.1:9999/invitations
 # Dev-only: permits an http://127.0.0.1|localhost SCIM target for local transport
