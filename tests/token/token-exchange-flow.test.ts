@@ -26,6 +26,7 @@ function testEnv(db: D1Database): Env {
     MIGRATION_TOKEN: "migration-token-0123456789abcdef-0123456789",
     ENABLE_ADMIN_BOOTSTRAP: "true",
     ADMIN_BOOTSTRAP_TOKEN: "bootstrap-token-0123456789abcdef-0123456789",
+    ALLOW_PLAINTEXT_PASSWORD_LOGIN: "true",
     ENABLE_DYNAMIC_CLIENT_REGISTRATION: "true",
     CLIENT_REGISTRATION_TOKEN: "dcr-token-0123456789abcdef-0123456789abcdef",
     ENABLE_TOKEN_EXCHANGE: "true",

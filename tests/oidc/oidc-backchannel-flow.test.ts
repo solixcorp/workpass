@@ -11,6 +11,7 @@ test("OIDC sign-out sends a signed logout token to an approved RP", async () => 
   const env = { DB: db, AUTH_BASE_URL: base, AUTH_SECRET: "integration-secret-0123456789abcdef",
     ENABLE_MIGRATIONS: "true", MIGRATION_TOKEN: "migration-token-0123456789abcdef-012345",
     ENABLE_ADMIN_BOOTSTRAP: "true", ADMIN_BOOTSTRAP_TOKEN: "bootstrap-token-0123456789abcdef-012345",
+    ALLOW_PLAINTEXT_PASSWORD_LOGIN: "true",
     ENABLE_DYNAMIC_CLIENT_REGISTRATION: "true", CLIENT_REGISTRATION_TOKEN: "register-token-0123456789abcdef-012345" } as unknown as Env;
   const cookies = new Map<string, string>();
   const call = async (path: string, options: { method?: string; body?: unknown; headers?: Record<string, string>; form?: string } = {}) => {

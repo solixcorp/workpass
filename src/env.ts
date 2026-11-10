@@ -93,6 +93,14 @@ export interface Env extends Partial<WorkerBindings> {
   SEALED_STORAGE_CIPHER?: string;
   /** OPAQUE (RFC 9807) server master key: 32 bytes, base64-encoded. */
   OPAQUE_MASTER_KEY?: string;
+  /**
+   * Emergency/operator escape hatch that re-enables the plaintext password
+   * sign-in routes (/api/auth/sign-in/email, /api/auth/sign-in/username).
+   * OPAQUE is the only credential login path; these routes fail CLOSED and
+   * 404 unless this flag is explicitly "true". Keep it absent in production
+   * vars; it exists solely for local smoke-test bootstrapping.
+   */
+  ALLOW_PLAINTEXT_PASSWORD_LOGIN?: string;
   RESEND_API_KEY?: string;
   MFA_OTP_EMAIL_FROM?: string;
   /**

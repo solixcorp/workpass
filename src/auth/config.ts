@@ -44,7 +44,17 @@ export function createAuth(env: Env) {
       },
     },
     database: env.DB,
-    disabledPaths: ["/token"],
+    // Plaintext password sign-in (/sign-in/email, /sign-in/username) fails
+    // CLOSED: OPAQUE (/api/opaque/auth/*, RFC 9807) is the only password
+    // login path, and the wire must carry zero password material. The routes
+    // 404 here unless the operator explicitly opts back in via deployment
+    // env (dev-only escape hatch; see ALLOW_PLAINTEXT_PASSWORD_LOGIN).
+    disabledPaths: [
+      "/token",
+      ...(env.ALLOW_PLAINTEXT_PASSWORD_LOGIN === "true"
+        ? []
+        : ["/sign-in/email", "/sign-in/username"]),
+    ],
     // Session network/GeoIP binding: every freshly created session is bound to
     // the edge-derived network/location it was created in (best-effort; see
     // src/security/session-geo-binding.ts). Rotation on 2FA verification re-binds.

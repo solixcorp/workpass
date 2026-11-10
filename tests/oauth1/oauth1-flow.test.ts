@@ -24,6 +24,7 @@ describe("OAuth 1.0a server end to end", () => {
     MIGRATION_TOKEN: "migration-token-0123456789abcdef-0123456789",
     ENABLE_ADMIN_BOOTSTRAP: "true",
     ADMIN_BOOTSTRAP_TOKEN: "bootstrap-token-0123456789abcdef-0123456789",
+    ALLOW_PLAINTEXT_PASSWORD_LOGIN: "true",
     ENABLE_OAUTH1: "true",
     OAUTH1_MANAGEMENT_TOKEN: "oauth1-mgmt-token-0123456789abcdef01234",
     AEAD_SEALING_KEY: btoa("oauth1-test-sealing-key-32-bytes"),
