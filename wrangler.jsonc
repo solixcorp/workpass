@@ -40,7 +40,11 @@
       "/health",
       "/dev/*",
       "/_internal/*",
-      "/application/*"
+      "/application/*",
+      "/device",
+      "/device/*",
+      "/ciba",
+      "/ciba/*"
     ]
   },
   "limits": {

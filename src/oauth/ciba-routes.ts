@@ -21,7 +21,7 @@ import { clientAllowsGrant, loadRegisteredClient, matchesStoredClientSecret } fr
 type FormBody = Record<string, string | File>;
 
 async function formBody(context: Context<{ Bindings: Env }>): Promise<FormBody> {
-  return await formBody(context) as FormBody;
+  return await context.req.parseBody().catch(() => ({})) as FormBody;
 }
 
 export const cibaRoutes = new Hono<{ Bindings: Env }>();
@@ -43,27 +43,33 @@ function cibaError(context: Context<{ Bindings: Env }>, status: ContentfulStatus
 interface ClientCredentials {
   clientId: string;
   secret: string | undefined;
+  /** Which channel the credentials arrived on: "basic" or "post". */
+  method: "client_secret_basic" | "client_secret_post";
 }
 
-/** client_secret_basic / client_secret_post extraction (§8). */
+/** client_secret_basic / client_secret_post extraction (§8). Only these two
+ * confidential channels are honored; the registered method must match, mirroring
+ * the provider's token-endpoint behavior. */
 async function extractClientCredentials(context: Context<{ Bindings: Env }>): Promise<ClientCredentials> {
   const header = context.req.header("authorization") ?? "";
   if (header.startsWith("Basic ")) {
     const decoded = atob(header.slice(6).trim());
     const separator = decoded.indexOf(":");
     if (separator > 0) {
-      return { clientId: decodeURIComponent(decoded.slice(0, separator).replaceAll("%20", " ")), secret: decodeURIComponent(decoded.slice(separator + 1).replaceAll("%20", " ")) };
+      return { clientId: decodeURIComponent(decoded.slice(0, separator).replaceAll("%20", " ")), secret: decodeURIComponent(decoded.slice(separator + 1).replaceAll("%20", " ")), method: "client_secret_basic" };
     }
+    return { clientId: "", secret: undefined, method: "client_secret_basic" };
   }
   const form = await formBody(context);
-  if (typeof form.client_id === "string" && typeof form.client_secret === "string") {
-    return { clientId: form.client_id, secret: form.client_secret };
+  if (typeof form.client_id === "string") {
+    return {
+      clientId: form.client_id,
+      secret: typeof form.client_secret === "string" ? form.client_secret : undefined,
+      method: form.client_secret !== undefined ? "client_secret_post" : "client_secret_basic",
+    };
   }
-  if (typeof form.client_id === "string") return { clientId: form.client_id, secret: undefined };
-  return { clientId: "", secret: undefined };
+  return { clientId: "", secret: undefined, method: "client_secret_post" };
 }
-
-const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** OpenID CIBA Core §7.1 backchannel authentication endpoint. */
 cibaRoutes.post("/api/auth/oauth2/bc-authorize", async (context) => {
@@ -76,11 +82,18 @@ cibaRoutes.post("/api/auth/oauth2/bc-authorize", async (context) => {
   const client = await loadRegisteredClient(env, credentials.clientId);
   if (!client || client.disabled) return cibaError(context, 401, "invalid_client");
   // CIBA clients are confidential; public clients are not a CIBA surface.
+  // Assertion methods (private_key_jwt…) are not honored at this endpoint yet.
   if (client.tokenEndpointAuthMethod === "none" || !client.clientSecretHash) {
     return cibaError(context, 401, "invalid_client");
   }
+  if (client.tokenEndpointAuthMethod !== null &&
+      client.tokenEndpointAuthMethod !== "client_secret_basic" &&
+      client.tokenEndpointAuthMethod !== "client_secret_post") {
+    return cibaError(context, 401, "invalid_client");
+  }
   const secretMatches = await matchesStoredClientSecret(credentials.secret ?? "", client.clientSecretHash);
-  if (!credentials.secret || !secretMatches) {
+  // The credential channel must match the registration, like the token endpoint.
+  if (!credentials.secret || !secretMatches || credentials.method !== client.tokenEndpointAuthMethod) {
     await audit(env, { actor_user_id: null, target_user_id: null,
       event_type: "authentication.ciba.client_auth_failed", outcome: "failure",
       request_path: "/api/auth/oauth2/bc-authorize" });
@@ -143,13 +156,34 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-/** The approval page: pending requests for the signed-in user. */
+/** The approval page: pending requests for the signed-in user. Unauthenticated
+ * visits never redirect into a sign-in flow (the canonical /sign-in itself
+ * only starts from a signed OIDC continuation) — they get guidance instead. */
 cibaRoutes.get("/ciba", async (context) => {
   const env = context.env;
   if (!enabled(env)) return context.notFound();
   const auth = createAuth(env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.redirect("/sign-in", 302);
+  if (!session) {
+    context.header("Cache-Control", "no-store");
+    context.header("Referrer-Policy", "no-referrer");
+    context.header("Content-Security-Policy",
+      "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'");
+    return context.body([
+      "<!DOCTYPE html>",
+      '<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>',
+      "<title>Application access requests</title>",
+      "<style>",
+      "body{font-family:system-ui,sans-serif;background:#f6f6f8;display:flex;min-height:100vh;align-items:center;justify-content:center}",
+      "main{background:#fff;border:1px solid #e4e4e9;border-radius:10px;padding:32px;width:min(360px,90vw)}",
+      "h1{font-size:17px;margin:0 0 8px}p{font-size:13px;color:#3c3c44}",
+      "</style></head><body><main>",
+      "<h1>Application access requests</h1>",
+      "<p>First sign in through your organization's sign-in portal, then reopen this page (or the request link from the email).</p>",
+      "<p>This page never asks for your password. Pending requests expire in 5 minutes.</p>",
+      "</main></body></html>",
+    ].join("\n"), 403, { "Content-Type": "text/html; charset=utf-8" });
+  }
   const pending = await listPendingCibaRequests(env, session.user.id);
   const clients = await Promise.all(pending.map((request) => loadRegisteredClient(env, request.clientId)));
   const rows = pending.map((request, index) => {
@@ -207,7 +241,7 @@ cibaRoutes.post("/api/ciba/decide", async (context) => {
   if (!enabled(env)) return context.notFound();
   const auth = createAuth(env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
-  if (!session) return context.redirect("/sign-in", 302);
+  if (!session) return cibaError(context, 401, "invalid_request", "Sign in through your organization's portal first");
   const form = await formBody(context);
   const requestId = typeof form.request === "string" ? form.request : "";
   const decision = form.decision;

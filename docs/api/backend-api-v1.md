@@ -36,7 +36,13 @@ Unauthenticated process/runtime liveness only; does not expose D1 state, credent
 
 Never commit `.dev.vars`, production secrets, migration tokens, or bootstrap tokens. This is an operator bootstrap procedure, not an employee self-registration flow.
 
-## Password and username authentication
+## Password and username authentication (DISABLED by default)
+
+Both routes below fail closed: they respond `404` unless the deployment
+explicitly sets `ALLOW_PLAINTEXT_PASSWORD_LOGIN=true` (dev-only escape hatch
+for smoke-test bootstrapping; never set it in production vars). OPAQUE
+(`POST /api/opaque/auth/*`, RFC 9807) is the only credential login path —
+see "OPAQUE login" below. The wire must carry zero password material.
 
 ### `POST /api/auth/sign-in/email`
 
@@ -96,6 +102,9 @@ Password-free login over OPAQUE (RFC 9807) with the plaintext password never rea
 - Back-channel logout targets are denied by default after the OIDC guard migration. An operator with database access must explicitly approve the exact HTTPS URI in `oidc_logout_uri_approvals` before client registration or update. Check the endpoint owner and DNS and restrict database access; URI approval is not a network egress firewall and does not prevent DNS rebinding or an approved host changing ownership. Use network-level egress controls where available. If existing clients already have back-channel URIs, the migration intentionally fails until operators inventory them, create `oidc_logout_uri_approvals` and add explicitly reviewed URIs. The Better Auth built-in dispatcher rejects redirects but does not resolve DNS when validating a URI.
 - Better Auth 1.7.18 back-channel delivery failures are emitted as structured Workers Logs events named `oidc.backchannel_logout.failure`, with client ID where available and a sanitized reason. Configure log retention and alerts separately. These logs are not a durable delivery journal, do not record success, and do not retry failed deliveries. The log parser depends on the pinned provider's message format and must be revalidated on upgrade.
 - `POST /api/auth/token` — disabled to avoid exposing a second, unrelated JWT token-issuance path.
+- Extended grants (both fail closed; unset flags 404 every surface and omit the grant types from discovery):
+  - Device flow (`ENABLE_DEVICE_FLOW=true`, RFC 8628; `docs/design/device-flow.md`): `POST /api/auth/oauth2/device/authorize` (public client_id + required scope), `GET /device` human approval page, and `POST /api/auth/oauth2/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`. The device code is stored only hashed; issued tokens bind to the approving session; polling follows RFC §3.5 (`authorization_pending`, `slow_down`).
+  - CIBA poll mode (`ENABLE_CIBA=true`; `docs/design/ciba.md`): `POST /api/auth/oauth2/bc-authorize` (confidential clients, `client_secret_basic`/`_post`, `login_hint` resolves exactly one email or username), `GET /ciba` approval page, and `POST /api/auth/oauth2/token` with `grant_type=urn:openid:params:grant-type:ciba`. The `auth_req_id` is stored only hashed and never surfaces on the user page; clients poll for `authorization_pending`/`slow_down`.
 
 The authorize flow redirects unauthenticated users to `/sign-in` and users needing consent to `/consent`. These are relying-party/browser return locations, not routes implemented by this Worker; a separate client is required before interactive OIDC can complete. No frontend is included. Confirm the selected OIDC profile, PKCE behavior, logout semantics, claims mapping, and real test-RP interoperability before production.
 

@@ -82,6 +82,13 @@ app.get("/", (context) =>
   }),
 );
 
+// Device-flow and CIBA routers claim their /api/auth/... protocol paths
+// BEFORE authRoutes: the audit middleware at src/auth/routes.ts consumes every
+// /api/auth/* request (it proxies unknown paths straight into better-auth's
+// 404), so these must be matched first. Their inner handlers audit and
+// authenticate themselves (src/oauth/*-routes.ts).
+app.route("/", deviceFlowRoutes);
+app.route("/", cibaRoutes);
 app.route("/", authRoutes);
 app.route("/", samlProtocolRoutes);
 app.route("/", wsfedProtocolRoutes);
@@ -112,8 +119,6 @@ app.route("/", inboundScimRoutes);
 // OAuth 1.0a and SSF routers fail closed on every request; they are reachable
 // only when their feature flags are set.
 app.route("/", oauth1Routes);
-app.route("/", deviceFlowRoutes);
-app.route("/", cibaRoutes);
 app.route("/", ssfReceiverRoutes);
 app.route("/", ssfSenderRoutes);
 app.route("/", accountRoutes);

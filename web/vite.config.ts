@@ -17,6 +17,8 @@ const BACKEND_PATHS = [
   '/dev',
   '/_internal',
   '/application',
+  '/device',
+  '/ciba',
 ]
 
 const BACKEND_TARGET = process.env.BACKEND_URL ?? 'http://localhost:8787'

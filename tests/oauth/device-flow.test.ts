@@ -25,10 +25,10 @@ describe("device grant store", () => {
     expect(byUser?.status).toBe("pending");
     expect(byUser?.clientId).toBe("cli-1");
     expect(byUser?.scopes).toEqual(["openid", "email"]);
-    // Typing with spaces or lowercase resolves to the same grant; unknown
-    // codes do not.
+    // Typing with spaces or lowercase resolves to the same grant (the router
+    // normalizes entry before this lookup); unknown codes do not.
     const compact = issued.userCode.replace("-", "");
-    expect(await loadDeviceGrantByUserCode(e, compact.toLowerCase())).not.toBeNull();
+    expect(await loadDeviceGrantByUserCode(e, normalizeUserCode(compact.toLowerCase()))).not.toBeNull();
     expect(await loadDeviceGrantByUserCode(e, "XXXX-XXXX")).toBeNull();
     // The device code is only stored hashed: lookup works through the digest.
     const byCode = await loadDeviceGrantByCode(e, issued.deviceCode);
@@ -60,9 +60,11 @@ describe("device grant store", () => {
     expect(await loadDeviceGrantByUserCode(e, issued.userCode)).toBeNull();
     expect(await loadDeviceGrantByCode(e, issued.deviceCode)).toBeNull();
     await createDeviceGrant(e, "cli-1", ["openid"]);
-    expect(await cleanupDeviceGrants(e, new Date(now))).toBeGreaterThan(0);
+    const removed = await cleanupDeviceGrants(e, new Date(now));
+    expect(removed).toBeGreaterThan(0);
     const remaining = await e.DB.prepare("SELECT COUNT(*) AS c FROM oauth_device_grants").first<{ c: number }>();
-    expect(remaining?.c).toBe(0);
+    // Only the fresh pending grant survives; the expired one is deleted.
+    expect(remaining?.c).toBe(1);
   });
 
   test("poll-interval bookkeeping reports the second fast poll", async () => {

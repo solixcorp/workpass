@@ -246,6 +246,56 @@ Verified in `tests/oauth1-flow.test.ts`, `tests/ssf-flow.test.ts`, and
 `tests/ssf-attribute-events-and-mocks.test.ts` (real router, in-memory DB).
 No external-interop testing has been performed.
 
+## Device Authorization Grant (RFC 8628) (2026-11)
+
+`ENABLE_DEVICE_FLOW=true`; otherwise every `/device` route 404s and the grant
+is absent from discovery. Full flow in `docs/design/device-flow.md`.
+- `POST /api/auth/oauth2/device/authorize` (public): client must be registered
+  with the device_code grant; requires `scope` ⊆ registered scopes; 20 active
+  grants per client max. Returns `device_code` (stored SHA-256-hashed),
+  `user_code` (unambiguous alphabet, `XXXX-XXXX`), `verification_uri`
+  (`/device`), `expires_in` 600, `interval` 5.
+- Human surface: `GET /device` collects **no credentials** — unauthenticated
+  visits get a guidance page (portal sign-in first, then reopen the link);
+  authenticated users review client + scopes and Approve/Deny; single-shot
+  decisions, session-authenticated.
+- Token grant consumes the approval exactly once and binds the issued tokens
+  to the approving session (`sid`) so offboarding and session revocation cover
+  them; banned users answer `invalid_grant` at the token moment.
+- RFC 8628 §3.5 polling discipline (`authorization_pending`, `slow_down`) is
+  enforced from `last_poll_at`; the daily cleanup removes expired/decided rows.
+- Audited at authorize, failed verification, approve/deny, token issuance.
+
+Verified in `tests/oauth/device-flow.test.ts` and
+`tests/oauth/extended-grants.test.ts`, plus a live HTTP end-to-end smoke
+(2026-11-10, local worker): full flow, introspection, single-use re-poll
+lifecycle. The approval surface collects no credentials (see the design doc).
+No external-interop testing (RFC-compliant CLI SDKs) has been performed.
+
+## OpenID CIBA, poll mode (2026-11)
+
+`ENABLE_CIBA=true`; otherwise every `/ciba` route 404s and the grant is absent
+from discovery. Full flow and limits in `docs/design/ciba.md`.
+- `POST /api/auth/oauth2/bc-authorize`: confidential clients only
+  (client_secret_basic/post over the hashed-secret storage), `login_hint`
+  resolves to exactly one email **or** username (ambiguity, unknown and banned
+  identities all answer `unknown_user_id`), `binding_message` sanitized to
+  128 chars, caps: 5 pending per user / 20 per client.
+- Approval: `GET /ciba` lists pending requests (client, binding message,
+  scopes) with a no-JS Approve/Deny form; notification email is best-effort.
+- `auth_req_id` is stored SHA-256-hashed and never leaves the backchannel (the
+  approval page sees only the digest). Token grant: single-use consumption,
+  tokens bound to the approving session, ban re-checked at the token moment,
+  RFC polling discipline (`authorization_pending`, `slow_down`).
+- Poll mode only; `private_key_jwt` at the backchannel endpoint is not
+  implemented (confidential-secret authentication only).
+
+Verified in `tests/oauth/ciba.test.ts` and `tests/oauth/extended-grants.test.ts`,
+plus a live HTTP end-to-end smoke (2026-11-10, local worker): full poll
+lifecycle, page-form approval, confidential token exchange, channel-mismatch
+rejection. Notification email delivery was not exercised (best-effort by
+design). No external-interop testing has been performed.
+
 ## Accounts, custom attributes and claim release (2026-11)
 
 - `ENABLE_ACCOUNT_CLAIMS`, `ENABLE_ATTRIBUTE_CLAIMS`: token claim release

@@ -74,11 +74,6 @@ function securePageHeaders(context: { header: (name: string, value: string) => v
     `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; form-action 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'`);
 }
 
-/** The requesting client as the approval page presents it. */
-function clientSummary(client: { name: string }): string {
-  return escapeHtml(client.name);
-}
-
 function scopeList(scopes: string[]): string {
   return scopes.map((scope) => `<li><code>${escapeHtml(scope)}</code></li>`).join("");
 }
@@ -125,11 +120,17 @@ deviceFlowRoutes.post("/api/auth/oauth2/device/authorize", async (context) => {
   }, 200, FORM_HEADERS);
 });
 
-/** State query for the approval page: pending grant details for one code. */
+/** State query for the approval page: pending grant details for one code.
+ * Session-required: only a signed-in user learns what a code is for, so the
+ * endpoint cannot be probed without a portal session. */
 deviceFlowRoutes.post("/api/device/flow/verify", async (context) => {
   const env = context.env;
   if (!enabled(env)) return context.notFound();
-  const form = (await formBody(context).catch(() => ({}))) as Record<string, unknown>; const userCodeRaw = form.userCodeRaw;
+  const auth = createAuth(env);
+  const session = await auth.api.getSession({ headers: context.req.raw.headers });
+  if (!session) return context.json({ error: "unauthorized" }, 401);
+  const form = (await formBody(context).catch(() => ({}))) as Record<string, unknown>;
+  const userCodeRaw = form.user_code as string | undefined;
   const userCode = typeof userCodeRaw === "string" ? normalizeUserCode(userCodeRaw) : "";
   if (!userCode || userCode.length > 16) {
     await audit(env, { actor_user_id: null, target_user_id: null,
@@ -159,7 +160,8 @@ async function decide(context: Context<{ Bindings: Env }>, approve: boolean): Pr
   const auth = createAuth(env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "unauthorized" }, 401);
-  const form = (await formBody(context).catch(() => ({}))) as Record<string, unknown>; const userCodeRaw = form.userCodeRaw;
+  const form = (await formBody(context).catch(() => ({}))) as Record<string, unknown>;
+  const userCodeRaw = form.user_code as string | undefined;
   const userCode = typeof userCodeRaw === "string" ? normalizeUserCode(userCodeRaw) : "";
   if (!userCode) return context.json({ error: "invalid_request" }, 400);
   const decided = await decideDeviceGrant(env, userCode, approve, session.user.id, session.session.id).catch(() => false);
@@ -174,51 +176,39 @@ async function decide(context: Context<{ Bindings: Env }>, approve: boolean): Pr
 }
 
 deviceFlowRoutes.post("/api/device/flow/approve", async (context) => decide(context, true));
-deviceFlowRoutes.post("/api/device/flow/deny", async (context) => decide(context, false));
 
-/** Minimal sign-in handoff: same credentials POST pattern as sso-login. */
-deviceFlowRoutes.get("/device/login", async (context) => {
-  const env = context.env;
-  if (!enabled(env)) return context.notFound();
-  const userCode = escapeHtml(normalizeUserCode(context.req.query("user_code") ?? "").slice(0, 16));
-  const nonce = nonceContext();
-  securePageHeaders(context, nonce);
-  const body = [
-    "<h1>Device sign in</h1>",
-    "<p>Sign in to continue approving this device.</p>",
-    '<form id="f" autocomplete="off">',
-    '<label for="identifier">Email or username</label>',
-    '<input id="identifier" type="text" required autocapitalize="off"/>',
-    '<label for="password">Password</label>',
-    '<input id="password" type="password" required/>',
-    '<button id="b" type="submit">Continue</button>',
-    '<div id="error" role="alert"></div>',
-    "</form>",
-    `<script nonce="${nonce}">` +
-    `var UC='${userCode}';` +
-    "var f=document.getElementById('f'),b=document.getElementById('b'),e=document.getElementById('error');" +
-    "f.addEventListener('submit',function(ev){ev.preventDefault();b.disabled=true;e.textContent='';" +
-    "var id=document.getElementById('identifier').value.trim(),pw=document.getElementById('password').value;" +
-    "var endpoint=/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(id)?'/api/auth/sign-in/email':'/api/auth/sign-in/username';" +
-    "fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(id.indexOf('@')>=0?{email:id,password:pw}:{username:id,password:pw})}))" +
-    ".then(function(r){if(r.ok){location.href='/device?user_code='+encodeURIComponent(UC);return null;}return r.json().then(function(j){return {status:r.status,json:j};},function(){return {status:r.status,json:{}};});})" +
-    ".then(function(res){if(!res){return;}b.disabled=false;" +
-    "e.textContent=res.status===429?'Too many attempts. Try again shortly.':'Sign-in failed. Check your credentials.';})" +
-    ".catch(function(){b.disabled=false;e.textContent='Sign-in is unavailable. Try again later.';});});" +
-    "</script>",
-  ];
-  return context.body(page(nonce, body.join("\n")), 200, { "Content-Type": "text/html; charset=utf-8" });
-});
-
-/** The human surface: enter the user code, review the request, decide. */
+/** The human surface: enter the user code, review the request, decide.
+ * Unauthenticated visits never collect credentials here: the user signs in
+ * through the organization's normal portal first, then reopens the
+ * verification link. */
 deviceFlowRoutes.get("/device", async (context) => {
   const env = context.env;
   if (!enabled(env)) return context.notFound();
   const auth = createAuth(env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) {
-    const userCode = context.req.query("user_code") ?? "";
-    return context.redirect(`/device/login${userCode ? `?user_code=${encodeURIComponent(userCode)}` : ""}`, 302);
+    const nonceBytes = crypto.getRandomValues(new Uint8Array(16));
+    let nonceBinary = "";
+    for (const byte of nonceBytes) nonceBinary += String.fromCharCode(byte);
+    const nonce = btoa(nonceBinary);
+    context.header("Cache-Control", "no-store");
+    context.header("Referrer-Policy", "no-referrer");
+    context.header("Content-Security-Policy",
+      `default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'`);
+    return context.body([
+      "<!DOCTYPE html>",
+      '<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>',
+      "<title>Device sign in</title>",
+      "<style>",
+      "body{font-family:system-ui,sans-serif;background:#f6f6f8;display:flex;min-height:100vh;align-items:center;justify-content:center}",
+      "main{background:#fff;border:1px solid #e4e4e9;border-radius:10px;padding:32px;width:min(360px,90vw)}",
+      "h1{font-size:17px;margin:0 0 8px}p{font-size:13px;color:#3c3c44}",
+      "</style></head><body><main>",
+      "<h1>Device sign in</h1>",
+      "<p>First sign in through your organization's sign-in portal, then reopen the verification link from your device.</p>",
+      "<p>This page never asks for your password. The code expires in 10 minutes.</p>",
+      "</main></body></html>",
+    ].join("\n"), 403, { "Content-Type": "text/html; charset=utf-8" });
   }
   const prefilled = normalizeUserCode(context.req.query("user_code") ?? "").slice(0, 16);
   const nonce = nonceContext();

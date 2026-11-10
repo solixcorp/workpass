@@ -99,6 +99,13 @@ OAUTH_RESOURCES=[{"identifier":"https://api.example.com/","accessTokenTtl":600},
 # token secrets are sealed with AEAD_SEALING_KEY, which is therefore required
 # when this feature is enabled.
 ENABLE_OAUTH1=false
+# RFC 8628 device authorization grant: opt-in. Registers the device_code grant
+# and the /device approval pages; clients must include the grant in their
+# grantTypes registration. See docs/design/device-flow.md.
+ENABLE_DEVICE_FLOW=false
+# OpenID CIBA poll mode: opt-in. Registers the bc-authorize endpoint (confidential
+# clients, client_secret_basic/post) and the /ciba approval page. See docs/design/ciba.md.
+ENABLE_CIBA=false
 OAUTH1_MANAGEMENT_TOKEN=
 # SSF (Shared Signals Framework). ENABLE_SSF_RECEIVER accepts inbound SETs for
 # operator-pinned streams; ENABLE_SSF_SENDER signs outbound SETs with a
