@@ -106,7 +106,12 @@ bootstrapRoutes.post("/bootstrap", async (context) => {
 
       return {
         response: Response.json(
-          { user: { id: user.id, email: user.email, name: user.name } },
+          {
+            user: { id: user.id, email: user.email, name: user.name },
+            // Deployment interlock: report whether the audit-backup surface the
+            // scheduled exporter depends on is bound in this deployment.
+            checks: { auditBackupR2: context.env.AUDIT_BACKUP !== undefined },
+          },
           { status: 201 },
         ),
         actorUserId: user.id,

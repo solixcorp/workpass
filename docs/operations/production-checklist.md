@@ -12,7 +12,7 @@
   - `SAML_IDP_ENTITY_ID` + `SAML_IDP_SIGNING_CERTIFICATE` + `SAML_IDP_SIGNING_PRIVATE_KEY` — generate with `bun run scripts/generate-saml-key.ts`; keep the private key in the secret store only
 - **Flags in `wrangler.jsonc`/vars:** leave `ENABLE_MIGRATIONS`, `ENABLE_ADMIN_BOOTSTRAP`, `ENABLE_DYNAMIC_CLIENT_REGISTRATION` set to `false` in the committed config; enable them only as temporary deployment-window overrides.
 - **DNS.** The email-domain route for Tailscale WebFinger (`/.well-known/webfinger` on the company domain) is only needed when that integration goes live. Live validation is unblocked as of 2026-11-10: `auth.solixllc.com` is the selected company email domain (QST-1794159222-ane decision) — configure `OIDC_EMAIL_DOMAIN=auth.solixllc.com`, point WebFinger routing for that domain at this Worker, and provision the disposable Tailscale test tenant when the live run is scheduled.
-- **Audit backup.** Create `wrangler r2 bucket create internal-auth-audit-backup` before the deploy that adds the `AUDIT_BACKUP` binding (docs/security/audit-backup.md).
+- **Audit backup.** The `deploy` script provisions first: `predeploy` runs `scripts/ensure-audit-backup-bucket.ts`, which creates the bucket named in `wrangler.jsonc` (`internal-auth-audit-backup`, idempotent) and verifies it (docs/security/audit-backup.md). `POST /api/admin/bootstrap` also reports `checks.auditBackupR2` so the bootstrap window confirms the binding resolved. Manual fallback: `bun run provision:r2`.
 - **Review gates that remain owner decisions:** MFA policy, recovery channel, production SAML/SCIM target applications (pending owner selection; registration APIs are implemented and ready).
 
 ## 2. Deployment window
@@ -235,7 +235,33 @@ registration (`POST/DELETE /api/SSF/… /api/ssf/streams`) and explicit dispatch
 (sealed at rest; public JWKS at `/api/ssf/jwks.json`, kid `ssf-1`). Delivery is
 recorded per attempt with bounded retry (10 attempts, exponential backoff,
 abandoned states never silently dropped; scheduled waves retry `retry` rows).
-Wiring real account-lifecycle events into `dispatchSSFEvent` is a follow-up.
+Custom object attribute changes are wired now: user/group/account attribute
+writes emit `urn:solixcorp:internal-auth:attributes-changed:1.0` (subject
+`{"user": {"user_id": …}}`) to every recipient whose registered `event_types`
+include the URN. Recipients that do not list it are never contacted, so
+registering a recipient without the URN keeps the pre-attribute behavior.
 
-Verified in `tests/oauth1-flow.test.ts` and `tests/ssf-flow.test.ts`
-(real router, in-memory DB). No external-interop testing has been performed.
+Verified in `tests/oauth1-flow.test.ts`, `tests/ssf-flow.test.ts`, and
+`tests/ssf-attribute-events-and-mocks.test.ts` (real router, in-memory DB).
+No external-interop testing has been performed.
+
+## Accounts, custom attributes and claim release (2026-11)
+
+- `ENABLE_ACCOUNT_CLAIMS`, `ENABLE_ATTRIBUTE_CLAIMS`: token claim release
+  flags; both fail closed (tokens are byte-identical when unset). Enable
+  together with per-application `claim-release-policies` rows to narrow kinds
+  per subject; the optional `attributeAllowlist` releases only listed keys.
+- `ENABLE_SCIM_ATTRIBUTE_RELEASE`: outbound SCIM extension push. A deliberate
+  per-target decision (privacy review per receiving system); fail-closed.
+  Attribute edits self-propagate through queued update operations drained by
+  the daily Worker Cron — a cron schedule faster than `17 4 * * *` narrows
+  propagation latency when targets need timelier changes. Interop against a
+  real local HTTP target is verified end to end by `scripts/scim-smoke.ts`
+  (extension on create/update, none on deactivation); the remaining
+  production step is running it against the chosen actual target.
+- `ENABLE_DEV_MOCKS`: MUST be `false` in production. It exposes
+  `/dev/mocks/invitation-email`, whose recorded bodies contain invitation
+  tokens. It exists only for headless local testing.
+- Invitation email delivery: `RESEND_API_KEY` + `INVITATION_EMAIL_FROM` (or
+  `INVITATION_EMAIL_WEBHOOK_URL` / the mock mailbox locally);
+  `account.invitation.email` audit events record every delivery attempt.

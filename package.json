@@ -9,6 +9,8 @@
     "test": "bun test tests/",
     "saml:keygen": "bun run scripts/generate-saml-key.ts",
     "smoke": "bun run scripts/run-all-smokes.ts",
+    "provision:r2": "bun run scripts/ensure-audit-backup-bucket.ts",
+    "predeploy": "bun run scripts/ensure-audit-backup-bucket.ts",
     "build:check": "wrangler deploy --dry-run --outdir .wrangler/deploy",
     "types:worker": "wrangler types --env-interface=WorkerBindings --strict-vars=false",
     "deploy": "wrangler deploy"
