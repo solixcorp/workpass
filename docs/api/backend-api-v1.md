@@ -83,7 +83,7 @@ Password-free login over OPAQUE (RFC 9807) with the plaintext password never rea
 
 - `POST /api/opaque/register/start` — session-authenticated; body `{registrationRequest}`. The credential identity derives from the acting session's own email (never from the request body); returns `registrationResponse`, `credentialIdentifier`, `serverIdentity`.
 - `POST /api/opaque/register/finish` — session-authenticated; body `{record}` (sealed credential); returns `{registered: true}`.
-- `POST /api/opaque/auth/start` — public, rate-limited; body `{user}`. Opens a single-use login transcript with a strict expiry.
+- `POST /api/opaque/auth/start` — public, rate-limited; body `{username, ke1}` where `username` is the account email (trimmed, lowercased). Opens a single-use login transcript with a strict expiry. The response is `{ke2, credentialIdentifier, serverIdentity, transcriptId}` and is shape- and value-identical for enrolled, unenrolled and unknown identifiers: `credentialIdentifier` echoes the normalized identifier the caller sent, and unknown or unenrolled identifiers get a fake record, so only the client-side proof can fail. Clients must bind the identifier they typed, never a server-supplied one.
 - `POST /api/opaque/auth/finish` — verifies the transcript and creates the session. The login runs the shared gate (banned accounts, device risk); a `step_up` risk decision issues the session with `stepUpChallenge: { required: true, methods, expiresAt }` in the response body and SSO issuance stays withheld until a second factor is verified (accounts with no enrollable factor fail closed), matching the password/passkey pipeline.
 
 ## OIDC / OAuth 2.0
@@ -178,9 +178,39 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 
 ## Database initialization
 
-### OIDC sign-in handoff page
+### Sign-in handoff and the WorkPass client
 
-- `GET /sign-in?<signed oauth query>` completes the login half of the OIDC authorization-code flow. The authorization endpoint redirects unauthenticated users here; the page signs the user in and posts the tamper-proofed signed query back to the authorization endpoint to continue (consent or code). A visit without the signed continuation responds 400. Same category as the SAML/WS-Federation handoff pages: a protocol completion page, not a portal dashboard.
+All interactive sign-in happens in the SPA at `/login`. Protocol endpoints that find no session hand the browser over instead of rendering a login page of their own.
+
+- `GET /sign-in?<signed oauth query>` is the `loginPage` of the OIDC provider. It verifies the signature and expiry of the query and answers `302 /login?oq=<signed query>`. A bare or tampered visit responds 400. After sign-in the SPA posts the query to `POST /api/auth/oauth2/continue` (`{postLogin: true, oauth_query}`), which re-verifies it.
+- SAML `/saml/sso`, WS-Federation `/wsfed/signin` and OAuth 1.0a `/api/oauth1/authorize` answer an unauthenticated, otherwise verified request with `302 /auth/login?redirect=<same path and query>`. After sign-in the same URL is requested again and the full chain (signature, one-time claim, policy) runs again. The return target is a same-origin path only.
+- **WorkPass** (`client_id=workpass`) is the fixed first-party OIDC client behind the portal and admin console. `POST /_internal/migrate` creates or refreshes it: public client (no secret), PKCE required, consent skipped, one redirect URI `${AUTH_BASE_URL}/enduser/callback`. Its scopes (`workpass.users.read.self`, `workpass.users.manage.self`, `workpass.internal.enduser.read|manage`, `workpass.enduser.dashboard.read|manage`, `workpass.myAccount.sessions.manage`, `workpass.internal.navigation.enduser.read`) are not advertised in discovery.
+- `GET /auth/login[?redirect=/path]` starts the WorkPass authorization-code + PKCE flow at the public authorization URL `/oauth2/v1/authorize` (alphabetical params, `%20`-separated scopes; the callback is `/enduser/callback`) (state and verifier in a short-lived HttpOnly cookie). `GET /enduser/callback` redeems the code server-side, requires the ID token subject to equal the signed-in session's user, audits `authentication.workpass.login`, clears the cookie and redirects to the (sanitized) return path. Tokens are discarded; the portal itself uses the HttpOnly session cookie.
+
+### Device-risk enforcement safeguards
+
+`fingerprint.mode` = `enforce` answers 409 unless the server key and `FINGERPRINT_PUBLIC_API_KEY` exist and the acting administrator has a recorded device check with an event id from the last 7 days (`fingerprint_risk_decisions`). `observe` is always allowed, so the order is: switch to `observe`, sign out and in again, then switch to `enforce`. If enforcement locks everyone out, set the deployment variable `FINGERPRINT_BREAK_GLASS=true`: device-risk checks are forced off whatever the stored setting says.
+
+### Second-factor policy and enrollment (implemented)
+
+Admin settings (`GET/PUT/DELETE /api/admin/settings`) control it: `mfa.require` (`off`, `admins`, `everyone`), `mfa.allow_totp`, `mfa.allow_otp`, `mfa.allow_hotp`, `mfa.allow_duo` and `login.allow_passkey` (`on`/`off`). A method switched off cannot be enrolled or used: `/api/auth/two-factor/*` and `/api/auth/passkey/*` answer 403, and the IDX identify screen drops the passkey button. A user the policy requires cannot turn two-factor off.
+
+- A required user who already has a factor is challenged at sign-in (OPAQUE finish returns `stepUpChallenge`). One with no factor yet signs in and the portal sends them to `/security` until they enroll. SSO issuance (OIDC, SAML, WS-Fed, SWA) refuses a required user's session until it carries a verification proof.
+- `GET /api/mfa/enrollment` returns the enrollment screen definition: titles, methods with `state` (`enrolled`, `available`, `blocked`, `unconfigured`) and `actions`, hardware tokens, backup-code and disable controls, `passwordRequired` and the labels. The browser enrolls an authenticator app and one-time codes through Better Auth (`/api/auth/two-factor/enable` returns `totpURI` and backup codes; `verify-totp` finishes it). `twoFactor({ allowPasswordless: true })` makes the password optional for accounts that have no server-side password (OPAQUE); accounts that still hold one must send it.
+- `POST /api/mfa/hotp/enroll` + `/verify` add a hardware token; `DELETE /api/mfa/hotp/{id}` removes one (the last factor of a required user is kept).
+- Administrator: `GET /api/admin/users/{id}/mfa`, `POST /api/admin/users/{id}/mfa/hotp` (`{label, secretBase32}`), `DELETE /api/admin/users/{id}/mfa/hotp/{tokenId}`, `POST /api/admin/users/{id}/mfa/reset` (clears every factor, proofs and open challenges). All audited.
+
+### Sign-in state machine (`/idp/idx/*`)
+
+The sign-in screen is defined by the server. Every response carries `stateHandle` (sealed, stateless, 10 minutes), `expiresAt`, `cancel`, `app`, `authentication.request` and `remediation[0]`, whose `ui` object is the complete screen: `title`, `description`, `badge`, `fields[]`, `options[]`, `submit`, `action`, `alternatives[]`, `separator` and `messages`. The client renders it and implements only the protocols named by `action` (`identify`, `select-authenticator`, `opaque-password`, `passkey`).
+
+- `POST /idp/idx/introspect` `{oauthQuery?}` starts a transaction (`remediation: identify`). A valid signed WorkPass query is echoed in `authentication.request`.
+- `POST /idp/idx/identify` `{identifier, stateHandle}` returns `select-authenticator-authenticate` or, with a single method, `challenge-authenticator`, plus `authenticators`, `authenticatorEnrollments`, `currentAuthenticatorEnrollment` and `user.identifier`.
+- `POST /idp/idx/challenge` `{stateHandle, authenticator?: {id}}` picks a method; omitting `authenticator` shows the choice again.
+- `POST /idp/idx/cancel` restarts. `POST /api/v1/internal/device/nonce` returns `{nonce, expiresAt}`.
+- Offered methods are the admin policy `oidc:workpass` (`allowed_methods`) intersected with the account's enrolled passkeys. Unknown identifiers receive a deterministic, plausible answer (password always offered), so account existence is not observable. The password step is OPAQUE (`/api/opaque/*`) and never travels through these endpoints.
+- `GET /api/config/login` is public configuration for the sign-in screen: `{app, fingerprint: {publicKey, region} | null}`. The Fingerprint server key is never exposed.
+- Second-factor challenges (`stepUpChallenge` on login responses, 403 challenge bodies, `GET /api/security/step-up/challenge`) include a `ui` object with the screen copy, offered methods and messages.
 
 ### Usage snapshot
 

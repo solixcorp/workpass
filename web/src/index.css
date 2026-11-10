@@ -1,13 +1,20 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+
+@font-face {
+    font-family: 'SUIT Variable';
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+    src: url('/fonts/SUIT-Variable.woff2') format('woff2-variations');
+}
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: 'SUIT Variable', system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -127,4 +134,37 @@
   html {
     @apply font-sans;
     }
+}
+
+/* The sign-in card body folds to its header's edge and opens again (src/components/auth-shell.tsx).
+   Folding: the content fades first, then the card closes. Opening: the card opens fully, then the content fades in. */
+.fold {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.7s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.fold[data-folded='true'] {
+    grid-template-rows: 0fr;
+    transition-delay: 0.2s;
+}
+.fold > .fold-inner {
+    min-height: 0;
+    overflow: hidden;
+    opacity: 1;
+    transition: opacity 0.35s ease 0.7s;
+}
+.fold[data-folded='true'] > .fold-inner {
+    opacity: 0;
+    transition: opacity 0.2s ease 0s;
+}
+.fold-fade {
+    animation: fold-fade 0.5s ease both;
+}
+@keyframes fold-fade {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .fold, .fold > .fold-inner { transition-duration: 0.01s; transition-delay: 0s; }
+    .fold-fade { animation: none; }
 }
