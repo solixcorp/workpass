@@ -59,9 +59,9 @@ accessPolicyRoutes.put("/app-access-policies", async (context) => {
   const requiredAccount = typeof value.requiredAccount === "string" && value.requiredAccount.length > 0 && value.requiredAccount.length <= 64
     ? value.requiredAccount
     : null;
-  const subjectPattern = /^(saml|oidc|wsfed|swa):[A-Za-z0-9_.:\/-]{1,2000}$/;
+  const subjectPattern = /^(saml|oidc|wsfed|swa|app):[A-Za-z0-9_.:\/-]{1,2000}$/;
   if (!subjectPattern.test(subject)) {
-    return context.json({ error: 'subject must be "saml:<entityId>", "oidc:<clientId>", "wsfed:<realm>" or "swa:<origin>"' }, 400);
+    return context.json({ error: 'subject must be "saml:<entityId>", "oidc:<clientId>", "wsfed:<realm>", "swa:<origin>", "app:<slug>" or "bookmark:<slug>"' }, 400);
   }
   const { upsertAppAccessPolicy } = await import("./policies");
   const policy = {

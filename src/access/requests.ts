@@ -16,7 +16,7 @@ import type { Env } from "../env";
 import { insertAuditEvent } from "../audit/store";
 
 export const REQUEST_RULE_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
-export const SUBJECT_PATTERN = /^(saml|oidc|wsfed|swa):[A-Za-z0-9_.:\/-]{1,2000}$/;
+export const SUBJECT_PATTERN = /^(saml|oidc|wsfed|swa|app):[A-Za-z0-9_.:\/-]{1,2000}$/;
 const MAX_JUSTIFICATION = 2000;
 const MIN_REQUESTED_EXPIRY_SECONDS = 3600;
 const PENDING_EXPIRY_CAP_SECONDS = 7_776_000; // 90d

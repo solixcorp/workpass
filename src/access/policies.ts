@@ -41,7 +41,7 @@ export interface PolicyEvaluation {
   reason: string | null;
 }
 
-const SUBJECT_PATTERN = /^(saml|oidc|wsfed|swa):[A-Za-z0-9_.:\/-]{1,2000}$/;
+const SUBJECT_PATTERN = /^(saml|oidc|wsfed|swa|app):[A-Za-z0-9_.:\/-]{1,2000}$/;
 const METHOD_PATTERN = /^[a-z]+$/;
 const MAX_METHODS = 8;
 const MAX_TTL_SECONDS = 43_200; // 12h
