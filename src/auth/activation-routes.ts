@@ -22,6 +22,7 @@ import { clientIp, rateBucket, storeCredentialRecord, wireToBase64 } from "./opa
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation, insertAuditEvent } from "../audit/store";
 import {
+  activationUrl,
   activeAndBoundPasswordRules,
   consumeActivation,
   findOpenActivation,
@@ -175,10 +176,6 @@ activationRoutes.post("/api/activation/register/finish", async (context) => {
 });
 
 // --- administrator -------------------------------------------------------
-
-function activationUrl(env: Env, token: string): string {
-  return `${new URL(env.AUTH_BASE_URL).origin}/activate#${token}`;
-}
 
 async function deliver(env: Env, email: string, name: string, token: string): Promise<boolean> {
   if (!transactionEmailAvailable(env)) return false;

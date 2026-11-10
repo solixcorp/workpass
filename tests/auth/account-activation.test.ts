@@ -31,6 +31,7 @@ describe("account activation", () => {
   const { db } = createTestD1();
   const env = testEnv(db);
   const jar = new Map<string, string>();
+  let bootstrapBody: any;
 
   async function call(path: string, init?: { method?: string; body?: unknown; cookies?: boolean; keepJar?: boolean; headers?: Record<string, string>; ip?: string }) {
     const headers: Record<string, string> = { ...(init?.headers ?? {}) };
@@ -96,10 +97,12 @@ describe("account activation", () => {
 
   beforeAll(async () => {
     expect((await call("/_internal/migrate", { method: "POST", headers: { Authorization: `Bearer ${env.MIGRATION_TOKEN}` } })).status).toBe(200);
-    expect((await call("/api/admin/bootstrap", {
+    const bootstrap = await call("/api/admin/bootstrap", {
       method: "POST", headers: { Authorization: `Bearer ${env.ADMIN_BOOTSTRAP_TOKEN}` },
       body: { email: "admin@activation.test", name: "Admin", username: "actadmin", password: "ActivationOnly-7d9Kpw9zL2" },
-    })).status).toBe(201);
+    });
+    expect(bootstrap.status).toBe(201);
+    bootstrapBody = await bootstrap.json();
     expect((await call("/api/auth/sign-in/username", {
       method: "POST", body: { username: "actadmin", password: "ActivationOnly-7d9Kpw9zL2" },
     })).status).toBe(200);
@@ -218,5 +221,18 @@ describe("account activation", () => {
     const minutes = (Date.parse(body.activation.expiresAt) - Date.now()) / 60_000;
     expect(minutes).toBeGreaterThan(8);
     expect(minutes).toBeLessThanOrEqual(10.1);
+  });
+
+  // Last on purpose: activating the administrator revokes its sessions, which every earlier test relies on.
+  test("bootstrap returns a link so the first administrator can set an OPAQUE password", async () => {
+    const link = new URL(bootstrapBody.activation.url);
+    expect(link.pathname).toBe("/activate");
+    const token = link.hash.slice(1);
+    expect(await opaqueLogin("admin@activation.test", "First-Admin-Passw0rd-4k2Z")).toBe(401);
+    const { finish } = await activate(token, "admin@activation.test", "First-Admin-Passw0rd-4k2Z", "203.0.113.77");
+    expect(finish!.status).toBe(200);
+    expect(await opaqueLogin("admin@activation.test", "First-Admin-Passw0rd-4k2Z")).toBe(200);
+    // The link is single-use.
+    expect((await activate(token, "admin@activation.test", "Another-Passw0rd-9q1X", "203.0.113.77")).start.status).not.toBe(200);
   });
 });

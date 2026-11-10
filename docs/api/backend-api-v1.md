@@ -178,6 +178,10 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 
 ## Database initialization
 
+### First administrator
+
+`POST /api/admin/bootstrap` also returns `activation: { url, expiresAt }`, a one-time link to `/activate` (valid for the activation TTL). Plaintext sign-in is disabled by default, so this link is the only way for the first administrator to set a password (OPAQUE registration). The `password` in the request body is a placeholder required by the account creation call.
+
 ### Serving the SPA (static assets)
 
 `bun run deploy` builds `web/` and deploys the Worker with `web/dist` as static assets. Asset requests do not invoke the Worker; the paths in `run_worker_first` (`wrangler.jsonc`, kept in sync with `BACKEND_PATHS` in `web/vite.config.ts`) do. Any other path returns `index.html` so client-side routes such as `/security` work on reload.

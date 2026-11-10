@@ -54,7 +54,7 @@ describe("activation link delivery", () => {
       expect(sent).toHaveLength(1);
       expect(sent[0]!.to).toBe("mailed@mail.test");
       expect(String(sent[0]!.text)).toContain("http://127.0.0.1:8787/activate#");
-      const delivered = await db.prepare("SELECT delivered_to, delivered_at FROM account_activation_tokens").first<Record<string, string>>();
+      const delivered = await db.prepare("SELECT delivered_to, delivered_at FROM account_activation_tokens WHERE delivered_to IS NOT NULL").first<Record<string, string>>();
       expect(delivered?.delivered_to).toBe("mailed@mail.test");
       expect(delivered?.delivered_at).toBeTruthy();
 

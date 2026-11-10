@@ -40,6 +40,10 @@ export async function activationTtlMinutes(env: Env): Promise<number> {
   return Number.isInteger(raw) && raw >= 5 && raw <= 4320 ? raw : 1440;
 }
 
+export function activationUrl(env: Env, token: string): string {
+  return `${new URL(env.AUTH_BASE_URL).origin}/activate#${token}`;
+}
+
 /** Issue a link, replacing any still-open link for the same user. */
 export async function issueActivationLink(input: {
   env: Env;

@@ -20,9 +20,20 @@
 
 1. `wrangler deploy` with the temporary override flags (`ENABLE_MIGRATIONS=true`, `ENABLE_ADMIN_BOOTSTRAP=true`).
 2. Create the D1 schema: `POST /_internal/migrate` with the migration bearer token — one call; the response records an `admin.migration.executed` audit event.
-3. Create the first administrator: `POST /api/admin/bootstrap` — one call (409 afterwards by design); requires the configured `Origin`.
+3. Create the first administrator: `POST /api/admin/bootstrap` — one call (409 afterwards by design); requires the configured `Origin`. Password sign-in is closed in production (`ALLOW_PLAINTEXT_PASSWORD_LOGIN` unset), so the new account cannot sign in yet. The response carries `activation.url` (shown once, valid for the activation TTL, 24 h by default): open it in a browser and set the real password, which registers the OPAQUE credential. The `password` sent in the bootstrap body is only a placeholder; use a random value and discard it. Requires `OPAQUE_MASTER_KEY` and `AEAD_SEALING_KEY`. **Use the link before it expires.** If it expires, bootstrap cannot be repeated (409, a user exists) and re-issuing a link needs an administrator session, which does not exist yet. There is no built-in way out: the only recovery is to wipe the D1 database (or delete the `user`, `bootstrap_state` and related rows) and run the window again. Raise the link lifetime in the settings page only after the first sign-in, so run the window while you can finish it in one sitting.
 4. Verify the protocols headlessly against production: copy `scripts/run-all-smokes.ts` invocation with production `--base`, fresh migration/bootstrap disabled (they are one-time), and the operator credential — expect the five smokes to pass with the same assertions as local.
 5. **Close the window:** redeploy with the override flags back to `false`. Confirm `/_internal/migrate` and `/api/admin/bootstrap` return 404.
+
+### 2a. Checks for the web app (`web/`), once, right after the first deploy
+
+`bun run build:check` is the dry run; `bun run deploy` builds `web/` and uploads it as static assets of the same Worker. Run these against the real origin (replace `$ORIGIN`):
+
+1. SPA routes return the app shell and reload cleanly: `curl -s -o /dev/null -w "%{http_code} %{content_type}\n" $ORIGIN/login $ORIGIN/security $ORIGIN/admin/users` expects `200 text/html` for each.
+2. `web/public/_headers` took effect: `curl -sI $ORIGIN/` must show `content-security-policy`, `x-frame-options: DENY` and `strict-transport-security`; `curl -sI $ORIGIN/assets/<hashed file>` must show `cache-control: public, max-age=31536000, immutable`. If they are missing, static headers are not applied and the SPA is served without a CSP.
+3. Backend paths still reach the Worker: `curl -s -o /dev/null -w "%{http_code}\n" $ORIGIN/health` is 200 and `$ORIGIN/auth/login` redirects (302) to `/oauth2/v1/authorize`. Every path in `run_worker_first` must stay in sync with `BACKEND_PATHS` in `web/vite.config.ts`.
+4. Sign in as the first administrator from the activation link above, then open users, settings, policies and the security page; the browser console must show no Content-Security-Policy violation.
+5. Fingerprint, after the keys are set (`FINGERPRINT_SERVER_API_KEY`, `FINGERPRINT_PUBLIC_API_KEY`): keep `fingerprint.mode` at `observe` in the settings page, sign out and in once, and watch the console for CSP violations. The policy allows the loader host `fpnpmcdn.net`, `*.fpjs.io` and `*.workpass.solixllc.com` (the custom subdomain in `FINGERPRINT_ENDPOINT`). If you use another subdomain, change `script-src` and `connect-src` in `web/public/_headers` and redeploy. Switch to `enforce` only after the admin's own device check shows up (the settings page refuses otherwise).
+6. Mail: with the mail provider configured, create a user from the users page with "send email" and check `account.invitation.email` in the audit log. Without a provider the page shows the link once instead.
 
 ## 3. Post-deployment verification (Phase 6's deferred half)
 

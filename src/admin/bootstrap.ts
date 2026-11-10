@@ -3,6 +3,7 @@ import type { Env } from "../env";
 import { createAuth } from "../auth/config";
 import { auditStandaloneOperation } from "../audit/store";
 import { constantTimeTokenMatches } from "../security/tokens";
+import { activationUrl, issueActivationLink } from "../security/account-activation";
 
 export const bootstrapRoutes = new Hono<{ Bindings: Env }>();
 
@@ -104,10 +105,16 @@ bootstrapRoutes.post("/bootstrap", async (context) => {
         throw new Error(`Administrator bootstrap failed: ${creationError instanceof Error ? creationError.message : String(creationError)}`);
       }
 
+      // Password sign-in is closed in production, so the account created above
+      // cannot sign in until it has an OPAQUE credential. A one-time link lets
+      // the first administrator set the password in the browser.
+      const activation = await issueActivationLink({ env: context.env, userId: user.id, actorUserId: user.id });
+
       return {
         response: Response.json(
           {
             user: { id: user.id, email: user.email, name: user.name },
+            activation: { url: activationUrl(context.env, activation.token), expiresAt: activation.expiresAt },
             // Deployment interlock: report whether the audit-backup surface the
             // scheduled exporter depends on is bound in this deployment.
             checks: { auditBackupR2: context.env.AUDIT_BACKUP !== undefined },
