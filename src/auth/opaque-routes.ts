@@ -26,6 +26,7 @@ import { sealString, unsealString } from "../crypto/sealed";
 import { insertAuditEvent } from "../audit/store";
 import { auditStandaloneOperation } from "../audit/store";
 import { evaluateOpaqueLoginGate } from "./opaque-login";
+import { getStepUpChallenge, openStepUpChallenge, usableSecondFactors } from "../security/step-up";
 
 export const opaqueRoutes = new Hono<{ Bindings: Env }>();
 
@@ -364,8 +365,38 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   const auth = await authContext(context.env);
   const session = await auth.createSession(transcriptRow.user_id);
   if (!session) return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 503);
-  const cookie = await sessionCookieHeader(context, auth, session.token);
 
+  // Step-up challenge: the gate allowed the login under a step_up decision
+  // because the account has an enrollable second factor; SSO issuance stays
+  // withheld until it is verified. Opening the row failing is fail-closed.
+  let stepUpAnnotation: { methods: string[]; expiresAt: string | null } | null = null;
+  if (gate.action === "step_up") {
+    const methods = await usableSecondFactors(context.env, transcriptRow.user_id).catch(() => [] as string[]);
+    const opened = methods.length > 0 &&
+      await openStepUpChallenge({
+        env: context.env,
+        sessionToken: session.token,
+        userId: transcriptRow.user_id,
+        reasons: gate.reasons.slice(0, 5),
+        requestPath: "/api/opaque/auth/finish",
+      }).catch(() => false);
+    if (!opened) {
+      await context.env.DB.prepare('DELETE FROM "session" WHERE token = ?').bind(session.token).run().catch(() => {});
+      await insertAuditEvent(context.env, {
+        id: crypto.randomUUID(),
+        actor_user_id: transcriptRow.user_id,
+        target_user_id: transcriptRow.user_id,
+        event_type: "authentication.opaque.login",
+        outcome: "failure",
+        request_path: "/api/opaque/auth/finish",
+      }).catch(() => {});
+      return opaqueBadRequest(context, "The OPAQUE authentication could not be processed", 503);
+    }
+    const challenge = await getStepUpChallenge(context.env, session.token);
+    stepUpAnnotation = { methods, expiresAt: challenge.expiresAt };
+  }
+
+  const cookie = await sessionCookieHeader(context, auth, session.token);
   await insertAuditEvent(context.env, {
     id: crypto.randomUUID(),
     actor_user_id: transcriptRow.user_id,
@@ -379,5 +410,9 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
     "Content-Type": "application/json",
     "Set-Cookie": cookie,
   });
-  return new Response(JSON.stringify({ token: session.token }), { status: 200, headers });
+  const responseBody: Record<string, unknown> = { token: session.token };
+  if (stepUpAnnotation) {
+    responseBody.stepUpChallenge = { required: true, ...stepUpAnnotation };
+  }
+  return new Response(JSON.stringify(responseBody), { status: 200, headers });
 });

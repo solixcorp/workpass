@@ -7,9 +7,11 @@
  *    denied — enrollment keys must never resurrect a disabled identity.
  * 2. Device risk: with FINGERPRINT_MODE enabled, the fingerprint event the
  *    client submitted at /auth/start is verified, claimed (single use) and
- *    risk-evaluated here. `enforce` withholds the session on deny/step_up
- *    and on any missing or unverifiable event; `observe` records outcomes
- *    best-effort and never blocks baseline authentication.
+ *    risk-evaluated here. `enforce` withholds the session on deny and on any
+ *    missing or unverifiable event; a `step_up` decision issues the session
+ *    with a step-up challenge when the account has an enrollable second
+ *    factor (src/security/step-up.ts) and fails closed otherwise; `observe`
+ *    records outcomes best-effort and never blocks baseline authentication.
  *
  * Decisions are recorded through the shared risk-decision writer so the
  * OPAQUE surface audits exactly like the other login flows.
@@ -26,6 +28,7 @@ import {
   verifyFingerprintEvent,
 } from "../security/fingerprint";
 import { writeRiskDecision } from "../security/risk-auth-middleware";
+import { usableSecondFactors } from "../security/step-up";
 
 export interface OpaqueLoginGateInput {
   /** The acting user, when the login identified one. */
@@ -147,7 +150,27 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
   );
 
   if (mode === "enforce" && (risk.action !== "allow" || reasons.includes("observation_unavailable"))) {
-    return { allowed: false, action: risk.action === "deny" ? "deny" : "step_up", reasons: [...risk.reasons, ...reasons] };
+    if (risk.action === "deny" || !input.userId) {
+      return { allowed: false, action: "deny", reasons: [...risk.reasons, ...reasons] };
+    }
+    // Step-up with the challenge flow: the session issues and SSO issuance
+    // stays withheld until a second factor is verified — when the account can
+    // complete one. Without any factor this stays fail closed (denied).
+    return await stepUpOutcome(env, input.userId, [...risk.reasons, ...reasons]);
   }
   return { allowed: true, action: risk.action, reasons: [...risk.reasons, ...reasons] };
+}
+
+/**
+ * The step-up branch of the gate: challenge-eligible when the account has a
+ * usable second factor, otherwise an outright denial. The caller opens the
+ * challenge row against the session it is about to issue and annotates the
+ * response with `stepUpChallenge` (see src/auth/opaque-routes.ts).
+ */
+export async function stepUpOutcome(env: Env, userId: string, reasons: string[]): Promise<OpaqueLoginDecision> {
+  const methods = await usableSecondFactors(env, userId).catch(() => [] as string[]);
+  if (methods.length === 0) {
+    return { allowed: false, action: "deny", reasons: [...reasons, "no_second_factor"] };
+  }
+  return { allowed: true, action: "step_up", reasons };
 }
