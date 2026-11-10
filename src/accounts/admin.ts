@@ -10,6 +10,7 @@ import type { Context } from "hono";
 import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
+import { transactionEmailAvailable, sendTransactionEmail } from "../mail/send";
 import {
   ACCOUNT_NAME_PATTERN,
   addAccountMember,
@@ -23,6 +24,7 @@ import {
   listAccountInvitations,
   listAccountMembers,
   listAccounts,
+  markAccountInvitationDelivered,
   removeAccountMember,
   revokeAccountInvitation,
   INVITATION_DEFAULT_TTL_DAYS,
@@ -170,6 +172,81 @@ accountAdminRoutes.patch("/accounts/:id", async (context) => {
   });
 });
 
+accountAdminRoutes.post("/accounts/:id/invitations/:token/deliver", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const accountId = context.req.param("id");
+  const token = context.req.param("token");
+  if (!accountId || accountId.length > ID_LIMIT || !token || token.length === 0 || token.length > 256) {
+    return context.json({ error: "Invitation not found" }, 404);
+  }
+  let body: unknown;
+  try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON body" }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid body" }, 400);
+  const { to } = body as Record<string, unknown>;
+  if (typeof to !== "string" || to.length === 0 || to.length > 256 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) {
+    return badRequest(context, "to must be an email address");
+  }
+  if (!transactionEmailAvailable(context.env)) {
+    return context.json({ error: "Transactional email is not configured" }, 503);
+  }
+  const recipient = to.trim();
+  return auditStandaloneOperation(context.env, "account.invitation.email", context.req.path, async () => {
+    const invitation = await getAccountInvitation(context.env, token);
+    if (!invitation || invitation.accountId !== accountId || invitation.consumedAt !== null) {
+      return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
+    }
+    if (invitation.expiresAt <= new Date().toISOString()) {
+      return { response: Response.json({ error: "The invitation is expired" }, { status: 409 }), actorUserId: actor.userId };
+    }
+    const account = await getAccount(context.env, accountId);
+    if (!account) {
+      return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
+    }
+    const baseUrl = new URL(context.env.AUTH_BASE_URL).origin;
+    try {
+      await sendTransactionEmail(context.env, {
+        to: recipient,
+        subject: `You are invited to join ${account.name}`,
+        text: [
+          `You have been invited to join the account "${account.name}".`,
+          "",
+          "To accept, sign in at the identity provider and redeem this invitation code:",
+          "",
+          invitation.token,
+          "",
+          `Membership role: ${invitation.role}`,
+          `The invitation expires at ${invitation.expiresAt}.`,
+        ].join("\n"),
+      });
+    } catch (error) {
+      console.error("Invitation email delivery failed", {
+        name: error instanceof Error ? error.name : "UnknownError",
+      });
+      return {
+        response: Response.json({ error: "Invitation email delivery failed" }, { status: 502 }),
+        actorUserId: actor.userId,
+        targetUserId: accountId,
+      };
+    }
+    await markAccountInvitationDelivered(context.env, token, recipient);
+    const updated = await getAccountInvitation(context.env, token);
+    return {
+      response: Response.json({
+        invitation: updated && {
+          tokenPrefix: `${invitation.token.slice(0, 6)}…`,
+          accountId: updated.accountId,
+          deliverTo: updated.deliverTo,
+          deliveredAt: updated.deliveredAt,
+        },
+      }),
+      actorUserId: actor.userId,
+      targetUserId: accountId,
+    };
+  });
+});
+
 accountAdminRoutes.patch("/accounts/:id/members/:userId", async (context) => {
   const actor = await requireAdministrator(context);
   if (actor instanceof Response) return actor;
@@ -264,6 +341,8 @@ accountAdminRoutes.get("/accounts/:id/invitations", async (context) => {
       createdAt: invitation.createdAt,
       expiresAt: invitation.expiresAt,
       status: invitation.consumedAt !== null ? "consumed" : invitation.expiresAt <= now ? "expired" : "pending",
+      deliverTo: invitation.deliverTo,
+      deliveredAt: invitation.deliveredAt,
     })),
   });
 });

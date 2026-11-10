@@ -33,6 +33,11 @@ ENABLE_SCIM_PROVISIONING=false
 # as the urn:solixcorp:scim:1.0:CustomAttributes extension. Deliberate
 # operator decision per target (privacy review); fail-closed when unset.
 ENABLE_SCIM_ATTRIBUTE_RELEASE=false
+# Invitation emails: production delivery through Resend (RESEND_API_KEY +
+# INVITATION_EMAIL_FROM) or a dev/mock webhook that records the message
+# locally at any receiver URL you run (headless testing).
+INVITATION_EMAIL_FROM=
+# INVITATION_EMAIL_WEBHOOK_URL=http://127.0.0.1:9999/invitations
 # Dev-only: permits an http://127.0.0.1|localhost SCIM target for local transport
 # verification. Never enable in production; production targets stay https-only.
 # Sealed storage: sensitive material at rest (e.g. hardware OTP token

@@ -94,8 +94,19 @@ export interface Env extends Partial<WorkerBindings> {
   DUO_IKEY?: string;
   DUO_SKEY?: string;
   DUO_API_HOSTNAME?: string;
+  /** Sender address for account invitation emails (falls back to MFA_OTP_EMAIL_FROM). */
+  INVITATION_EMAIL_FROM?: string;
+  /** Dev/mock webhook that records invitation emails instead of delivering them (headless local testing). */
+  INVITATION_EMAIL_WEBHOOK_URL?: string;
   /** Access requests (docs/design/access-requests.md): best-effort reviewer notification webhook. */
   ACCESS_REQUEST_WEBHOOK_URL?: string;
+  /**
+   * Release the acting user's custom attributes to outbound SCIM targets as
+   * the `urn:solixcorp:scim:1.0:CustomAttributes` extension on create/patch
+   * payloads. Deliberate operator decision (privacy review per target);
+   * fail-closed when unset.
+   */
+  ENABLE_SCIM_ATTRIBUTE_RELEASE?: string;
   /** Independent audit backup (docs/security/audit-backup.md): dated JSONL export target. */
   AUDIT_BACKUP?: R2Bucket;
 }

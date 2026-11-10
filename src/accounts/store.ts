@@ -295,6 +295,9 @@ export interface AccountInvitationRow {
   createdAt: string;
   expiresAt: string;
   consumedAt: string | null;
+  /** Operator-decided delivery target and last-attempt time (not auto-sent). */
+  deliverTo: string | null;
+  deliveredAt: string | null;
 }
 
 const INVITATION_TOKEN_BYTES = 32;
@@ -318,6 +321,8 @@ export async function createAccountInvitation(
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + Math.min(input.ttlDays, INVITATION_MAX_TTL_DAYS) * 24 * 60 * 60 * 1000).toISOString(),
     consumedAt: null,
+    deliverTo: null,
+    deliveredAt: null,
   };
   await env.DB.prepare(
     `INSERT INTO account_invitations (token, account_id, role, created_by, created_at, expires_at, consumed_at)
@@ -332,7 +337,8 @@ export async function getAccountInvitation(
 ): Promise<AccountInvitationRow | null> {
   const row = await env.DB.prepare(
     `SELECT token, account_id AS accountId, role, created_by AS createdBy,
-            created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt
+            created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt,
+            deliver_to AS deliverTo, delivered_at AS deliveredAt
      FROM account_invitations WHERE token = ?`,
   ).bind(token).first<AccountInvitationRow>();
   return row ?? null;
@@ -344,11 +350,24 @@ export async function listAccountInvitations(
 ): Promise<AccountInvitationRow[]> {
   const result = await env.DB.prepare(
     `SELECT token, account_id AS accountId, role, created_by AS createdBy,
-            created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt
+            created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt,
+            deliver_to AS deliverTo, delivered_at AS deliveredAt
      FROM account_invitations WHERE account_id = ?
      ORDER BY created_at ASC, token ASC LIMIT 200`,
   ).bind(accountId).all<AccountInvitationRow>();
   return result.results;
+}
+
+/** Record the delivery recipient and time after a successful send attempt. */
+export async function markAccountInvitationDelivered(
+  env: Env,
+  token: string,
+  deliverTo: string,
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    "UPDATE account_invitations SET deliver_to = ?, delivered_at = ? WHERE token = ?",
+  ).bind(deliverTo, new Date().toISOString(), token).run();
+  return result.meta.changes === 1;
 }
 
 export async function revokeAccountInvitation(env: Env, token: string): Promise<boolean> {

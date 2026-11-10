@@ -413,6 +413,18 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS account_invitations_expiry_idx ON account_invitations (expires_at)",
   ).run();
+  // Account invitations: explicit operator-decided email delivery, tracked on
+  // the row (in-place columns for deployed databases).
+  try {
+    await env.DB.prepare("ALTER TABLE account_invitations ADD COLUMN deliver_to TEXT").run();
+  } catch {
+    // Column already present.
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE account_invitations ADD COLUMN delivered_at TEXT").run();
+  } catch {
+    // Column already present.
+  }
   // Custom object attributes: one flat JSON object per (object_type, object_id)
   // (see docs/design/object-attributes.md).
   await env.DB.prepare(
