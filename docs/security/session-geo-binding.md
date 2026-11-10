@@ -32,8 +32,8 @@ login-time GeoIP history checks in [device risk policy](device-risk-and-trust.md
 - The envelope records which strictness levels were configured *at binding time*, so a later
   configuration change can never turn existing sessions into instant violations.
 - Evaluation happens on interactive identity surfaces only (`/api/auth/get-session`,
-  `/api/auth/oauth2/authorize`), consistent with the codebase policy of attaching risk to identity
-  boundaries rather than every request.
+  `/api/auth/oauth2/authorize`, `/api/auth/oauth2/consent`), consistent with the codebase policy
+  of attaching risk to identity boundaries rather than every request.
 - A violation in `enforce` deletes the session row (immediate sign-out everywhere for that cookie)
   and writes the audit event `authentication.session.location_violation`; observe writes
   `authentication.session.location_drift.observe`. Session termination is the durable protection;
