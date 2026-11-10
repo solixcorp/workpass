@@ -26,6 +26,12 @@ export interface AppAccessPolicy {
   /** Applications with this flag require the user to have a second factor. */
   requireMfa: boolean;
   groups: string[];
+  /**
+   * Per-account authorization dimension: when set, the user must hold
+   * membership in this account (either member role) on top of the group
+   * gate. null keeps the policy platform-wide.
+   */
+  requiredAccount: string | null;
 }
 
 export interface PolicyEvaluation {
@@ -58,20 +64,29 @@ export function validateAppAccessPolicy(policy: AppAccessPolicy): void {
   if (!Number.isInteger(policy.bypassWindowSeconds) || policy.bypassWindowSeconds < 0 || policy.bypassWindowSeconds > 86_400) {
     throw new Error("Bypass window must be between 0 and 24h");
   }
+  if (policy.requiredAccount !== null && !/^[0-9a-zA-Z_-]{1,64}$/.test(policy.requiredAccount)) {
+    throw new Error("Invalid required account id");
+  }
 }
 
 export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, updatedBy: string): Promise<void> {
   validateAppAccessPolicy(policy);
+  if (policy.requiredAccount !== null) {
+    const account = await env.DB.prepare("SELECT id FROM accounts WHERE id = ?")
+      .bind(policy.requiredAccount).first();
+    if (!account) throw new Error("Required account does not exist");
+  }
   await env.DB.prepare(
     `INSERT INTO app_access_policies
-       (subject, allowed_methods, session_ttl_seconds, bypass_window_seconds, enforcement_mode, require_mfa, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       (subject, allowed_methods, session_ttl_seconds, bypass_window_seconds, enforcement_mode, require_mfa, required_account, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (subject) DO UPDATE SET
        allowed_methods = excluded.allowed_methods,
        session_ttl_seconds = excluded.session_ttl_seconds,
        bypass_window_seconds = excluded.bypass_window_seconds,
        enforcement_mode = excluded.enforcement_mode,
        require_mfa = excluded.require_mfa,
+       required_account = excluded.required_account,
        updated_by = excluded.updated_by,
        updated_at = excluded.updated_at`,
   )
@@ -82,6 +97,7 @@ export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, u
       policy.bypassWindowSeconds,
       policy.enforcementMode,
       policy.requireMfa ? 1 : 0,
+      policy.requiredAccount,
       updatedBy,
       new Date().toISOString(),
     )
@@ -106,7 +122,8 @@ export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, u
 export async function loadAppAccessPolicy(env: Env, subject: string): Promise<AppAccessPolicy | null> {
   const row = await env.DB.prepare(
     `SELECT subject, allowed_methods AS allowedMethods, session_ttl_seconds AS sessionTtlSeconds,
-            bypass_window_seconds AS bypassWindowSeconds, enforcement_mode AS enforcementMode, require_mfa AS requireMfa
+            bypass_window_seconds AS bypassWindowSeconds, enforcement_mode AS enforcementMode, require_mfa AS requireMfa,
+            required_account AS requiredAccount
      FROM app_access_policies WHERE subject = ?`,
   ).bind(subject).first<{
     subject: string;
@@ -115,6 +132,7 @@ export async function loadAppAccessPolicy(env: Env, subject: string): Promise<Ap
     bypassWindowSeconds: number;
     enforcementMode: "enforce" | "observe";
     requireMfa: number;
+    requiredAccount: string | null;
   }>();
   if (!row) return null;
   const groups = await env.DB.prepare(
@@ -127,6 +145,7 @@ export async function loadAppAccessPolicy(env: Env, subject: string): Promise<Ap
     bypassWindowSeconds: row.bypassWindowSeconds,
     enforcementMode: row.enforcementMode as "enforce" | "observe",
     requireMfa: row.requireMfa === 1,
+    requiredAccount: row.requiredAccount,
     groups: groups.results.map((r) => r.group_id),
   };
 }
@@ -144,8 +163,28 @@ export async function userFulfillsGroupGate(env: Env, policy: AppAccessPolicy, u
   return (memberships?.count ?? 0) > 0;
 }
 
+/** The account gate: membership in the required account (any member role). */
+export async function userFulfillsAccountGate(env: Env, policy: AppAccessPolicy, userId: string): Promise<boolean> {
+  // A null/missing field keeps the policy platform-wide, so policy objects
+  // predating this column keep their behavior.
+  if (!policy.requiredAccount) return true;
+  if (!userId) return false;
+  const membership = await env.DB.prepare(
+    "SELECT 1 FROM account_members WHERE account_id = ? AND user_id = ? LIMIT 1",
+  ).bind(policy.requiredAccount, userId).first();
+  return membership !== null;
+}
+
 /** Evaluate a policy for a user; returns whether the access may proceed. */
 export async function evaluateAppAccess(env: Env, policy: AppAccessPolicy, userId: string): Promise<PolicyEvaluation> {
+  // The account gate is a membership requirement, not a group grant, so a
+  // temporal grant bypasses only the group side, never this gate.
+  if (!(await userFulfillsAccountGate(env, policy, userId))) {
+    if (policy.enforcementMode === "observe") {
+      return { allowed: true, observedOnly: true, reason: "account gate would reject (observe mode)" };
+    }
+    return { allowed: false, observedOnly: false, reason: "the user is not a member of the required account" };
+  }
   const allowed = await userFulfillsGroupGate(env, policy, userId);
   if (allowed) return { allowed: true, observedOnly: false, reason: null };
   // An approved, unexpired access request satisfies the group gate; the grant

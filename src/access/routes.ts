@@ -17,9 +17,9 @@ accessPolicyRoutes.get("/app-access-policies", async (context) => {
   const rows = await context.env.DB.prepare(
     `SELECT subject, allowed_methods AS allowedMethods, session_ttl_seconds AS sessionTtlSeconds,
             bypass_window_seconds AS bypassWindowSeconds, enforcement_mode AS enforcementMode,
-            require_mfa AS requireMfaRaw, updated_at AS updatedAt
+            require_mfa AS requireMfaRaw, required_account AS requiredAccount, updated_at AS updatedAt
      FROM app_access_policies ORDER BY subject ASC LIMIT 200`,
-  ).all<{ subject: string; allowedMethods: string; sessionTtlSeconds: number | null; bypassWindowSeconds: number; enforcementMode: string; updatedAt: string }>();
+  ).all<{ subject: string; allowedMethods: string; sessionTtlSeconds: number | null; bypassWindowSeconds: number; enforcementMode: string; updatedAt: string; requiredAccount: string | null }>();
   const subjects = rows.results.map((row) => row.subject);
   const groupIdsBySubject = new Map<string, string[]>();
   for (const subject of subjects) groupIdsBySubject.set(subject, []);
@@ -56,6 +56,9 @@ accessPolicyRoutes.put("/app-access-policies", async (context) => {
   const enforcementMode = value.enforcementMode === "observe" ? "observe" : "enforce";
   const requireMfa = value.requireMfa === true;
   const groups = Array.isArray(value.groups) ? value.groups.filter((g): g is string => typeof g === "string" && g.length <= 128) : [];
+  const requiredAccount = typeof value.requiredAccount === "string" && value.requiredAccount.length > 0 && value.requiredAccount.length <= 64
+    ? value.requiredAccount
+    : null;
   const subjectPattern = /^(saml|oidc|wsfed|swa):[A-Za-z0-9_.:\/-]{1,2000}$/;
   if (!subjectPattern.test(subject)) {
     return context.json({ error: 'subject must be "saml:<entityId>", "oidc:<clientId>", "wsfed:<realm>" or "swa:<origin>"' }, 400);
@@ -69,6 +72,7 @@ accessPolicyRoutes.put("/app-access-policies", async (context) => {
     enforcementMode: enforcementMode as "enforce" | "observe",
     requireMfa,
     groups,
+    requiredAccount,
   };
   try {
     await upsertAppAccessPolicy(context.env, policy, admin.userId);

@@ -377,6 +377,14 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS account_session_contexts_session_idx ON account_session_contexts (session_id)",
   ).run();
+  // Per-account authorization dimension: an access policy may additionally
+  // require the user to hold membership in one account (null = no account
+  // gate, the platform-wide default). Column added in place.
+  try {
+    await env.DB.prepare("ALTER TABLE app_access_policies ADD COLUMN required_account TEXT").run();
+  } catch {
+    // Column already present.
+  }
   // Per-application claim release policy: when a row exists for a subject it
   // gates which released claim kinds reach that application (an AND with the
   // global operator flags; no row keeps flag-only behavior).
