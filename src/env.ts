@@ -91,6 +91,43 @@ export interface Env extends Partial<WorkerBindings> {
   OPAQUE_MASTER_KEY?: string;
   RESEND_API_KEY?: string;
   MFA_OTP_EMAIL_FROM?: string;
+  /**
+   * Mail provider configuration (docs/design/email-providers.md). The active
+   * provider is selected by MAIL_PROVIDER (smtp|resend|cloudflare|maileroo|
+   * ses); when unset, a legacy deployment with RESEND_API_KEY keeps using
+   * Resend. Sender identity: MAIL_FROM/MAIL_FROM_NAME are the generic
+   * defaults, below the per-purpose overrides (INVITATION_EMAIL_FROM,
+   * MFA_OTP_EMAIL_FROM).
+   */
+  MAIL_PROVIDER?: string;
+  MAIL_FROM?: string;
+  MAIL_FROM_NAME?: string;
+  MAIL_REPLY_TO?: string;
+  /** Resend: MAIL_RESEND_API_KEY supersedes the legacy RESEND_API_KEY spelling. */
+  MAIL_RESEND_API_KEY?: string;
+  /** Cloudflare Email Sending (REST API): account ID and an API token with Email Sending permission. */
+  MAIL_CLOUDFLARE_ACCOUNT_ID?: string;
+  MAIL_CLOUDFLARE_API_TOKEN?: string;
+  /** Maileroo basic email API: a domain sending key. */
+  MAIL_MAILEROO_API_KEY?: string;
+  /** Standard AWS credential fallbacks for SES signing. */
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
+  /** Amazon SES v2: region + HMAC credentials (standard AWS_ACCESS_KEY_* fallbacks accepted). */
+  MAIL_SES_REGION?: string;
+  MAIL_SES_ACCESS_KEY_ID?: string;
+  MAIL_SES_SECRET_ACCESS_KEY?: string;
+  /** Custom SES endpoint (regional FIPS or a local mock); defaults to email.<region>.amazonaws.com. */
+  MAIL_SES_ENDPOINT?: string;
+  /** Generic SMTP relay: implicit TLS on 465, STARTTLS on 587 (per-port defaults). */
+  MAIL_SMTP_HOST?: string;
+  MAIL_SMTP_PORT?: string;
+  /** "true" forces implicit TLS; "false" (with STARTTLS unset) opts into plaintext deliberately. */
+  MAIL_SMTP_SECURE?: string;
+  /** "true" forces the STARTTLS upgrade path regardless of port. */
+  MAIL_SMTP_STARTTLS?: string;
+  MAIL_SMTP_USERNAME?: string;
+  MAIL_SMTP_PASSWORD?: string;
   DUO_IKEY?: string;
   DUO_SKEY?: string;
   DUO_API_HOSTNAME?: string;

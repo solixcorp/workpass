@@ -74,7 +74,7 @@ describe("invitation email delivery", () => {
     await ensureApplicationTables(env);
     await expect(
       sendTransactionEmail(env, { to: "x@example.test", subject: "s", text: "t" }),
-    ).rejects.toThrow("Transactional email is not configured");
+    ).rejects.toThrow("Email delivery is not configured");
   });
 
   test("the webhook channel records the message instead of delivering", async () => {
