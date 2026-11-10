@@ -47,6 +47,25 @@ mutating requests (`requireAdministrator`). Routes live under `/api/security`:
    The user signs in fresh and re-enrolls trusted devices; passkeys and TOTP still work.
 4. The unlock is audited as `identity.user.lockdown_lifted`.
 
+### Recovery links (admin-issued, no email)
+
+There is no email infrastructure in this deployment, so the recovery path is a one-time token the
+administrator delivers out of band (the same role as authentik's "Create recovery link"):
+
+- `POST /api/security/account-recovery` (admin) — body `{ userId, ttlMinutes? }`; issuance
+  requires an **active lockdown** and returns `{ recoveryToken, expiresAt, redemption }`.
+  Default validity is 60 minutes (clamped 5–1440).
+- `POST /api/security/account-recovery/redeem` (unauthenticated, single use, per-IP rate limit) —
+  body `{ token, new_password }` (8–128 chars). Requires the lockdown recorded at issuance to
+  still be active; resets the credential password, clears the ban, lifts that lockdown
+  (`lifted_by = 'recovery_link'`), and re-revokes sessions/trusted devices for safety. Audited as
+  `identity.user.recovery_link.issued` and `identity.user.account_recovery`.
+- Only the HMAC-SHA256 digest of the 256-bit token is stored; possession of a live token is
+  treated as identity, which is why the window is deliberately short and consumption is atomic.
+  Deliver the token through a private channel and treat a leaked link like a credential.
+- After recovery the user signs in through the normal gates (device risk, step-up challenge,
+  MFA when enrolled); trusted devices must be re-enrolled.
+
 ## Design notes
 
 - The destructive side effects run in one D1 batch, each guarded by an SQL

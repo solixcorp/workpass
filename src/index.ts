@@ -10,6 +10,8 @@ import { trustedDeviceRoutes } from "./security/trusted-device-routes";
 import { lockdownRoutes } from "./security/lockdown-routes";
 import { stepUpRoutes } from "./security/step-up-routes";
 import { cleanupStepUpChallenges } from "./security/step-up";
+import { recoveryRoutes } from "./security/account-recovery-routes";
+import { cleanupRecoveryTokens } from "./security/account-recovery";
 import { cleanupFingerprintData } from "./security/fingerprint-retention";
 import { cleanupSessionNetworkBindings } from "./security/session-geo-binding";
 import { cleanupSamlRequestClaims } from "./saml/request-claims";
@@ -79,6 +81,9 @@ app.route("/api/security", lockdownRoutes);
 // Step-up challenge status for the acting session (second factor required
 // after a risky decision); see src/security/step-up.ts.
 app.route("/api/security", stepUpRoutes);
+// Admin-issued one-time recovery links and redemption for locked accounts;
+// see src/security/account-recovery.ts.
+app.route("/api/security", recoveryRoutes);
 app.route("/_internal", migrationRoutes);
 app.route("/", inboundScimRoutes);
 // OAuth 1.0a and SSF routers fail closed on every request; they are reachable
@@ -100,6 +105,7 @@ async function scheduled(
     await cleanupFingerprintData(env, new Date(controller.scheduledTime));
     await cleanupSessionNetworkBindings(env, new Date(controller.scheduledTime));
     await cleanupStepUpChallenges(env, new Date(controller.scheduledTime));
+    await cleanupRecoveryTokens(env, new Date(controller.scheduledTime));
     await cleanupSamlRequestClaims(env, new Date(controller.scheduledTime));
     await cleanupSwaGrants(env, new Date(controller.scheduledTime));
     await cleanupSessionMfaProofs(env, new Date(controller.scheduledTime));

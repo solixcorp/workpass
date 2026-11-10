@@ -580,4 +580,22 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       updated_at TEXT NOT NULL
     )`,
   ).run();
+  // Admin-issued one-time account recovery tokens (docs/security/account-lockdown.md):
+  // only the HMAC digest of the token is stored; redemption resets the password
+  // and lifts the active lockdown in one statement batch.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS account_recovery_tokens (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      token_digest TEXT NOT NULL UNIQUE,
+      lockdown_id TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS account_recovery_tokens_expiry_idx ON account_recovery_tokens (expires_at)",
+  ).run();
 }
