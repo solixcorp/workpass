@@ -118,7 +118,7 @@ export function AccountsAdminPage() {
                 <TableHead>이름</TableHead>
                 <TableHead>설명</TableHead>
                 <TableHead>만든 날짜</TableHead>
-                <TableHead className="w-32" />
+                <TableHead className="w-32 sticky right-0 bg-background" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -127,7 +127,7 @@ export function AccountsAdminPage() {
                   <TableCell className="font-medium">{account.name}</TableCell>
                   <TableCell className="max-w-xs truncate text-muted-foreground">{account.description || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(account.createdAt)}</TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="whitespace-nowrap sticky right-0 bg-background">
                     <Button variant="outline" size="sm" onClick={() => setOpenId(account.id)}>
                       관리
                     </Button>

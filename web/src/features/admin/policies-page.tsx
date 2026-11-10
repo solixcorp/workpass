@@ -99,7 +99,7 @@ function PolicyList() {
                 <TableHead>유형</TableHead>
                 <TableHead>내용</TableHead>
                 <TableHead>사용</TableHead>
-                <TableHead className="w-24" />
+                <TableHead className="w-24 sticky right-0 bg-background" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -123,7 +123,7 @@ function PolicyList() {
                       onCheckedChange={(enabled) => toggle.mutate({ policy, enabled })}
                     />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="whitespace-nowrap sticky right-0 bg-background">
                     <Button variant="outline" size="sm" onClick={() => setDialog({ policy })}>
                       편집
                     </Button>

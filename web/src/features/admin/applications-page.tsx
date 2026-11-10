@@ -136,7 +136,7 @@ export function ApplicationsPage() {
                 <TableHead>그룹</TableHead>
                 <TableHead>등록일</TableHead>
                 <TableHead>사용</TableHead>
-                <TableHead className="w-12" />
+                <TableHead className="w-12 sticky right-0 bg-background" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -167,7 +167,7 @@ export function ApplicationsPage() {
                       onCheckedChange={(enabled) => toggle.mutate({ slug: application.slug, enabled })}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="whitespace-nowrap sticky right-0 bg-background">
                     <Button
                       variant="ghost"
                       size="icon-sm"

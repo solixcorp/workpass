@@ -109,7 +109,7 @@ export function GroupsPage() {
                 <TableHead>이름</TableHead>
                 <TableHead>설명</TableHead>
                 <TableHead>만든 날짜</TableHead>
-                <TableHead className="w-32" />
+                <TableHead className="w-32 sticky right-0 bg-background" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -118,7 +118,7 @@ export function GroupsPage() {
                   <TableCell className="font-medium">{group.name}</TableCell>
                   <TableCell className="max-w-xs truncate text-muted-foreground">{group.description || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(group.createdAt)}</TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="whitespace-nowrap sticky right-0 bg-background">
                     <Button variant="outline" size="sm" onClick={() => setOpenId(group.id)}>
                       멤버
                     </Button>

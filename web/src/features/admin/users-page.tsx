@@ -154,7 +154,7 @@ export function UsersPage() {
                   <TableHead>역할</TableHead>
                   <TableHead>상태</TableHead>
                   <TableHead>가입일</TableHead>
-                  <TableHead className="w-40" />
+                  <TableHead className="w-40 sticky right-0 bg-background" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -190,7 +190,7 @@ export function UsersPage() {
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {formatDateTime(user.createdAt)}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="whitespace-nowrap sticky right-0 bg-background">
                       <Button
                         variant="ghost"
                         size="icon-sm"
