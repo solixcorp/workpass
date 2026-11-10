@@ -10,6 +10,7 @@ import { AppShell } from '@/components/app-shell'
 import { enrollmentQuery } from '@/lib/mfa'
 import { GroupsPage } from '@/features/admin/groups-page'
 import { LoadingScreen } from '@/components/loading-screen'
+import { AccessRequestsAdminPage } from '@/features/admin/access-requests-page'
 import { ApplicationsPage } from '@/features/admin/applications-page'
 import { AuditPage } from '@/features/admin/audit-page'
 import { SettingsPage } from '@/features/admin/settings-page'
@@ -18,6 +19,7 @@ import { UsersPage } from '@/features/admin/users-page'
 import { ActivationPage } from '@/features/auth/activation-page'
 import { LoginPage } from '@/features/auth/login-page'
 import { PortalHomePage } from '@/features/portal/home-page'
+import { RequestsPage } from '@/features/requests/requests-page'
 import { SecurityPage } from '@/features/security/security-page'
 import { isAdministrator } from '@/lib/auth-client'
 import { sessionQuery } from '@/lib/queries'
@@ -119,6 +121,12 @@ const securityRoute = createRoute({
   component: SecurityPage,
 })
 
+const requestsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/requests',
+  component: RequestsPage,
+})
+
 // Administrator screens are hidden for non-admins as a convenience only; every
 // /api/admin/* call is still authorized by the backend's requireAdministrator.
 const adminRoute = createRoute({
@@ -148,6 +156,12 @@ const adminGroupsRoute = createRoute({
   component: GroupsPage,
 })
 
+const adminRequestsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/access-requests',
+  component: AccessRequestsAdminPage,
+})
+
 const adminApplicationsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/applications',
@@ -172,11 +186,13 @@ const routeTree = rootRoute.addChildren([
   authenticatedRoute.addChildren([
     homeRoute,
     securityRoute,
+    requestsRoute,
     adminRoute.addChildren([
       adminIndexRoute,
       adminUsersRoute,
       adminGroupsRoute,
       adminApplicationsRoute,
+      adminRequestsRoute,
       adminAuditRoute,
       adminSettingsRoute,
     ]),

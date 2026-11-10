@@ -1,7 +1,6 @@
 # Access requests (just-in-time application access) design
 
-**Status:** backend implementation of the access-request authority. Browser UI is a follow-up
-backend-client surface; API and audit events are the product surface here (matching the SWA
+**Status:** backend implementation of the access-request authority. The browser UI is the SPA: `/requests` for requesters and reviewers, `/admin/access-requests` for rules, application bindings and revocation. API and audit events remain the product surface (matching the SWA
 direction). The model benchmarks authentik's access requests but is simplified to this
 platform's structures — there is no flow engine, so the request flow is a required
 justification prompt.

@@ -5,6 +5,8 @@ import {
   AppWindowIcon,
   BlocksIcon,
   ChevronsUpDownIcon,
+  HandHelpingIcon,
+  InboxIcon,
   LayoutDashboardIcon,
   LogOutIcon,
   SettingsIcon,
@@ -46,6 +48,7 @@ type NavItem = { to: string; label: string; icon: typeof AppWindowIcon; exact?: 
 
 const PORTAL_NAV: NavItem[] = [
   { to: '/', label: '내 앱', icon: AppWindowIcon, exact: true },
+  { to: '/requests', label: '접근 요청', icon: HandHelpingIcon },
   { to: '/security', label: '보안', icon: ShieldCheckIcon },
 ]
 
@@ -54,6 +57,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/users', label: '사용자', icon: UsersIcon },
   { to: '/admin/groups', label: '그룹', icon: UsersRoundIcon },
   { to: '/admin/applications', label: '앱', icon: BlocksIcon },
+  { to: '/admin/access-requests', label: '접근 요청', icon: InboxIcon },
   { to: '/admin/audit', label: '감사 로그', icon: ActivityIcon },
   { to: '/admin/settings', label: '설정', icon: SettingsIcon },
 ]

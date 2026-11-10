@@ -95,6 +95,17 @@ describe("requester eligibility and discovery", () => {
     expect((await listRequestableForUser(env as never, "stranger")).find((r) => r.subject === SUBJECT)).toBeUndefined();
   });
 
+  test("registry apps (app:<slug>) show their registry name", async () => {
+    const { env } = await setup("app:wiki", ["requester-1"]);
+    const stamp = "2026-01-01T00:00:00Z";
+    (env.DB as { prepare: (sql: string) => { bind: (...args: unknown[]) => { run: () => unknown } } })
+      .prepare(
+        "INSERT INTO applications (id, slug, name, description, protocol, enabled, created_by, created_at, updated_at) VALUES ('app-1', 'wiki', '사내 위키', '', 'bookmark', 1, 'a', ?, ?)",
+      ).bind(stamp, stamp).run();
+    const requestable = await listRequestableForUser(env as never, "requester-1");
+    expect(requestable.find((r) => r.subject === "app:wiki")?.displayName).toBe("사내 위키");
+  });
+
   test("an empty requester set is open to every user", async () => {
     const { env } = await setup(OPEN_SUBJECT, []);
     expect((await listRequestableForUser(env as never, "anyone")).some((r) => r.subject === OPEN_SUBJECT)).toBe(true);

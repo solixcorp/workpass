@@ -335,6 +335,12 @@ export interface AccessRequestView extends AccessRequestRow {
 async function displayNameForSubject(env: Env, subject: string): Promise<string | null> {
   const prefix = subject.slice(0, subject.indexOf(":"));
   const value = subject.slice(subject.indexOf(":") + 1);
+  if (prefix === "app") {
+    // Registry apps (bookmarks and protocol apps) carry their own display name.
+    const row = await env.DB.prepare("SELECT name FROM applications WHERE slug = ?").bind(value)
+      .first<{ name: string }>().catch(() => null);
+    return row?.name ?? null;
+  }
   if (prefix === "swa") {
     const row = await env.DB.prepare("SELECT name FROM swa_applications WHERE origin = ?").bind(value)
       .first<{ name: string }>();
