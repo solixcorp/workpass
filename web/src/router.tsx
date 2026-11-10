@@ -11,6 +11,8 @@ import { enrollmentQuery } from '@/lib/mfa'
 import { GroupsPage } from '@/features/admin/groups-page'
 import { LoadingScreen } from '@/components/loading-screen'
 import { AccessRequestsAdminPage } from '@/features/admin/access-requests-page'
+import { AccountsAdminPage } from '@/features/admin/accounts-admin-page'
+import { AccountsPage } from '@/features/accounts/accounts-page'
 import { ApplicationsPage } from '@/features/admin/applications-page'
 import { AuditPage } from '@/features/admin/audit-page'
 import { SettingsPage } from '@/features/admin/settings-page'
@@ -121,6 +123,12 @@ const securityRoute = createRoute({
   component: SecurityPage,
 })
 
+const accountsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/accounts',
+  component: AccountsPage,
+})
+
 const requestsRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: '/requests',
@@ -162,6 +170,12 @@ const adminRequestsRoute = createRoute({
   component: AccessRequestsAdminPage,
 })
 
+const adminAccountsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/accounts',
+  component: AccountsAdminPage,
+})
+
 const adminApplicationsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/applications',
@@ -187,10 +201,12 @@ const routeTree = rootRoute.addChildren([
     homeRoute,
     securityRoute,
     requestsRoute,
+    accountsRoute,
     adminRoute.addChildren([
       adminIndexRoute,
       adminUsersRoute,
       adminGroupsRoute,
+      adminAccountsRoute,
       adminApplicationsRoute,
       adminRequestsRoute,
       adminAuditRoute,

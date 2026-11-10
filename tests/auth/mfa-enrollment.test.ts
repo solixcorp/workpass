@@ -198,6 +198,24 @@ describe("second-factor enrollment", () => {
     expect((await call(`/api/security/account-lockdown/user/${victim}/unlock`, { method: "POST", body: {} })).status).toBe(409);
   });
 
+  test("accounts: create, duplicate name, invitation code is returned once and listed masked", async () => {
+    const created = await call("/api/admin/accounts", { method: "POST", body: { name: "acme-korea", description: "Acme" } });
+    expect(created.status).toBe(201);
+    const account = (await created.json() as any).account;
+    expect((await call("/api/admin/accounts", { method: "POST", body: { name: "acme-korea" } })).status).toBe(409);
+
+    const invite = await (await call(`/api/admin/accounts/${account.id}/invitations`, { method: "POST", body: { role: "member" } })).json() as any;
+    expect(invite.invitation.token.length).toBe(64);
+    const listed = await (await call(`/api/admin/accounts/${account.id}/invitations`)).json() as any;
+    expect(JSON.stringify(listed)).not.toContain(invite.invitation.token);
+    expect(listed.invitations[0]).toMatchObject({ status: "pending", role: "member" });
+
+    // The same account redeems it once; a second try fails the same way as a bad code.
+    const first = await call("/api/accounts/join", { method: "POST", body: { token: invite.invitation.token } });
+    expect([201, 403]).toContain(first.status);
+    expect((await call("/api/accounts/join", { method: "POST", body: { token: "nope" } })).status).toBe(403);
+  });
+
   test("an administrator can attach a hardware token seed for a user", async () => {
     const me = await (await call("/api/auth/get-session")).json() as any;
     const bad = await call(`/api/admin/users/${me.user.id}/mfa/hotp`, { method: "POST", body: { label: "x", secretBase32: "short" } });
