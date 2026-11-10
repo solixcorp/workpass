@@ -39,18 +39,24 @@ export interface PolicyResult {
 const DEFAULT_BUDGET = 50_000;
 
 export async function loadUserSnapshot(env: Env, userId: string): Promise<PolicyUserSnapshot | null> {
-  const row = await env.DB.prepare(
-    `SELECT id, email, name, username, role FROM "user" WHERE id = ? LIMIT 1`,
-  ).bind(userId).first<{ id: string; email: string; name: string; username: string | null; role: string | null }>();
-  if (!row) return null;
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    username: row.username ?? row.email,
-    attributes: {},
-    roles: typeof row.role === "string" ? row.role.split(",").filter(Boolean) : [],
-  };
+  try {
+    const row = await env.DB.prepare(
+      `SELECT id, email, name, username, role FROM "user" WHERE id = ? LIMIT 1`,
+    ).bind(userId).first<{ id: string; email: string; name: string; username: string | null; role: string | null }>();
+    if (!row) return null;
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      username: row.username ?? row.email,
+      attributes: {},
+      roles: typeof row.role === "string" ? row.role.split(",").filter(Boolean) : [],
+    };
+  } catch {
+    // Partial or broken user storage degrades to an anonymous snapshot; bound
+    // policies see request.user = null and the failure result rules apply.
+    return null;
+  }
 }
 
 export async function loadBindingsForTarget(env: Env, target: BindingTarget, targetRef: string): Promise<PolicyBinding[]> {

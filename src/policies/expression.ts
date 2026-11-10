@@ -480,10 +480,7 @@ function isReturnSignal(error: unknown): error is ReturnSignal {
   return typeof error === "object" && error !== null && (error as { __expressionReturn?: unknown }).__expressionReturn === true;
 }
 
-interface ReturnFrame {
-  returned: boolean;
-  value: unknown;
-}
+
 
 interface HelperState {
   steps: number;
@@ -608,8 +605,7 @@ class Evaluator {
           this.counter.tick();
           if (++guard > this.scope.stepBudget) throw new ExpressionStepLimit();
           const bodyStatements = node.body.kind === "block" ? node.body.body : [node.body];
-          const frame = await this.evaluateStatements(bodyStatements, scope.child());
-          if (frame?.returned) return frame.value;
+          await this.evaluateStatements(bodyStatements, scope.child());
         }
         return undefined;
       }
@@ -622,8 +618,7 @@ class Evaluator {
           this.counter.tick();
           if (++guard > this.scope.stepBudget) throw new ExpressionStepLimit();
           const bodyStatements = node.body.kind === "block" ? node.body.body : [node.body];
-          const frame = await this.evaluateStatements(bodyStatements, loopScope.child());
-          if (frame?.returned) return frame.value;
+          await this.evaluateStatements(bodyStatements, loopScope.child());
           if (node.update) await this.evaluate(node.update, loopScope);
         }
         return undefined;
@@ -633,25 +628,19 @@ class Evaluator {
         throw { __expressionReturn: true, value: returnedValue } satisfies ReturnSignal;
       }
       case "block": {
-        const frame = await this.evaluateStatements(node.body, scope.child());
-        if (frame?.returned) return frame.value;
-        return undefined;
+        return await this.evaluateStatements(node.body, scope.child());
       }
       case "expr": return await this.evaluate(node.expression, scope);
     }
   }
 
-  private async evaluateStatements(statements: Node[], scope: Scope): Promise<ReturnFrame | null> {
+  private async evaluateStatements(statements: Node[], scope: Scope): Promise<unknown> {
+    let last: unknown = undefined;
     for (const statement of statements) {
       this.counter.tick();
-      try {
-        await this.evaluate(statement, scope);
-      } catch (error) {
-        if (isReturnSignal(error)) return { returned: true, value: error.value };
-        throw error;
-      }
+      last = await this.evaluate(statement, scope);
     }
-    return null;
+    return last;
   }
 
   private assertMember(name: string): void {
