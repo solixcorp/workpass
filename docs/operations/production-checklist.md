@@ -329,3 +329,25 @@ design). No external-interop testing has been performed.
   `INVITATION_EMAIL_FROM`/`MAIL_FROM` (or `INVITATION_EMAIL_WEBHOOK_URL` /
   the mock mailbox locally);
   `account.invitation.email` audit events record every delivery attempt.
+
+## Console-managed features: what to check at first deploy (2026-11)
+
+These were added after the sections above; each has a design note under `docs/design/` or `docs/security/`.
+
+**Before the first deploy**
+- `AEAD_SEALING_KEY` (32 bytes, base64) must be a Wrangler secret. The console stores e-mail/SMS provider keys (`delivery_settings`) and per-application SCIM tokens (`provisioning`) sealed with it and refuses to save a secret without it. Changing the key later makes those rows unreadable; they are then ignored and the deployment variables apply.
+- `wrangler.jsonc` carries `compatibility_flags: ["nodejs_als"]` (a narrow flag, not full Node compatibility). Audit events take the caller's IP and edge geolocation from a per-request context built on it. Confirm the deploy accepts the flag.
+- The Worker must sit behind Cloudflare: the recorded client IP is `cf-connecting-ip`, trustworthy only there. The same holds for the sign-in places policy, which uses the edge's `request.cf` position.
+- Run `POST /_internal/migrate` after every deploy that adds tables or columns (additive, idempotent): provider settings, places and proofs, entitlements, per-app provisioning, notification preferences, phone verification, SCIM resolution columns.
+
+**After the first deploy** (extends 2a)
+1. Audit log: create a group from the console, then open the audit log; the new event must show an IP and a place (city, country). Older events have none.
+2. Sign-in places: leave the policy in `observe` first and read `authentication.location.observe` events before enforcing. Put the administrators' group in the exempt groups before enforcing. Browser location needs HTTPS (a secure context), which production has and plain local HTTP may not.
+3. E-mail and SMS: in "메시지 발송", save a provider and use "테스트 보내기" for each. Phone number verification and second-factor codes by text work only once SMS is configured.
+4. Back-channel logout: an OIDC app's logout address must first be approved in "연동 → 로그아웃 주소 승인". Delivery is best effort. The hostname check does not stop DNS rebinding; keep outbound egress controls in place.
+5. SCIM: after saving an app's target, use "연결 테스트" before "지금 동기화". An operation left unfinished for 10 minutes becomes "결과 불명" and stays blocking until an administrator checks the other system and presses "확인했음".
+6. Notifications: security notices cannot be switched off by the person; check one (for example change a password) reaches the notification page.
+
+**Known limits**
+- Ending one session does not revoke OAuth tokens already issued; ending all sessions, banning, or disconnecting an app does (and notifies apps that registered a back-channel address). SAML single logout is not implemented.
+- A text message is never a sign-in: the better-auth phone-number routes answer 404 by design.
