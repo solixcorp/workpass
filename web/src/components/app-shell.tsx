@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
+import { setTheme, useThemeChoice, type ThemeChoice } from '@/lib/theme'
 import {
   ActivityIcon,
   AppWindowIcon,
@@ -16,10 +17,13 @@ import {
   PlugZapIcon,
   LogOutIcon,
   MapPinIcon,
+  MonitorIcon,
+  MoonIcon,
   ScaleIcon,
   SendIcon,
   SettingsIcon,
   ShieldCheckIcon,
+  SunIcon,
   UsersIcon,
   UsersRoundIcon,
 } from 'lucide-react'
@@ -30,6 +34,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -126,6 +132,7 @@ export function AppShell() {
   const navigate = useNavigate()
   const admin = isAdministrator(session)
   const user = session?.user
+  const themeChoice = useThemeChoice()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   useEffect(() => {
     const title = pageTitle(pathname)
@@ -180,6 +187,22 @@ export function AppShell() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="start" className="w-56">
                   <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">화면 모드</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup value={themeChoice} onValueChange={(value) => setTheme(value as ThemeChoice)}>
+                    <DropdownMenuRadioItem value="light">
+                      <SunIcon />
+                      밝게
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="dark">
+                      <MoonIcon />
+                      어둡게
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="system">
+                      <MonitorIcon />
+                      기기 설정 따르기
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
                     <DropdownMenuItem onSelect={signOut}>

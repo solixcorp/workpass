@@ -5,7 +5,10 @@ import { createRoot } from 'react-dom/client'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { queryClient, router } from './router'
+import { initTheme } from '@/lib/theme'
 import './index.css'
+
+initTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
