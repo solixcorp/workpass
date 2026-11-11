@@ -75,10 +75,50 @@ describe("WorkPass client and IDX identify", () => {
     expect(bootstrap.status).toBe(201);
   });
 
-  test("migration seeds the fixed WorkPass client as a PKCE-only, consent-free public client", async () => {
+  async function storedClientId(): Promise<string> {
+    const row = await db.prepare("SELECT value FROM app_settings WHERE key = 'workpass.client_id'").first<{ value: string }>();
+    return row!.value;
+  }
+
+  test("migration creates one random client id, stored in the database", async () => {
+    const id = await storedClientId();
+    expect(id).toMatch(/^[A-Za-z0-9]{24}$/);
+    expect(id).not.toBe("workpass");
+    // Running the migration again keeps the same value.
+    await call("/_internal/migrate", { method: "POST", headers: { Authorization: `Bearer ${env.MIGRATION_TOKEN}` } });
+    expect(await storedClientId()).toBe(id);
+    const app = await db.prepare("SELECT binding FROM applications WHERE slug = 'workpass-dashboard'").first<{ binding: string }>();
+    expect(app?.binding).toBe(id);
+    const config = await (await call("/api/config/login", { cookies: false })).json() as { app: { id: string } };
+    expect(config.app.id).toBe(id);
+  });
+
+  test("an old deployment's fixed id is renamed everywhere, keeping its tokens and policy", async () => {
+    const id = await storedClientId();
+    // Put the database back into the old shape.
+    await db.prepare("DELETE FROM app_settings WHERE key = 'workpass.client_id'").run();
+    await db.prepare('UPDATE "oauthClient" SET clientId = ? WHERE clientId = ?').bind("workpass", id).run();
+    await db.prepare("UPDATE applications SET binding = 'workpass' WHERE slug = 'workpass-dashboard'").run();
+    await db.prepare(
+      `INSERT INTO app_access_policies (subject, allowed_methods, bypass_window_seconds, enforcement_mode, require_mfa, updated_by, updated_at)
+       VALUES ('oidc:workpass', 'password', 0, 'enforce', 0, 'test', ?)`,
+    ).bind(new Date().toISOString()).run();
+
+    await call("/_internal/migrate", { method: "POST", headers: { Authorization: `Bearer ${env.MIGRATION_TOKEN}` } });
+    const renamed = await storedClientId();
+    expect(renamed).toMatch(/^[A-Za-z0-9]{24}$/);
+    expect(await db.prepare('SELECT 1 AS n FROM "oauthClient" WHERE clientId = ?').bind("workpass").first()).toBeNull();
+    expect(await db.prepare('SELECT 1 AS n FROM "oauthClient" WHERE clientId = ?').bind(renamed).first()).not.toBeNull();
+    const policy = await db.prepare("SELECT subject FROM app_access_policies WHERE subject = ?").bind(`oidc:${renamed}`).first();
+    expect(policy).not.toBeNull();
+    expect(await db.prepare("SELECT 1 AS n FROM app_access_policies WHERE subject = 'oidc:workpass'").first()).toBeNull();
+    await db.prepare("DELETE FROM app_access_policies WHERE subject = ?").bind(`oidc:${renamed}`).run();
+  });
+
+  test("migration seeds the WorkPass client as a PKCE-only, consent-free public client", async () => {
     const row = await db.prepare(
       'SELECT name, scopes, redirectUris, skipConsent, requirePKCE, tokenEndpointAuthMethod, clientSecret FROM "oauthClient" WHERE clientId = ?',
-    ).bind("workpass").first<Record<string, unknown>>();
+    ).bind(await storedClientId()).first<Record<string, unknown>>();
     expect(row?.name).toBe("WorkPass Dashboard");
     expect(row?.skipConsent).toBe(1);
     expect(row?.requirePKCE).toBe(1);
@@ -91,7 +131,7 @@ describe("WorkPass client and IDX identify", () => {
 
     // Re-running the migration keeps exactly one row.
     await call("/_internal/migrate", { method: "POST", headers: { Authorization: `Bearer ${env.MIGRATION_TOKEN}` } });
-    const count = await db.prepare('SELECT COUNT(*) AS count FROM "oauthClient" WHERE clientId = ?').bind("workpass").first<{ count: number }>();
+    const count = await db.prepare('SELECT COUNT(*) AS count FROM "oauthClient" WHERE clientId = ?').bind(await storedClientId()).first<{ count: number }>();
     expect(count?.count).toBe(1);
   });
 
@@ -212,15 +252,15 @@ describe("WorkPass client and IDX identify", () => {
   test("allowed authenticators follow the WorkPass access policy", async () => {
     await db.prepare(
       `INSERT INTO app_access_policies (subject, allowed_methods, bypass_window_seconds, enforcement_mode, require_mfa, updated_by, updated_at)
-       VALUES ('oidc:workpass', 'password', 0, 'enforce', 0, 'test', ?)`,
-    ).bind(new Date().toISOString()).run();
+       VALUES (?, 'password', 0, 'enforce', 0, 'test', ?)`,
+    ).bind(`oidc:${await storedClientId()}`, new Date().toISOString()).run();
     const { stateHandle } = await (await call("/idp/idx/introspect", { method: "POST", body: {}, cookies: false })).json() as { stateHandle: string };
     const view = await (await call("/idp/idx/identify", {
       method: "POST", cookies: false, body: { identifier: "admin@workpass.test", stateHandle },
     })).json() as any;
     expect(view.authenticators.value.map((entry: any) => entry.key)).toEqual(["password"]);
     expect(view.remediation.value[0].name).toBe("challenge-authenticator");
-    await db.prepare("DELETE FROM app_access_policies WHERE subject = 'oidc:workpass'").run();
+    await db.prepare("DELETE FROM app_access_policies WHERE subject = ?").bind(`oidc:${await storedClientId()}`).run();
   });
 
   test("an unauthenticated authorize hands off to the SPA with a verified signed query", async () => {
@@ -232,7 +272,7 @@ describe("WorkPass client and IDX identify", () => {
     expect(authorizeUrl.search).toContain("&scope=openid%20profile%20email%20workpass.users.read.self");
     expect(authorizeUrl.search).not.toContain("+");
     expect([...authorizeUrl.searchParams.keys()].slice(0, 3)).toEqual(["client_id", "code_challenge", "code_challenge_method"]);
-    expect(authorizeUrl.searchParams.get("client_id")).toBe("workpass");
+    expect(authorizeUrl.searchParams.get("client_id")).toBe(await storedClientId());
     expect(authorizeUrl.searchParams.get("code_challenge_method")).toBe("S256");
     expect(login.headers.get("set-cookie")).toContain("wp_oauth=");
     expect(login.headers.get("set-cookie")).toContain("HttpOnly");

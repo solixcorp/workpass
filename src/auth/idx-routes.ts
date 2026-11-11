@@ -31,7 +31,7 @@ import { sealString, unsealString } from "../crypto/sealed";
 import { loadAppAccessPolicy } from "../access/policies";
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { fingerprintMode } from "../security/fingerprint";
-import { WORKPASS_CLIENT_ID, WORKPASS_CLIENT_NAME, WORKPASS_SCOPES, WORKPASS_SLUG } from "./workpass";
+import { WORKPASS_CLIENT_NAME, WORKPASS_SCOPES, WORKPASS_SLUG, workpassClientId } from "./workpass";
 import { passkeyAllowed } from "../mfa/policy";
 import { organizationName } from "../settings/registry";
 import { getApplication } from "../applications/store";
@@ -145,7 +145,7 @@ async function openState(env: Env, handle: unknown): Promise<StatePayload | null
 }
 
 async function policyAuthenticators(env: Env): Promise<AuthenticatorKey[]> {
-  const policy = await loadAppAccessPolicy(env, `oidc:${WORKPASS_CLIENT_ID}`).catch(() => null);
+  const policy = await loadAppAccessPolicy(env, `oidc:${await workpassClientId(env)}`).catch(() => null);
   const configured = (policy?.allowedMethods ?? "password,passkey")
     .split(",")
     .map((method) => POLICY_METHOD_TO_KEY[method.trim()])
@@ -208,7 +208,7 @@ async function authorizationRequest(env: Env, oauthQuery: unknown): Promise<Reco
   if (typeof oauthQuery !== "string" || oauthQuery.length === 0 || oauthQuery.length > 16384) return null;
   if (!(await verifyOAuthQueryParams(oauthQuery, env.AUTH_SECRET).catch(() => false))) return null;
   const params = new URLSearchParams(oauthQuery);
-  if (params.get("client_id") !== WORKPASS_CLIENT_ID) return null;
+  if (params.get("client_id") !== (await workpassClientId(env))) return null;
   const request: Record<string, string> = {};
   for (const key of REQUEST_KEYS) {
     const value = params.get(key);
@@ -255,7 +255,8 @@ const CANCEL_ALTERNATIVE = {
   variant: "link" as const,
 };
 
-function baseEnvelope(env: Env, handle: string, expiresAt: string, request?: Record<string, string> | null) {
+async function baseEnvelope(env: Env, handle: string, expiresAt: string, request?: Record<string, string> | null) {
+  const clientId = await workpassClientId(env);
   const origin = new URL(env.AUTH_BASE_URL).origin;
   return {
     version: "1.0.0",
@@ -273,7 +274,7 @@ function baseEnvelope(env: Env, handle: string, expiresAt: string, request?: Rec
     },
     app: {
       type: "object",
-      value: { name: "workpass", label: WORKPASS_CLIENT_NAME, id: WORKPASS_CLIENT_ID },
+      value: { name: "workpass", label: WORKPASS_CLIENT_NAME, id: clientId },
     },
     authentication: {
       type: "object",
@@ -291,7 +292,7 @@ async function identifyResponse(env: Env, handle: string, expiresAt: string, req
   // The passkey shortcut exists only while the admin policy allows passkeys.
   const passkeyAllowed = (await policyAuthenticators(env)).includes("webauthn");
   return {
-    ...baseEnvelope(env, handle, expiresAt, request),
+    ...(await baseEnvelope(env, handle, expiresAt, request)),
     remediation: {
       type: "array",
       value: [{
@@ -377,7 +378,7 @@ function challengeRemediation(
   };
 }
 
-function authenticatorResponse(
+async function authenticatorResponse(
   env: Env,
   handle: string,
   expiresAt: string,
@@ -388,7 +389,7 @@ function authenticatorResponse(
   const origin = new URL(env.AUTH_BASE_URL).origin;
   const definitions = keys.map((key) => CATALOG[key]);
   const enrollments = definitions.map(enrollmentView);
-  const base = baseEnvelope(env, handle, expiresAt, options.request);
+  const base = await baseEnvelope(env, handle, expiresAt, options.request);
 
   // One available method needs no choice: go straight to its challenge.
   const currentIndex = options.forceSelect
@@ -524,7 +525,7 @@ idxRoutes.post("/idp/idx/identify", async (context) => {
   }
   const keys = await authenticatorsFor(context.env, identifier);
   const next = await sealState(context.env, { identifier });
-  return context.json(authenticatorResponse(context.env, next.handle, next.expiresAt, identifier, keys));
+  return context.json(await authenticatorResponse(context.env, next.handle, next.expiresAt, identifier, keys));
 });
 
 idxRoutes.post("/idp/idx/challenge", async (context) => {
@@ -546,14 +547,14 @@ idxRoutes.post("/idp/idx/challenge", async (context) => {
     ? (body.authenticator as { id?: unknown }).id
     : undefined;
   if (chosen === undefined) {
-    return context.json(authenticatorResponse(context.env, next.handle, next.expiresAt, state.identifier, keys, { forceSelect: true }));
+    return context.json(await authenticatorResponse(context.env, next.handle, next.expiresAt, state.identifier, keys, { forceSelect: true }));
   }
   const selected = keys.find((key) => CATALOG[key].id === chosen);
   if (!selected) {
     const failure = errorBody("사용할 수 없는 로그인 방법입니다.", 400);
     return context.json(failure.body, failure.status);
   }
-  return context.json(authenticatorResponse(context.env, next.handle, next.expiresAt, state.identifier, keys, { selected }));
+  return context.json(await authenticatorResponse(context.env, next.handle, next.expiresAt, state.identifier, keys, { selected }));
 });
 
 /** The Fingerprint custom subdomain the browser agent should talk to (https origin only). */
@@ -581,7 +582,7 @@ idxRoutes.get("/api/config/login", async (context) => {
   const row = await getApplication(context.env, WORKPASS_SLUG).catch(() => null);
   return context.json({
     app: {
-      id: WORKPASS_CLIENT_ID,
+      id: await workpassClientId(context.env),
       name: WORKPASS_CLIENT_NAME,
       signInTitle: `${WORKPASS_CLIENT_NAME}에 로그인`,
       icon: (row ? iconDisplayPath(row) : null) ?? "/workpass.svg",

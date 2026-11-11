@@ -21,7 +21,7 @@ import type { Env } from "../env";
 import { createAuth } from "./config";
 import { insertAuditEvent } from "../audit/store";
 import { auditAuthRequest } from "../audit/auth-middleware";
-import { WORKPASS_CALLBACK_PATH, WORKPASS_CLIENT_ID, WORKPASS_SCOPES, workpassRedirectUri } from "./workpass";
+import { WORKPASS_CALLBACK_PATH, WORKPASS_SCOPES, workpassClientId, workpassRedirectUri } from "./workpass";
 
 export const workpassRoutes = new Hono<{ Bindings: Env }>();
 
@@ -106,7 +106,7 @@ workpassRoutes.get("/auth/login", async (context) => {
   const fingerprintEventId = context.req.query("fingerprint_event_id");
   // Alphabetical, `%20`-separated scopes: the shape every OAuth2 client sends.
   const entries: Array<[string, string]> = [
-    ["client_id", WORKPASS_CLIENT_ID],
+    ["client_id", await workpassClientId(context.env)],
     ["code_challenge", challenge],
     ["code_challenge_method", "S256"],
     ["nonce", randomToken(24)],
@@ -164,7 +164,7 @@ workpassRoutes.get(WORKPASS_CALLBACK_PATH, async (context) => {
       grant_type: "authorization_code",
       code,
       redirect_uri: workpassRedirectUri(context.env),
-      client_id: WORKPASS_CLIENT_ID,
+      client_id: await workpassClientId(context.env),
       code_verifier: flow.v,
     }),
   })).catch(() => null);

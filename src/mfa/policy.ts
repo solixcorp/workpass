@@ -7,7 +7,7 @@
 
 import type { Env } from "../env";
 import { loadAppAccessPolicy } from "../access/policies";
-import { WORKPASS_CLIENT_ID } from "../auth/workpass";
+import { workpassClientId } from "../auth/workpass";
 
 export type MfaMethod = "totp" | "otp" | "hotp" | "duo";
 export type MfaRequirement = "off" | "admins" | "everyone";
@@ -105,7 +105,7 @@ export async function enforceMfaPolicy(
  */
 export async function workpassMfaRequired(env: Env, user: { role?: unknown }): Promise<boolean> {
   if (userMustUseMfa(env, user)) return true;
-  const policy = await loadAppAccessPolicy(env, `oidc:${WORKPASS_CLIENT_ID}`).catch(() => null);
+  const policy = await loadAppAccessPolicy(env, `oidc:${await workpassClientId(env)}`).catch(() => null);
   return policy?.requireMfa === true;
 }
 
