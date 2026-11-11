@@ -561,6 +561,9 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     // Column already present.
   }
   // Account invitations: opaque single-use join tokens created by the admin
+  // Provisioning sync leases also upgrade targets created by older deployments.
+  try { await env.DB.prepare("ALTER TABLE app_provisioning_targets ADD COLUMN sync_lock_owner TEXT").run(); } catch { /* already present */ }
+  try { await env.DB.prepare("ALTER TABLE app_provisioning_targets ADD COLUMN sync_lock_at TEXT").run(); } catch { /* already present */ }
   // surface and redeemed by a signed-in user (see docs/design/multi-accounts.md).
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS account_invitations (
