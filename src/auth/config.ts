@@ -22,6 +22,10 @@ import { STANDARD_SCOPES, WORKPASS_SCOPES } from "./workpass";
 
 export type AuthInstance = ReturnType<typeof createAuth>;
 
+export function oidcIssuer(env: Env): string {
+  return `${new URL(env.AUTH_BASE_URL).origin}/api/auth`;
+}
+
 export function createAuth(env: Env) {
   validateAuthEnvironment(env);
   const authBaseUrl = new URL(env.AUTH_BASE_URL);
@@ -134,7 +138,7 @@ export function createAuth(env: Env) {
       }),
       jwt({
         jwt: {
-          issuer: `${baseURL}/api/auth`,
+          issuer: oidcIssuer(env),
           // The plugin replaces the payload wholesale: keep the built-in
           // entire-user-object behavior and add the released claims
           // (active account, user attributes) on top. Fails closed on flags.

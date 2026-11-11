@@ -4,7 +4,7 @@
  */
 
 import { Hono } from "hono";
-import { createAuth } from "../auth/config";
+import { createAuth, oidcIssuer } from "../auth/config";
 import type { Env } from "../env";
 import { listVisibleApplications } from "./store";
 import { iconDisplayPath } from "./icons";
@@ -21,14 +21,24 @@ applicationUserRoutes.get("/api/applications", async (context) => {
   if (!session) return context.json({ error: "Unauthorized" }, 401);
   const applications = await listVisibleApplications(context.env, session.user.id);
   return context.json({
-    applications: applications.map((application) => ({
-      slug: application.slug,
-      name: application.name,
-      description: application.description,
-      protocol: application.protocol,
-      launchUrl: application.launchUrl,
-      categoryGroup: application.categoryGroup,
-      icon: iconDisplayPath(application),
-    })),
+    applications: applications.map((application) => {
+      const launchInitiatesLogin = application.protocol === "oidc" && application.slug !== "workpass-dashboard" && Boolean(application.launchUrl);
+      let launchUrl = application.launchUrl;
+      if (launchInitiatesLogin && launchUrl) {
+        const url = new URL(launchUrl);
+        url.searchParams.set("iss", oidcIssuer(context.env));
+        launchUrl = url.toString();
+      }
+      return {
+        slug: application.slug,
+        name: application.name,
+        description: application.description,
+        protocol: application.protocol,
+        launchUrl,
+        launchInitiatesLogin,
+        categoryGroup: application.categoryGroup,
+        icon: iconDisplayPath(application),
+      };
+    }),
   });
 });

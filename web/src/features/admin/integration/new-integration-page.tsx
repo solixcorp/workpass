@@ -342,10 +342,16 @@ export function Form({
           ) : null}
           {showLaunch ? (
             <SettingRow
-              title="실행 주소"
-              description={method === 'bookmark' ? '포털에서 이 앱을 누르면 열리는 주소입니다.' : '포털에서 이 앱을 누르면 열리는 주소입니다. 선택 사항입니다.'}
+              title={method === 'oidc' ? '로그인 시작 주소' : '실행 주소'}
+              description={
+                method === 'bookmark'
+                  ? '포털에서 이 앱을 누르면 열리는 주소입니다.'
+                  : method === 'oidc'
+                    ? '포털에서 이 앱을 누르면 이 주소로 이동하며, 발급자(iss) 값이 함께 붙습니다. 앱이 이 주소에서 로그인 요청을 시작하면 비밀번호 입력 없이 바로 들어갑니다. 비워 두면 타일을 눌러도 아무 데도 가지 않습니다.'
+                    : '포털에서 이 앱을 누르면 열리는 주소입니다. 선택 사항입니다.'
+              }
             >
-              <Input id="new-app-launch" aria-label="실행 주소" type="url" autoComplete="off" spellCheck={false} placeholder="https://" value={launchUrl} onChange={(event) => setLaunchUrl(event.target.value)} />
+              <Input id="new-app-launch" aria-label={method === 'oidc' ? '로그인 시작 주소' : '실행 주소'} type="url" autoComplete="off" spellCheck={false} placeholder="https://" value={launchUrl} onChange={(event) => setLaunchUrl(event.target.value)} />
             </SettingRow>
           ) : null}
         </Section>

@@ -220,7 +220,7 @@ function EditForm({ app, onClose }: { app: EditableApplication; onClose: () => v
             <Input id="edit-app-group" maxLength={64} value={categoryGroup} onChange={(event) => setCategoryGroup(event.target.value)} />
           </Field>
           <Field>
-            <FieldLabel htmlFor="edit-app-url">실행 주소</FieldLabel>
+            <FieldLabel htmlFor="edit-app-url">{app.protocol === 'oidc' && !locked ? '로그인 시작 주소' : '실행 주소'}</FieldLabel>
             <Input
               id="edit-app-url"
               type="url"
@@ -231,6 +231,11 @@ function EditForm({ app, onClose }: { app: EditableApplication; onClose: () => v
               value={launchUrl}
               onChange={(event) => setLaunchUrl(event.target.value)}
             />
+            {app.protocol === 'oidc' && !locked ? (
+              <FieldDescription>
+                포털에서 이 앱을 누르면 이 주소로 이동하며 발급자(iss) 값이 붙습니다. 앱이 이 주소에서 로그인 요청을 시작해야 바로 들어갈 수 있습니다. 비워 두면 타일이 눌리지 않습니다.
+              </FieldDescription>
+            ) : null}
           </Field>
           <Item variant="outline" size="sm">
             <ItemMedia variant={source ? 'image' : 'icon'}>
