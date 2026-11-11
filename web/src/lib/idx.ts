@@ -25,7 +25,7 @@ export type IdxUiOption = {
 export type IdxUiAlternative = {
   label: string
   icon?: IdxIcon
-  action: 'passkey' | 'switch-method' | 'cancel' | 'skip-location'
+  action: 'passkey' | 'switch-method' | 'cancel' | 'skip-location' | 'request-link'
   placement: 'before' | 'after'
   variant: 'outline' | 'link'
 }
@@ -42,6 +42,8 @@ export type IdxUiMessages = {
   location_outside: string
   location_inaccurate: string
   location_blocked: string
+  link_sent: string
+  link_unavailable: string
 }
 
 export type IdxUi = {
@@ -98,6 +100,11 @@ function post(path: string, body: unknown): Promise<IdxEnvelope> {
 /** Begin (or restart) a transaction for a signed authorization request. */
 export async function idxIntrospect(oauthQuery?: string, options?: { skipLocation?: boolean }): Promise<IdxState> {
   return toState(await post('/idp/idx/introspect', { ...(oauthQuery ? { oauthQuery } : {}), ...(options?.skipLocation ? { skipLocation: true } : {}) }))
+}
+
+/** Ask for a set-password link. The answer is the same for every address, so nothing is learned from it. */
+export async function idxRequestLink(handle: string): Promise<void> {
+  await post('/idp/idx/request-link', { stateHandle: handle })
 }
 
 /** Submit the email. Unknown addresses get a plausible answer, never an error. */

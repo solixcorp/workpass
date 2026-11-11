@@ -37,6 +37,9 @@ import { passkeyAllowed } from "../mfa/policy";
 import { organizationName } from "../settings/registry";
 import { getApplication } from "../applications/store";
 import { iconDisplayPath } from "../applications/icons";
+import { issueActivationLink, activationUrl, markActivationDelivered } from "../security/account-activation";
+import { sendTransactionEmail, transactionEmailAvailable } from "../mail/send";
+import { insertAuditEvent } from "../audit/store";
 
 export const idxRoutes = new Hono<{ Bindings: Env }>();
 
@@ -72,6 +75,8 @@ const OUTCOME_MESSAGES = {
   unavailable: "지금은 로그인할 수 없습니다. 잠시 후 다시 시도하세요.",
   forbidden_app: "이 앱에 접근할 권한이 없습니다.",
   incomplete: "로그인을 완료하지 못했습니다. 다시 시도하세요.",
+  link_sent: "해당 계정이 있으면 비밀번호를 설정할 수 있는 링크를 메일로 보냈습니다. 메일함을 확인하세요.",
+  link_unavailable: "지금은 링크를 보낼 수 없습니다. 잠시 후 다시 시도하세요.",
   location_denied: "허용된 장소 밖에서는 로그인할 수 없습니다. 지정된 장소 근처에서 다시 시도하세요.",
   location_outside: "지금 위치는 허용된 장소 근처가 아닙니다.",
   location_inaccurate: "위치가 충분히 정확하지 않습니다. 위치 서비스를 켜고 다시 시도하세요.",
@@ -228,7 +233,7 @@ async function authorizationRequest(env: Env, oauthQuery: unknown): Promise<Reco
  * protocol step the primary button performs; the client only implements the
  * protocols themselves (OPAQUE, WebAuthn) and posts to the hrefs given here.
  */
-type UiAction = "identify" | "select-authenticator" | "opaque-password" | "passkey" | "share-location";
+type UiAction = "identify" | "select-authenticator" | "opaque-password" | "passkey" | "share-location" | "request-link";
 
 interface RemediationUi {
   title: string;
@@ -241,7 +246,7 @@ interface RemediationUi {
   alternatives: Array<{
     label: string;
     icon?: "passkey";
-    action: "passkey" | "switch-method" | "cancel" | "skip-location";
+    action: "passkey" | "switch-method" | "cancel" | "skip-location" | "request-link";
     placement: "before" | "after";
     variant: "outline" | "link";
   }>;
@@ -384,7 +389,7 @@ function challengeRemediation(
         badge: "passkey",
         action: "passkey",
         submit: { label: "패스키 사용" },
-        alternatives: [...switchAlternative, CANCEL_ALTERNATIVE],
+      alternatives: [...switchAlternative, CANCEL_ALTERNATIVE],
       }),
     };
   }
@@ -405,7 +410,11 @@ function challengeRemediation(
       action: "opaque-password",
       fields: [{ name: "passcode", kind: "password", label: "비밀번호", autocomplete: "current-password", required: true }],
       submit: { label: "확인" },
-      alternatives: [...switchAlternative, CANCEL_ALTERNATIVE],
+      alternatives: [
+        ...switchAlternative,
+        { label: "비밀번호 설정·재설정 링크 받기", action: "request-link", placement: "after", variant: "link" },
+        CANCEL_ALTERNATIVE,
+      ],
     }),
   };
 }
@@ -596,6 +605,75 @@ idxRoutes.post("/idp/idx/challenge", async (context) => {
   }
   return context.json(await authenticatorResponse(context.env, next.handle, next.expiresAt, state.identifier, keys, { selected }));
 });
+
+idxRoutes.post("/idp/idx/request-link", async (context) => {
+  if (!(await withinRateLimit(context))) {
+    const failure = errorBody(OUTCOME_MESSAGES.rate_limited, 429);
+    return context.json(failure.body, failure.status);
+  }
+  const body = await jsonBody(context);
+  const state = await openState(context.env, body.stateHandle);
+  if (!state?.identifier) {
+    const failure = errorBody("세션이 만료되었습니다. 처음부터 다시 시도하세요.", 401);
+    return context.json(failure.body, failure.status);
+  }
+
+  // Account lookup, link issuance and delivery are deferred where Workers
+  // provide waitUntil so response behavior does not depend on account state.
+  const work = async () => {
+    const db = context.env.DB;
+    const account = await db.prepare(
+      'SELECT id, email, name, COALESCE(banned, 0) AS banned FROM "user" WHERE lower(email) = ? LIMIT 1',
+    ).bind(state.identifier).first<{ id: string; email: string; name: string; banned: number }>().catch(() => null);
+    try {
+      if (account && account.banned !== 1) {
+        const locked = await db.prepare(
+          "SELECT 1 AS present FROM account_lockdowns WHERE user_id = ? AND lifted_at IS NULL LIMIT 1",
+        ).bind(account.id).first<{ present: number }>().catch(() => null);
+        if (!locked && await linkRequestBudget(db, account.id) && transactionEmailAvailable(context.env)) {
+          const link = await issueActivationLink({ env: context.env, userId: account.id, actorUserId: account.id, deliveredTo: account.email });
+          await sendTransactionEmail(context.env, {
+            to: account.email,
+            subject: "WorkPass 비밀번호 설정·재설정 링크",
+            text: [
+              `${account.name}님, 안녕하세요.`, "",
+              "로그인 화면에서 요청하신 비밀번호 설정·재설정 링크입니다. 링크는 한 번만 사용할 수 있고 만료됩니다.", "",
+              activationUrl(context.env, link.token), "",
+              "요청하지 않으셨다면 이 메일을 무시하셔도 됩니다.",
+            ].join("\n"),
+          });
+          await markActivationDelivered(context.env, link.token);
+        }
+      }
+    } catch {
+      // Delivery and issuance failures are deliberately indistinguishable to the requester.
+    }
+    await insertAuditEvent(context.env, {
+      id: crypto.randomUUID(), actor_user_id: null, target_user_id: account?.id ?? null,
+      event_type: "identity.user.link_requested", outcome: "success",
+      request_path: "/idp/idx/request-link", client_ip: clientIp(context),
+    }).catch(() => undefined);
+  };
+  const execution = (context as unknown as { executionCtx?: { waitUntil?: (promise: Promise<unknown>) => void } }).executionCtx;
+  if (execution?.waitUntil) execution.waitUntil(work());
+  else await work();
+  return context.json({ sent: true });
+});
+
+/** One link per account per hour window, with the first three requests allowed. */
+async function linkRequestBudget(db: Env["DB"], userId: string): Promise<boolean> {
+  const hour = Math.floor(Date.now() / 3_600_000);
+  const row = await db.prepare(
+    `INSERT INTO fingerprint_lookup_limits (budget_key, window_start, request_count)
+     VALUES (?, ?, 1)
+     ON CONFLICT(budget_key) DO UPDATE SET
+       request_count = CASE WHEN fingerprint_lookup_limits.window_start = excluded.window_start
+                            THEN fingerprint_lookup_limits.request_count + 1 ELSE 1 END,
+       window_start = excluded.window_start
+     RETURNING request_count`,
+  ).bind(`idx:link:${userId}`, hour).first<{ request_count: number }>().catch(() => null);
+  return (row?.request_count ?? Number.POSITIVE_INFINITY) <= 3;
+}
 
 /** The Fingerprint custom subdomain the browser agent should talk to (https origin only). */
 function fingerprintEndpoint(env: Env): string | null {

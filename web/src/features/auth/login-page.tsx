@@ -40,6 +40,7 @@ import {
   idxChallenge,
   idxIdentify,
   idxIntrospect,
+  idxRequestLink,
   type IdxIcon,
   type IdxState,
   type IdxUiAlternative,
@@ -69,6 +70,7 @@ export function LoginPage() {
   const [identifier, setIdentifier] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [fatal, setFatal] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [folded, setFolded] = useState(false)
@@ -88,6 +90,7 @@ export function LoginPage() {
   async function fold(update: () => void) {
     setFolded(true)
     await new Promise((resolve) => setTimeout(resolve, 950))
+    setNotice(null)
     update()
     setFolded(false)
   }
@@ -295,6 +298,18 @@ export function LoginPage() {
     if (!idx) return
     if (alternative.action === 'passkey') {
       await signInWithPasskey()
+    } else if (alternative.action === 'request-link') {
+      setError(null)
+      setNotice(null)
+      setPending(true)
+      try {
+        await idxRequestLink(idx.stateHandle)
+        setNotice(idx.ui.messages.link_sent)
+      } catch (failure) {
+        setError(failure instanceof ApiError && failure.status === 429 ? idx.ui.messages.rate_limited : idx.ui.messages.link_unavailable)
+      } finally {
+        setPending(false)
+      }
     } else if (alternative.action === 'skip-location') {
       // An exempt account can sign in from anywhere; the server decides at the end.
       const next = await run(() => idxIntrospect(oq, { skipLocation: true }))
@@ -429,6 +444,7 @@ export function LoginPage() {
           />
         ))}
         {error && !ui.submit ? <FieldError>{error}</FieldError> : null}
+        {notice && !error && !ui.submit ? <p className="text-sm text-muted-foreground" role="status">{notice}</p> : null}
         {ui.separator ? <FieldSeparator>{ui.separator}</FieldSeparator> : null}
 
         {ui.options.length > 0 ? (
@@ -464,6 +480,7 @@ export function LoginPage() {
                 />
               ))}
               {error ? <FieldError>{error}</FieldError> : null}
+              {notice && !error ? <p className="text-sm text-muted-foreground" role="status">{notice}</p> : null}
               <Field>
                 <Button
                   type="submit"
