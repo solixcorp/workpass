@@ -140,7 +140,7 @@ function Body({ slug, view, refresh }: { slug: string; view: View; refresh: () =
             저장
           </Button>
           {view.configured ? (
-            <Button variant="ghost" onClick={() => setRemoving(true)}>
+            <Button variant="outline" onClick={() => setRemoving(true)}>
               연결 지우기
             </Button>
           ) : null}

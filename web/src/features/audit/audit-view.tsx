@@ -126,7 +126,7 @@ export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: s
         ) : null}
         {filtered ? (
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => change(NO_FILTERS)}
           >

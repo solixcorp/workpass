@@ -187,7 +187,7 @@ export function TwoFactorForm({
         )}
         {onCancel ? (
           <Field>
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
+            <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
               {ui.alternatives[0]?.label}
             </Button>
           </Field>

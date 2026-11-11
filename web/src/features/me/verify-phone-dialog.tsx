@@ -93,7 +93,7 @@ export function VerifyPhoneDialog({ open, phone, onClose }: { open: boolean; pho
             </Button>
             {sent ? (
               <>
-                <Button type="button" variant="ghost" disabled={send.isPending || wait > 0} onClick={() => send.mutate()}>
+                <Button type="button" variant="outline" disabled={send.isPending || wait > 0} onClick={() => send.mutate()}>
                   {wait > 0 ? `다시 보내기 (${wait}초)` : '다시 보내기'}
                 </Button>
                 <Button type="submit" disabled={verify.isPending || code.length !== 6}>

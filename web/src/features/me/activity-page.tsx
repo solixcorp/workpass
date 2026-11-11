@@ -76,7 +76,7 @@ export function ActivityPage() {
                           {login.reported ? (
                             <Badge variant="outline">신고함</Badge>
                           ) : (
-                            <Button variant="ghost" size="sm" onClick={() => setReporting(login)}>
+                            <Button variant="outline" size="sm" onClick={() => setReporting(login)}>
                               관리자에게 보고
                             </Button>
                           )}
@@ -94,21 +94,32 @@ export function ActivityPage() {
             {activity.data.events.length === 0 ? (
               <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">최근 30일 동안 계정 보안과 관련된 변화가 없습니다.</p>
             ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {activity.data.events.map((event) => (
-                  <div key={event.id} className="flex items-start gap-3 rounded-xl border bg-card p-4">
-                    {event.outcome === 'failure' ? <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-primary" />}
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <span className="text-sm font-medium">{eventLabel(event.type)}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDateTime(event.at)}
-                        {event.byAdministrator ? ' · 관리자가 한 작업' : ''}
-                        {event.outcome === 'failure' ? ' · 실패' : ''}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <ul className="flex flex-col divide-y rounded-xl border">
+                {activity.data.events.map((event) => {
+                  const failed = event.outcome === 'failure'
+                  const who = event.actor === 'administrator' ? `관리자${event.actorName ? ` ${event.actorName}` : ''}가 함` : event.actor === 'system' ? '시스템이 함' : event.byAdministrator ? '관리자가 함' : '내가 함'
+                  const where = [event.place, event.ip].filter(Boolean).join(' · ')
+                  const how = [event.device, event.detail].filter(Boolean).join(' · ')
+                  return (
+                    <li key={event.id} className="flex items-start gap-3 px-4 py-3">
+                      {failed ? <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-primary" />}
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="text-sm font-medium">{eventLabel(event.type)}</span>
+                          {failed ? <Badge variant="destructive">실패</Badge> : null}
+                          {event.actor === 'administrator' || event.byAdministrator ? <Badge variant="outline">관리자 작업</Badge> : null}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {who}
+                          {how ? ` · ${how}` : ''}
+                        </span>
+                        {where ? <span className="text-xs text-muted-foreground">{where}</span> : null}
+                      </div>
+                      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(event.at)}</span>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </section>
         </>

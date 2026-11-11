@@ -310,7 +310,7 @@ export function AppPolicyDialog({ app, onClose }: { app: PolicyApp | null; onClo
         <DialogFooter className="sm:justify-between">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             disabled={busy || !stored.data}
             onClick={() => clear.mutate()}
           >

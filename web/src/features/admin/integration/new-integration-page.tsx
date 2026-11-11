@@ -333,7 +333,7 @@ export function Form({
                   {logo ? '다른 이미지 고르기' : '이미지 고르기'}
                 </Button>
                 {logo ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setLogo(null)}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setLogo(null)}>
                     지우기
                   </Button>
                 ) : null}
@@ -447,7 +447,7 @@ export function Form({
             {pending ? <Spinner data-icon="inline-start" /> : null}
             저장
           </Button>
-          <Button asChild type="button" variant="ghost">
+          <Button asChild type="button" variant="outline">
             <Link to="/admin/applications">취소</Link>
           </Button>
         </div>

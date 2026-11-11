@@ -241,7 +241,7 @@ function KindCard({ kind, view }: { kind: Kind; view: DeliveryView }) {
           저장
         </Button>
         {current.source === 'console' ? (
-          <Button variant="ghost" onClick={() => setResetting(true)}>
+          <Button variant="outline" onClick={() => setResetting(true)}>
             서버 설정으로 되돌리기
           </Button>
         ) : null}

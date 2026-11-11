@@ -35,7 +35,19 @@ export const myProfileQuery = queryOptions({
 
 export type MyActivity = {
   logins: Array<{ loginId: string; device: string; os: string; lastAt: string; location: string | null; ip: string | null; count: number; reported: boolean }>
-  events: Array<{ id: string; at: string; type: string; outcome: string; byAdministrator: boolean }>
+  events: Array<{
+    id: string
+    at: string
+    type: string
+    outcome: string
+    byAdministrator: boolean
+    actor?: 'self' | 'administrator' | 'system'
+    actorName?: string | null
+    ip?: string | null
+    place?: string | null
+    device?: string | null
+    detail?: string | null
+  }>
 }
 
 export const myActivityQuery = queryOptions({
