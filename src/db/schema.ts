@@ -1028,6 +1028,7 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       handled_by TEXT,
       handled_at TEXT
     )`,
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS login_history_occurred_idx ON login_history (occurred_at)").run();
   ).run();
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS suspicious_reports_status_idx ON suspicious_reports (status, created_at)",

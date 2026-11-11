@@ -1,6 +1,6 @@
 import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CopyIcon, PlusIcon, TagsIcon, Trash2Icon, UserMinusIcon } from 'lucide-react'
+import { CopyIcon, PencilIcon, PlusIcon, RefreshCwIcon, TagsIcon, Trash2Icon, UserMinusIcon, XIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import {
@@ -40,12 +40,23 @@ import { formatDateTime } from '@/lib/format'
 
 type Member = { userId: string; role: 'admin' | 'member'; grantedAt: string }
 type Invitation = {
+  id?: string
   tokenPrefix: string
   role: 'admin' | 'member'
   createdAt: string
   expiresAt: string
-  status: 'pending' | 'consumed' | 'expired'
+  status: 'pending' | 'consumed' | 'accepted' | 'expired' | 'revoked'
   deliverTo: string | null
+  deliveredAt?: string | null
+}
+type IssuedInvitation = { invitation: { id?: string; token: string }; delivered?: boolean }
+
+const INVITATION_STATUS: Record<string, { label: string; variant: 'secondary' | 'outline' | 'destructive' }> = {
+  pending: { label: '대기 중', variant: 'secondary' },
+  accepted: { label: '사용됨', variant: 'outline' },
+  consumed: { label: '사용됨', variant: 'outline' },
+  expired: { label: '기한 지남', variant: 'outline' },
+  revoked: { label: '취소됨', variant: 'destructive' },
 }
 type DirectoryUser = { id: string; name: string; email: string }
 
@@ -256,6 +267,9 @@ function ManageDialog({ accountId, onClose }: { accountId: string | null; onClos
   const invitesKey = ['admin', 'account-invitations', accountId] as const
   const [issued, setIssued] = useState<string | null>(null)
   const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member')
+  const [inviteDays, setInviteDays] = useState('7')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [editing, setEditing] = useState(false)
   const [term, setTerm] = useState('')
   const [search, setSearch] = useState('')
 
@@ -307,16 +321,42 @@ function ManageDialog({ accountId, onClose }: { accountId: string | null; onClos
     onError: (cause: unknown) => toast.error(reason(cause, '역할을 바꾸지 못했습니다.')),
   })
   const invite = useMutation({
-    mutationFn: () =>
-      apiFetch<{ invitation: { token: string } }>(`/api/admin/accounts/${accountId}/invitations`, {
+    mutationFn: () => {
+      const email = inviteEmail.trim()
+      return apiFetch<IssuedInvitation>(`/api/admin/accounts/${accountId}/invitations`, {
         method: 'POST',
-        body: JSON.stringify({ role: inviteRole }),
+        body: JSON.stringify({ role: inviteRole, ttlDays: Number(inviteDays), ...(email ? { email } : {}) }),
+      })
+    },
+    onSuccess: async (result) => {
+      setIssued(result.invitation.token)
+      if (result.delivered === true) toast.success('초대 메일을 보냈습니다.')
+      else if (result.delivered === false) toast.error('메일을 보내지 못했습니다. 아래 코드를 직접 전달하세요.')
+      setInviteEmail('')
+      await refreshInvites()
+    },
+    onError: (cause: unknown) => toast.error(reason(cause, '초대를 만들지 못했습니다.')),
+  })
+  const revokeInvite = useMutation({
+    mutationFn: (invitationId: string) => apiFetch(`/api/admin/accounts/${accountId}/invitations/by-id/${invitationId}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      toast.success('초대를 취소했습니다. 그 코드로는 더 이상 참여할 수 없습니다.')
+      await refreshInvites()
+    },
+    onError: (cause: unknown) => toast.error(reason(cause, '초대를 취소하지 못했습니다.')),
+  })
+  const reissue = useMutation({
+    mutationFn: ({ invitationId, deliverTo }: { invitationId: string; deliverTo: string | null }) =>
+      apiFetch<IssuedInvitation>(`/api/admin/accounts/${accountId}/invitations/by-id/${invitationId}/reissue`, {
+        method: 'POST',
+        body: JSON.stringify(deliverTo ? { deliverTo } : {}),
       }),
     onSuccess: async (result) => {
       setIssued(result.invitation.token)
+      toast.success(result.delivered ? '새 코드를 만들어 메일로 보냈습니다.' : '새 코드를 만들었습니다. 이전 코드는 쓸 수 없습니다.')
       await refreshInvites()
     },
-    onError: () => toast.error('초대를 만들지 못했습니다.'),
+    onError: (cause: unknown) => toast.error(reason(cause, '다시 만들지 못했습니다.')),
   })
   const people = new Map((users.data ?? []).map((user) => [user.id, user]))
   const memberIds = new Set(detail.data?.members.map((member) => member.userId))
@@ -334,7 +374,14 @@ function ManageDialog({ accountId, onClose }: { accountId: string | null; onClos
     >
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{detail.data?.account.name ?? '계정'}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {detail.data?.account.name ?? '계정'}
+            {detail.data ? (
+              <Button variant="ghost" size="icon-sm" aria-label="계정 이름과 설명 수정" onClick={() => setEditing(true)}>
+                <PencilIcon />
+              </Button>
+            ) : null}
+          </DialogTitle>
           <DialogDescription>{detail.data?.account.description || '멤버와 초대를 관리합니다.'}</DialogDescription>
         </DialogHeader>
 
@@ -435,7 +482,7 @@ function ManageDialog({ accountId, onClose }: { accountId: string | null; onClos
               <p className="text-sm text-muted-foreground">
                 코드를 받은 사람은 "계정" 화면에서 입력해 참여합니다. 코드는 한 번만 쓸 수 있고, 만든 직후 한 번만 볼 수 있습니다.
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Select value={inviteRole} onValueChange={(role) => setInviteRole(role as 'admin' | 'member')}>
                   <SelectTrigger size="sm" className="w-28" aria-label="초대 역할">
                     <SelectValue />
@@ -447,6 +494,19 @@ function ManageDialog({ accountId, onClose }: { accountId: string | null; onClos
                     </SelectGroup>
                   </SelectContent>
                 </Select>
+                <Select value={inviteDays} onValueChange={setInviteDays}>
+                  <SelectTrigger size="sm" className="w-28" aria-label="유효 기간">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {['1', '3', '7', '14', '30'].map((days) => (
+                        <SelectItem key={days} value={days}>{days}일 동안</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Input aria-label="초대 메일 받을 사람" type="email" className="h-8 w-52" placeholder="메일로 바로 보내기 (선택)" autoComplete="off" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} />
                 <Button variant="outline" size="sm" disabled={invite.isPending} onClick={() => invite.mutate()}>
                   {invite.isPending ? <Spinner data-icon="inline-start" /> : null}
                   초대 코드 만들기
@@ -469,19 +529,52 @@ function ManageDialog({ accountId, onClose }: { accountId: string | null; onClos
               ) : null}
               {(invitations.data ?? []).length > 0 ? (
                 <ItemGroup className="gap-2">
-                  {invitations.data!.map((entry) => (
-                    <Item key={entry.tokenPrefix + entry.createdAt} variant="muted" size="sm">
-                      <ItemContent>
-                        <ItemTitle>
-                          <span className="font-mono">{entry.tokenPrefix}</span>
-                          <Badge variant="outline">{ROLE_LABELS[entry.role]}</Badge>
-                        </ItemTitle>
-                        <ItemDescription>
-                          {entry.status === 'pending' ? `${formatDateTime(entry.expiresAt)}까지` : entry.status === 'consumed' ? '사용됨' : '기한 지남'}
-                        </ItemDescription>
-                      </ItemContent>
-                    </Item>
-                  ))}
+                  {invitations.data!.map((entry) => {
+                    const status = INVITATION_STATUS[entry.status] ?? { label: entry.status, variant: 'outline' as const }
+                    return (
+                      <Item key={entry.id ?? entry.tokenPrefix + entry.createdAt} variant="muted" size="sm">
+                        <ItemContent>
+                          <ItemTitle>
+                            <span className="font-mono">{entry.tokenPrefix}</span>
+                            <Badge variant="outline">{ROLE_LABELS[entry.role]}</Badge>
+                            <Badge variant={status.variant}>{status.label}</Badge>
+                          </ItemTitle>
+                          <ItemDescription>
+                            {entry.status === 'pending' ? `${formatDateTime(entry.expiresAt)}까지` : formatDateTime(entry.createdAt)}
+                            {entry.deliverTo ? ` · ${entry.deliverTo}${entry.deliveredAt ? '로 보냄' : ''}` : ''}
+                          </ItemDescription>
+                        </ItemContent>
+                        {entry.id && (entry.status === 'pending' || entry.status === 'expired') ? (
+                          <ItemActions>
+                            <ConfirmAction
+                              title="새 초대 코드를 만들까요?"
+                              description="이전 코드는 바로 쓸 수 없게 되고, 같은 역할과 기간의 새 코드가 만들어집니다. 받을 사람이 정해져 있으면 그 주소로 메일도 보냅니다."
+                              details={[{ label: '이전 코드', value: entry.tokenPrefix }, ...(entry.deliverTo ? [{ label: '받는 사람', value: entry.deliverTo }] : [])]}
+                              confirmLabel="새 코드 만들기"
+                              onConfirm={() => reissue.mutate({ invitationId: entry.id!, deliverTo: entry.deliverTo })}
+                            >
+                              <Button variant="ghost" size="icon-sm" aria-label="새 코드로 다시 만들기" disabled={reissue.isPending}>
+                                <RefreshCwIcon />
+                              </Button>
+                            </ConfirmAction>
+                            {entry.status === 'pending' ? (
+                              <ConfirmAction
+                                title="이 초대를 취소할까요?"
+                                description="취소하면 이 코드로는 참여할 수 없습니다. 이미 받은 사람에게는 알려 주지 않습니다."
+                                details={[{ label: '코드', value: entry.tokenPrefix }, { label: '역할', value: ROLE_LABELS[entry.role] }]}
+                                confirmLabel="초대 취소"
+                                onConfirm={() => revokeInvite.mutate(entry.id!)}
+                              >
+                                <Button variant="ghost" size="icon-sm" aria-label="초대 취소" disabled={revokeInvite.isPending}>
+                                  <XIcon />
+                                </Button>
+                              </ConfirmAction>
+                            ) : null}
+                          </ItemActions>
+                        ) : null}
+                      </Item>
+                    )
+                  })}
                 </ItemGroup>
               ) : null}
             </div>
@@ -490,6 +583,59 @@ function ManageDialog({ accountId, onClose }: { accountId: string | null; onClos
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>닫기</Button>
         </DialogFooter>
+        {detail.data ? <EditAccountDialog key={`${accountId}-${editing}`} open={editing} onOpenChange={setEditing} account={detail.data.account} onSaved={() => Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: listKey })])} /> : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EditAccountDialog({ open, onOpenChange, account, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; account: Account; onSaved: () => Promise<unknown> }) {
+  const [name, setName] = useState(account.name)
+  const [description, setDescription] = useState(account.description ?? '')
+  const [failure, setFailure] = useState<string | null>(null)
+  const save = useMutation({
+    mutationFn: () => apiFetch(`/api/admin/accounts/${account.id}`, { method: 'PATCH', body: JSON.stringify({ name: name.trim(), description: description.trim() }) }),
+    onSuccess: async () => {
+      toast.success('계정 정보를 저장했습니다.')
+      await onSaved()
+      onOpenChange(false)
+    },
+    onError: (cause: unknown) => setFailure(reason(cause, '저장하지 못했습니다.')),
+  })
+  return (
+    <Dialog open={open} onOpenChange={(next) => !save.isPending && onOpenChange(next)}>
+      <DialogContent className="sm:max-w-md">
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            setFailure(null)
+            save.mutate()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>계정 수정</DialogTitle>
+            <DialogDescription>이름은 영문자, 숫자, 점, 밑줄, 하이픈만 쓸 수 있습니다.</DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field data-invalid={failure ? true : undefined}>
+              <FieldLabel htmlFor="edit-account-name">이름</FieldLabel>
+              <Input id="edit-account-name" autoComplete="off" maxLength={128} value={name} onChange={(event) => setName(event.target.value)} />
+              {failure ? <FieldError>{failure}</FieldError> : null}
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edit-account-description">설명</FieldLabel>
+              <Input id="edit-account-description" autoComplete="off" maxLength={512} value={description} onChange={(event) => setDescription(event.target.value)} />
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={save.isPending} onClick={() => onOpenChange(false)}>취소</Button>
+            <Button type="submit" disabled={save.isPending || !name.trim()}>
+              {save.isPending ? <Spinner data-icon="inline-start" /> : null}
+              저장
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

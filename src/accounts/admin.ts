@@ -20,6 +20,7 @@ import {
   deleteAccount,
   getAccount,
   getAccountInvitation,
+  getInvitationById,
   isAccountMember,
   listAccountInvitations,
   listAccountMembers,
@@ -27,11 +28,14 @@ import {
   markAccountInvitationDelivered,
   removeAccountMember,
   revokeAccountInvitation,
+  revokeInvitationById,
+  reissueInvitation,
   INVITATION_DEFAULT_TTL_DAYS,
   INVITATION_MAX_TTL_DAYS,
   updateAccount,
   updateAccountMemberRole,
 } from "./store";
+import type { AccountInvitationRow, AccountRow } from "./store";
 
 export const accountAdminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -56,6 +60,31 @@ function isRole(input: unknown): boolean {
   return input === "admin" || input === "member";
 }
 
+function emailAddress(input: unknown): input is string {
+  return typeof input === "string" && input.trim().length <= 256 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.trim());
+}
+
+async function deliverInvitation(env: Env, invitation: AccountInvitationRow, account: AccountRow, to: string): Promise<boolean> {
+  try {
+    await sendTransactionEmail(env, {
+      to, subject: `You are invited to join ${account.name}`,
+      text: [`You have been invited to join the account "${account.name}".`, "",
+        "To accept, sign in at the identity provider and redeem this invitation code:", "", invitation.token, "",
+        `Membership role: ${invitation.role}`, `The invitation expires at ${invitation.expiresAt}.`].join("\n"),
+    });
+    await markAccountInvitationDelivered(env, invitation.token, to);
+    return true;
+  } catch (error) {
+    console.error("Invitation email delivery failed", { name: error instanceof Error ? error.name : "UnknownError" });
+    return false;
+  }
+}
+
+function issuedInvitation(invitation: AccountInvitationRow) {
+  return { id: invitation.id, token: invitation.token, accountId: invitation.accountId, role: invitation.role,
+    createdAt: invitation.createdAt, expiresAt: invitation.expiresAt };
+}
+
 accountAdminRoutes.use("/accounts", async (context, next) => {
   context.header("Cache-Control", "no-store");
   await next();
@@ -78,7 +107,7 @@ accountAdminRoutes.get("/accounts", async (context) => {
     return context.json({ error: "Invalid cursor" }, 400);
   }
   const limit = rawLimit === null ? 50 : Number(rawLimit);
-  return context.json(await listAccounts(context.env, limit, cursor));
+  return context.json({ ...await listAccounts(context.env, limit, cursor), limit });
 });
 
 accountAdminRoutes.post("/accounts", async (context) => {
@@ -87,9 +116,11 @@ accountAdminRoutes.post("/accounts", async (context) => {
   let body: unknown;
   try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON body" }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid body" }, 400);
-  const { name, description } = body as Record<string, unknown>;
+  const { name: rawName, description: rawDescription } = body as Record<string, unknown>;
+  const name = typeof rawName === "string" ? rawName.trim() : rawName;
+  const description = typeof rawDescription === "string" ? rawDescription.trim() : rawDescription;
   if (typeof name !== "string" || !ACCOUNT_NAME_PATTERN.test(name)) {
-    return badRequest(context, "name must be 1-64 characters from [A-Za-z0-9_.-]");
+    return badRequest(context, "name must be 1-128 characters from [A-Za-z0-9_.-]");
   }
   if (description !== undefined && !isDescription(description)) {
     return badRequest(context, "description must be a short text without control characters");
@@ -133,12 +164,14 @@ accountAdminRoutes.patch("/accounts/:id", async (context) => {
   let body: unknown;
   try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON body" }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid body" }, 400);
-  const { name, description } = body as Record<string, unknown>;
+  const { name: rawName, description: rawDescription } = body as Record<string, unknown>;
+  const name = typeof rawName === "string" ? rawName.trim() : rawName;
+  const description = typeof rawDescription === "string" ? rawDescription.trim() : rawDescription;
   if (name === undefined && description === undefined) {
     return badRequest(context, "name or description is required");
   }
   if (name !== undefined && (typeof name !== "string" || !ACCOUNT_NAME_PATTERN.test(name))) {
-    return badRequest(context, "name must be 1-64 characters from [A-Za-z0-9_.-]");
+    return badRequest(context, "name must be 1-128 characters from [A-Za-z0-9_.-]");
   }
   if (description !== undefined && !isDescription(description)) {
     return badRequest(context, "description must be a short text without control characters");
@@ -194,7 +227,7 @@ accountAdminRoutes.post("/accounts/:id/invitations/:token/deliver", async (conte
   const recipient = to.trim();
   return auditStandaloneOperation(context.env, "account.invitation.email", context.req.path, async () => {
     const invitation = await getAccountInvitation(context.env, token);
-    if (!invitation || invitation.accountId !== accountId || invitation.consumedAt !== null) {
+    if (!invitation || invitation.accountId !== accountId || invitation.consumedAt !== null || invitation.revokedAt !== null) {
       return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
     }
     if (invitation.expiresAt <= new Date().toISOString()) {
@@ -204,33 +237,13 @@ accountAdminRoutes.post("/accounts/:id/invitations/:token/deliver", async (conte
     if (!account) {
       return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
     }
-    const baseUrl = new URL(context.env.AUTH_BASE_URL).origin;
-    try {
-      await sendTransactionEmail(context.env, {
-        to: recipient,
-        subject: `You are invited to join ${account.name}`,
-        text: [
-          `You have been invited to join the account "${account.name}".`,
-          "",
-          "To accept, sign in at the identity provider and redeem this invitation code:",
-          "",
-          invitation.token,
-          "",
-          `Membership role: ${invitation.role}`,
-          `The invitation expires at ${invitation.expiresAt}.`,
-        ].join("\n"),
-      });
-    } catch (error) {
-      console.error("Invitation email delivery failed", {
-        name: error instanceof Error ? error.name : "UnknownError",
-      });
+    if (!await deliverInvitation(context.env, invitation, account, recipient)) {
       return {
         response: Response.json({ error: "Invitation email delivery failed" }, { status: 502 }),
         actorUserId: actor.userId,
         targetUserId: accountId,
       };
     }
-    await markAccountInvitationDelivered(context.env, token, recipient);
     const updated = await getAccountInvitation(context.env, token);
     return {
       response: Response.json({
@@ -294,10 +307,13 @@ accountAdminRoutes.post("/accounts/:id/invitations", async (context) => {
   let body: unknown;
   try { body = await context.req.json(); } catch { return context.json({ error: "Invalid JSON body" }, 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid body" }, 400);
-  const { role, ttlDays } = body as Record<string, unknown>;
+  const { role, ttlDays, email } = body as Record<string, unknown>;
+  if (role !== undefined && !isRole(role)) return badRequest(context, "role must be 'admin' or 'member'");
+  if (email !== undefined && !emailAddress(email)) return badRequest(context, "email must be an email address");
+  if (email !== undefined && !transactionEmailAvailable(context.env)) return context.json({ error: "Transactional email is not configured" }, 503);
   const memberRole = toRole(role);
-  const parsedTtl = ttlDays === undefined ? INVITATION_DEFAULT_TTL_DAYS : Number(ttlDays);
-  if (!Number.isSafeInteger(parsedTtl) || parsedTtl < 1 || parsedTtl > INVITATION_MAX_TTL_DAYS) {
+  const parsedTtl = ttlDays === undefined ? INVITATION_DEFAULT_TTL_DAYS : ttlDays;
+  if (typeof parsedTtl !== "number" || !Number.isSafeInteger(parsedTtl) || parsedTtl < 1 || parsedTtl > INVITATION_MAX_TTL_DAYS) {
     return badRequest(context, `ttlDays must be an integer between 1 and ${INVITATION_MAX_TTL_DAYS}`);
   }
   const account = await getAccount(context.env, accountId);
@@ -306,16 +322,11 @@ accountAdminRoutes.post("/accounts/:id/invitations", async (context) => {
     const invitation = await createAccountInvitation(context.env, {
       accountId, role: memberRole, ttlDays: parsedTtl, createdBy: actor.userId,
     });
+    const delivered = typeof email === "string" ? await deliverInvitation(context.env, invitation, account, email.trim()) : undefined;
     // The full token is returned exactly once; the list view masks it.
     return {
       response: Response.json({
-        invitation: {
-          token: invitation.token,
-          accountId: invitation.accountId,
-          role: invitation.role,
-          createdAt: invitation.createdAt,
-          expiresAt: invitation.expiresAt,
-        },
+        invitation: issuedInvitation(invitation), ...(delivered === undefined ? {} : { delivered }),
       }, { status: 201 }),
       actorUserId: actor.userId,
       targetUserId: accountId,
@@ -334,16 +345,53 @@ accountAdminRoutes.get("/accounts/:id/invitations", async (context) => {
   const now = new Date().toISOString();
   return context.json({
     invitations: invitations.map((invitation) => ({
+      id: invitation.id,
       tokenPrefix: `${invitation.token.slice(0, 6)}…`,
       accountId: invitation.accountId,
       role: invitation.role,
       createdBy: invitation.createdBy,
       createdAt: invitation.createdAt,
       expiresAt: invitation.expiresAt,
-      status: invitation.consumedAt !== null ? "consumed" : invitation.expiresAt <= now ? "expired" : "pending",
+      status: invitation.revokedAt !== null ? "revoked" : invitation.consumedAt !== null ? "accepted" : invitation.expiresAt <= now ? "expired" : "pending",
       deliverTo: invitation.deliverTo,
       deliveredAt: invitation.deliveredAt,
     })),
+  });
+});
+
+accountAdminRoutes.delete("/accounts/:id/invitations/by-id/:invitationId", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const accountId = context.req.param("id"), id = context.req.param("invitationId");
+  if (accountId.length > ID_LIMIT || id.length > ID_LIMIT) return context.json({ error: "Invitation not found" }, 404);
+  return auditStandaloneOperation(context.env, "account.invitation.revoke", context.req.path, async () => {
+    const invitation = await getInvitationById(context.env, accountId, id);
+    if (!invitation) return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
+    const revoked = await revokeInvitationById(context.env, accountId, id);
+    return { response: revoked ? Response.json({ revoked: true }) : Response.json({ error: "Invitation already accepted or revoked" }, { status: 409 }), actorUserId: actor.userId, targetUserId: accountId };
+  });
+});
+
+accountAdminRoutes.post("/accounts/:id/invitations/by-id/:invitationId/reissue", async (context) => {
+  const actor = await requireAdministrator(context);
+  if (actor instanceof Response) return actor;
+  const accountId = context.req.param("id"), id = context.req.param("invitationId");
+  if (accountId.length > ID_LIMIT || id.length > ID_LIMIT) return context.json({ error: "Invitation not found" }, 404);
+  let body: unknown;
+  try { const text = await context.req.text(); body = text.trim() ? JSON.parse(text) : {}; } catch { return context.json({ error: "Invalid JSON body" }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid body" }, 400);
+  const { deliverTo } = body as Record<string, unknown>;
+  if (deliverTo !== undefined && !emailAddress(deliverTo)) return badRequest(context, "deliverTo must be an email address");
+  if (deliverTo !== undefined && !transactionEmailAvailable(context.env)) return context.json({ error: "Transactional email is not configured" }, 503);
+  return auditStandaloneOperation(context.env, "account.invitation.reissue", context.req.path, async () => {
+    const old = await getInvitationById(context.env, accountId, id);
+    if (!old) return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
+    const account = await getAccount(context.env, accountId);
+    if (!account) return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
+    const invitation = await reissueInvitation(context.env, old, actor.userId);
+    if (!invitation) return { response: Response.json({ error: "Invitation already accepted or revoked" }, { status: 409 }), actorUserId: actor.userId };
+    const delivered = typeof deliverTo === "string" ? await deliverInvitation(context.env, invitation, account, deliverTo.trim()) : undefined;
+    return { response: Response.json({ invitation: issuedInvitation(invitation), ...(delivered === undefined ? {} : { delivered }) }, { status: 201 }), actorUserId: actor.userId, targetUserId: accountId };
   });
 });
 
@@ -357,7 +405,7 @@ accountAdminRoutes.delete("/accounts/:id/invitations/:token", async (context) =>
   }
   return auditStandaloneOperation(context.env, "account.invitation.revoke", context.req.path, async () => {
     const invitation = await getAccountInvitation(context.env, token);
-    if (!invitation || invitation.accountId !== accountId || invitation.consumedAt !== null) {
+    if (!invitation || invitation.accountId !== accountId || invitation.consumedAt !== null || invitation.revokedAt !== null) {
       return { response: Response.json({ error: "Invitation not found" }, { status: 404 }), actorUserId: actor.userId };
     }
     const revoked = await revokeAccountInvitation(context.env, token);

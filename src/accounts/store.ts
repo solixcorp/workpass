@@ -8,7 +8,7 @@
 
 import type { Env } from "../env";
 
-export const ACCOUNT_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
+export const ACCOUNT_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 export const DESCRIPTION_LIMIT = 512;
 
 export interface AccountRow {
@@ -288,6 +288,7 @@ export async function cleanupAccountSessionContexts(
 
 /** Account invitations: opaque single-use join tokens. */
 export interface AccountInvitationRow {
+  id: string;
   token: string;
   accountId: string;
   role: "admin" | "member";
@@ -295,6 +296,7 @@ export interface AccountInvitationRow {
   createdAt: string;
   expiresAt: string;
   consumedAt: string | null;
+  revokedAt: string | null;
   /** Operator-decided delivery target and last-attempt time (not auto-sent). */
   deliverTo: string | null;
   deliveredAt: string | null;
@@ -314,6 +316,7 @@ export async function createAccountInvitation(
   for (const byte of bytes) token += byte.toString(16).padStart(2, "0");
   const now = new Date();
   const row: AccountInvitationRow = {
+    id: crypto.randomUUID(),
     token,
     accountId: input.accountId,
     role: input.role,
@@ -321,13 +324,14 @@ export async function createAccountInvitation(
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + Math.min(input.ttlDays, INVITATION_MAX_TTL_DAYS) * 24 * 60 * 60 * 1000).toISOString(),
     consumedAt: null,
+    revokedAt: null,
     deliverTo: null,
     deliveredAt: null,
   };
   await env.DB.prepare(
-    `INSERT INTO account_invitations (token, account_id, role, created_by, created_at, expires_at, consumed_at)
-     VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-  ).bind(row.token, row.accountId, row.role, row.createdBy, row.createdAt, row.expiresAt).run();
+    `INSERT INTO account_invitations (id, token, account_id, role, created_by, created_at, expires_at, consumed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+  ).bind(row.id, row.token, row.accountId, row.role, row.createdBy, row.createdAt, row.expiresAt).run();
   return row;
 }
 
@@ -336,7 +340,7 @@ export async function getAccountInvitation(
   token: string,
 ): Promise<AccountInvitationRow | null> {
   const row = await env.DB.prepare(
-    `SELECT token, account_id AS accountId, role, created_by AS createdBy,
+    `SELECT id, token, account_id AS accountId, role, created_by AS createdBy, revoked_at AS revokedAt,
             created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt,
             deliver_to AS deliverTo, delivered_at AS deliveredAt
      FROM account_invitations WHERE token = ?`,
@@ -349,7 +353,7 @@ export async function listAccountInvitations(
   accountId: string,
 ): Promise<AccountInvitationRow[]> {
   const result = await env.DB.prepare(
-    `SELECT token, account_id AS accountId, role, created_by AS createdBy,
+    `SELECT id, token, account_id AS accountId, role, created_by AS createdBy, revoked_at AS revokedAt,
             created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt,
             deliver_to AS deliverTo, delivered_at AS deliveredAt
      FROM account_invitations WHERE account_id = ?
@@ -375,6 +379,39 @@ export async function revokeAccountInvitation(env: Env, token: string): Promise<
     "DELETE FROM account_invitations WHERE token = ? AND consumed_at IS NULL",
   ).bind(token).run();
   return removed.meta.changes === 1;
+}
+
+export async function getInvitationById(env: Env, accountId: string, id: string): Promise<AccountInvitationRow | null> {
+  return await env.DB.prepare(`SELECT id, token, account_id AS accountId, role, created_by AS createdBy,
+    created_at AS createdAt, expires_at AS expiresAt, consumed_at AS consumedAt, revoked_at AS revokedAt,
+    deliver_to AS deliverTo, delivered_at AS deliveredAt FROM account_invitations WHERE account_id = ? AND id = ?`)
+    .bind(accountId, id).first<AccountInvitationRow>() ?? null;
+}
+
+export async function revokeInvitationById(env: Env, accountId: string, id: string): Promise<boolean> {
+  const result = await env.DB.prepare(`UPDATE account_invitations SET revoked_at = ?
+    WHERE account_id = ? AND id = ? AND consumed_at IS NULL AND revoked_at IS NULL`)
+    .bind(new Date().toISOString(), accountId, id).run();
+  return result.meta.changes === 1;
+}
+
+/** Atomically replace an unconsumed invitation, preserving its original duration. */
+export async function reissueInvitation(env: Env, old: AccountInvitationRow, actor: string): Promise<AccountInvitationRow | null> {
+  const bytes = crypto.getRandomValues(new Uint8Array(INVITATION_TOKEN_BYTES));
+  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const now = new Date();
+  const duration = Math.max(1, new Date(old.expiresAt).getTime() - new Date(old.createdAt).getTime());
+  const id = crypto.randomUUID();
+  const results = await env.DB.batch([
+    env.DB.prepare(`INSERT INTO account_invitations (id, token, account_id, role, created_by, created_at, expires_at, deliver_to)
+      SELECT ?, ?, account_id, role, ?, ?, ?, deliver_to FROM account_invitations
+      WHERE id = ? AND account_id = ? AND consumed_at IS NULL AND revoked_at IS NULL`)
+      .bind(id, token, actor, now.toISOString(), new Date(now.getTime() + duration).toISOString(), old.id, old.accountId),
+    env.DB.prepare(`UPDATE account_invitations SET revoked_at = ? WHERE id = ? AND account_id = ?
+      AND consumed_at IS NULL AND revoked_at IS NULL AND EXISTS (SELECT 1 FROM account_invitations WHERE id = ?)`)
+      .bind(now.toISOString(), old.id, old.accountId, id),
+  ]);
+  return results[0]!.meta.changes === 1 ? await getInvitationById(env, old.accountId, id) : null;
 }
 
 export interface RedeemedAccountInvitation {
@@ -409,7 +446,7 @@ export async function redeemAccountInvitationRow(
   token: string,
   userId: string,
 ): Promise<RedeemedAccountInvitation | AccountInvitationReject> {
-  if (!invitation || invitation.consumedAt !== null) {
+  if (!invitation || invitation.revokedAt !== null || invitation.consumedAt !== null) {
     return { reason: invitation && invitation.consumedAt !== null ? "already_consumed" : "invalid_token" };
   }
   if (new Date(invitation.expiresAt).getTime() <= new Date().getTime()) {
@@ -422,11 +459,11 @@ export async function redeemAccountInvitationRow(
   const batch = await env.DB.batch([
     // Single-use: only an unpending token can claim its consumed flag.
     env.DB.prepare(
-      "UPDATE account_invitations SET consumed_at = ? WHERE token = ? AND consumed_at IS NULL AND expires_at > ?",
+      "UPDATE account_invitations SET consumed_at = ? WHERE token = ? AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
     ).bind(now, token, now),
     env.DB.prepare(
       `INSERT INTO account_members (account_id, user_id, role, granted_by, granted_at)
-       VALUES (?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ? WHERE changes() = 1`,
     ).bind(invitation.accountId, userId, invitation.role, invitation.createdBy, now),
   ]);
   // The consumed-update must claim exactly one row for the grant to stand.
