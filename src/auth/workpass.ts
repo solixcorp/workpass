@@ -105,7 +105,10 @@ async function tableExists(env: Env, name: string): Promise<boolean> {
 
 /** Move everything that pointed at the old fixed id to the new one. */
 async function renameClientEverywhere(env: Env, from: string, to: string): Promise<void> {
-  const statements: D1PreparedStatement[] = [];
+  // Tokens, consents and resources reference the client by id. Postpone the
+  // foreign-key check to the end of the batch so parent and children can move
+  // together; a plain parent-first update is rejected.
+  const statements: D1PreparedStatement[] = [env.DB.prepare("PRAGMA defer_foreign_keys = ON")];
   statements.push(env.DB.prepare('UPDATE "oauthClient" SET clientId = ? WHERE clientId = ?').bind(to, from));
   for (const [table, column] of CLIENT_ID_COLUMNS) {
     if (await tableExists(env, table)) {

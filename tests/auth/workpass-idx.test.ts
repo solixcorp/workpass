@@ -99,6 +99,17 @@ describe("WorkPass client and IDX identify", () => {
     await db.prepare("DELETE FROM app_settings WHERE key = 'workpass.client_id'").run();
     await db.prepare('UPDATE "oauthClient" SET clientId = ? WHERE clientId = ?').bind("workpass", id).run();
     await db.prepare("UPDATE applications SET binding = 'workpass' WHERE slug = 'workpass-dashboard'").run();
+    // A token and a consent that reference the client by id: the rename must
+    // move them together with the client or the foreign key rejects it.
+    const now = new Date().toISOString();
+    await db.prepare(
+      `INSERT INTO "oauthAccessToken" (id, token, clientId, expiresAt, createdAt, scopes)
+       VALUES ('rename-token', 'rename-token-value', 'workpass', ?, ?, '["openid"]')`,
+    ).bind(now, now).run();
+    await db.prepare(
+      `INSERT INTO "oauthConsent" (id, clientId, scopes, createdAt, updatedAt)
+       VALUES ('rename-consent', 'workpass', '["openid"]', ?, ?)`,
+    ).bind(now, now).run();
     await db.prepare(
       `INSERT INTO app_access_policies (subject, allowed_methods, bypass_window_seconds, enforcement_mode, require_mfa, updated_by, updated_at)
        VALUES ('oidc:workpass', 'password', 0, 'enforce', 0, 'test', ?)`,
@@ -111,6 +122,10 @@ describe("WorkPass client and IDX identify", () => {
     expect(await db.prepare('SELECT 1 AS n FROM "oauthClient" WHERE clientId = ?').bind(renamed).first()).not.toBeNull();
     const policy = await db.prepare("SELECT subject FROM app_access_policies WHERE subject = ?").bind(`oidc:${renamed}`).first();
     expect(policy).not.toBeNull();
+    const token = await db.prepare('SELECT clientId FROM "oauthAccessToken" WHERE id = ?').bind("rename-token").first<{ clientId: string }>();
+    expect(token?.clientId).toBe(renamed);
+    const consent = await db.prepare('SELECT clientId FROM "oauthConsent" WHERE id = ?').bind("rename-consent").first<{ clientId: string }>();
+    expect(consent?.clientId).toBe(renamed);
     expect(await db.prepare("SELECT 1 AS n FROM app_access_policies WHERE subject = 'oidc:workpass'").first()).toBeNull();
     await db.prepare("DELETE FROM app_access_policies WHERE subject = ?").bind(`oidc:${renamed}`).run();
   });

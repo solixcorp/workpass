@@ -65,8 +65,20 @@ export function createTestD1(): TestD1 {
 
   const db = {
     prepare: (sql: string): Statement => make(sql, []),
+    // D1 runs a batch as one transaction: all statements apply or none do, and
+    // deferred foreign-key checks are enforced when it commits.
     async batch<Input>(statements: Promise<Input>[] | Input[]): Promise<unknown[]> {
-      return Promise.all((statements as unknown as Statement[]).map((entry) => entry.run()));
+      const entries = statements as unknown as Statement[];
+      sqlite.exec("BEGIN");
+      try {
+        const results: unknown[] = [];
+        for (const entry of entries) results.push(await entry.run());
+        sqlite.exec("COMMIT");
+        return results;
+      } catch (error) {
+        sqlite.exec("ROLLBACK");
+        throw error;
+      }
     },
     async exec(sql: string): Promise<void> {
       sqlite.exec(sql);
