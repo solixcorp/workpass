@@ -44,7 +44,7 @@ mfaRoutes.post("/mfa/duo/verify", async (context) => {
     if (result.result === "allow") {
       // A push approval in this session is a session-bound second factor.
       const token = proofSessionToken(session);
-      const verified = token !== null && await recordSessionMfaProof(context.env, token, session.user.id);
+      const verified = token !== null && await recordSessionMfaProof(context.env, token, session.user.id, "duo");
       if (!verified) {
         return { response: Response.json({ error: "The verification could not be recorded" }, { status: 503 }), actorUserId: session.user.id };
       }
@@ -111,7 +111,7 @@ mfaRoutes.post("/mfa/hotp/verify", async (context) => {
       : await hotpVerify(context.env, session.user.id, code);
     if (result.verified) {
       const token = proofSessionToken(session);
-      const recorded = token !== null && await recordSessionMfaProof(context.env, token, session.user.id);
+      const recorded = token !== null && await recordSessionMfaProof(context.env, token, session.user.id, "hotp");
       if (!recorded) {
         // The code itself was correct, but the proof must be durable or MFA
         // policies cannot honor it later; do not report a passing verification.

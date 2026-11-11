@@ -226,3 +226,27 @@ export async function usableSecondFactors(env: Env, userId: string): Promise<str
   }
   return methods;
 }
+
+/** App policy identifiers are deliberately distinct from the legacy UI keys. */
+export async function appMfaChallenge(env: Env, userId: string, requiredMethods: string[]): Promise<Response> {
+  const { availableAppMfaMethods } = await import("../mfa/app-methods");
+  const enabled = new Set((await availableAppMfaMethods(env)).filter((m) => m.enabledGlobally).map((m) => m.id));
+  const legacy = await usableSecondFactors(env, userId);
+  const usable = new Set(legacy.filter((m) => ["totp", "hotp"].includes(m)));
+  if (legacy.includes("duo_push")) usable.add("duo");
+  const user = await env.DB.prepare('SELECT email, "phoneNumber" AS phone, "phoneNumberVerified" AS verified FROM "user" WHERE id = ?')
+    .bind(userId).first<{ email: string | null; phone: string | null; verified: number | boolean | null }>().catch(() => null);
+  // The current sender always chooses SMS when a verified phone is present.
+  if (user?.email && !(user.phone && user.verified)) usable.add("email");
+  if (user?.phone && user.verified) usable.add("sms");
+  const methods = requiredMethods.filter((method) => method !== "passkey" && enabled.has(method) && usable.has(method));
+  if (methods.length === 0) {
+    const error = requiredMethods.includes("passkey") && enabled.has("passkey")
+      ? "패스키로 다시 로그인하세요."
+      : "이 앱에 필요한 인증 수단을 사용할 수 없습니다. 관리자에게 문의하세요.";
+    return Response.json({ error, requiredMethods }, { status: 403 });
+  }
+  const uiMethods = methods.map((method) => method === "duo" ? "duo_push" : method === "email" || method === "sms" ? "otp" : method);
+  const { stepUpUi } = await import("./step-up-ui");
+  return Response.json({ error: "추가 인증이 필요합니다.", required: true, requiredMethods, methods, ui: stepUpUi(uiMethods, ["mfa_required"], false) }, { status: 403 });
+}

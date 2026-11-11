@@ -59,9 +59,11 @@ export async function sendOtpWithFallback(env: Env, delivery: { userId: string; 
   }
   if (phoneNumber) {
     await sendSmsCode(env, { to: phoneNumber, code: delivery.otp });
+    await (await import("./otp-channel")).rememberOtpChannel(env, delivery.userId, delivery.otp, "sms");
     return;
   }
   await sendOtpEmail(env, { to: delivery.email, userId: delivery.userId, otp: delivery.otp });
+  await (await import("./otp-channel")).rememberOtpChannel(env, delivery.userId, delivery.otp, "email");
 }
 
 /** Is SMS delivery configured for this deployment? */

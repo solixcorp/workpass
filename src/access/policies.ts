@@ -15,6 +15,7 @@ import type { Env } from "../env";
 import { hasActiveTemporalGrant } from "./requests";
 import { evaluateBoundPolicies, loadUserSnapshot } from "../policies/engine";
 import type { PolicyEvaluationContext } from "../policies/types";
+import { APP_MFA_METHODS, availableAppMfaMethods } from "../mfa/app-methods";
 
 export interface AppAccessPolicy {
   subject: string;
@@ -27,6 +28,7 @@ export interface AppAccessPolicy {
   enforcementMode: "enforce" | "observe";
   /** Applications with this flag require the user to have a second factor. */
   requireMfa: boolean;
+  mfaMethods?: string[];
   groups: string[];
   /**
    * Per-account authorization dimension: when set, the user must hold
@@ -50,6 +52,9 @@ const MAX_TTL_SECONDS = 43_200; // 12h
 const MIN_TTL_SECONDS = 60;
 
 export function validateAppAccessPolicy(policy: AppAccessPolicy): void {
+  if (!Array.isArray(policy.mfaMethods ?? []) || (policy.mfaMethods ?? []).some((m) => !(APP_MFA_METHODS as readonly string[]).includes(m))) {
+    throw new Error("알 수 없는 2차 인증 방법입니다.");
+  }
   if (!SUBJECT_PATTERN.test(policy.subject)) throw new Error("Invalid policy subject");
   const methods = policy.allowedMethods.split(",");
   if (methods.length > MAX_METHODS || methods.some((m) => !METHOD_PATTERN.test(m))) {
@@ -73,6 +78,10 @@ export function validateAppAccessPolicy(policy: AppAccessPolicy): void {
 
 export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, updatedBy: string): Promise<void> {
   validateAppAccessPolicy(policy);
+  if (policy.enforcementMode === "enforce" && policy.requireMfa) {
+    const disabled = (await availableAppMfaMethods(env)).find((method) => policy.mfaMethods?.includes(method.id) && !method.enabledGlobally);
+    if (disabled) throw new Error(`${disabled.label} 인증 방법을 사용할 수 없습니다.`);
+  }
   if (policy.requiredAccount !== null) {
     const account = await env.DB.prepare("SELECT id FROM accounts WHERE id = ?")
       .bind(policy.requiredAccount).first();
@@ -80,14 +89,15 @@ export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, u
   }
   await env.DB.prepare(
     `INSERT INTO app_access_policies
-       (subject, allowed_methods, session_ttl_seconds, bypass_window_seconds, enforcement_mode, require_mfa, required_account, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (subject, allowed_methods, session_ttl_seconds, bypass_window_seconds, enforcement_mode, require_mfa, mfa_methods, required_account, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (subject) DO UPDATE SET
        allowed_methods = excluded.allowed_methods,
        session_ttl_seconds = excluded.session_ttl_seconds,
        bypass_window_seconds = excluded.bypass_window_seconds,
        enforcement_mode = excluded.enforcement_mode,
-       require_mfa = excluded.require_mfa,
+        require_mfa = excluded.require_mfa,
+        mfa_methods = excluded.mfa_methods,
        required_account = excluded.required_account,
        updated_by = excluded.updated_by,
        updated_at = excluded.updated_at`,
@@ -99,6 +109,7 @@ export async function upsertAppAccessPolicy(env: Env, policy: AppAccessPolicy, u
       policy.bypassWindowSeconds,
       policy.enforcementMode,
       policy.requireMfa ? 1 : 0,
+      [...new Set(policy.mfaMethods ?? [])].join(","),
       policy.requiredAccount,
       updatedBy,
       new Date().toISOString(),
@@ -125,7 +136,7 @@ export async function loadAppAccessPolicy(env: Env, subject: string): Promise<Ap
   const row = await env.DB.prepare(
     `SELECT subject, allowed_methods AS allowedMethods, session_ttl_seconds AS sessionTtlSeconds,
             bypass_window_seconds AS bypassWindowSeconds, enforcement_mode AS enforcementMode, require_mfa AS requireMfa,
-            required_account AS requiredAccount
+            required_account AS requiredAccount, mfa_methods AS mfaMethods
      FROM app_access_policies WHERE subject = ?`,
   ).bind(subject).first<{
     subject: string;
@@ -134,6 +145,7 @@ export async function loadAppAccessPolicy(env: Env, subject: string): Promise<Ap
     bypassWindowSeconds: number;
     enforcementMode: "enforce" | "observe";
     requireMfa: number;
+    mfaMethods: string;
     requiredAccount: string | null;
   }>();
   if (!row) return null;
@@ -147,6 +159,7 @@ export async function loadAppAccessPolicy(env: Env, subject: string): Promise<Ap
     bypassWindowSeconds: row.bypassWindowSeconds,
     enforcementMode: row.enforcementMode as "enforce" | "observe",
     requireMfa: row.requireMfa === 1,
+    mfaMethods: row.mfaMethods ? row.mfaMethods.split(",") : [],
     requiredAccount: row.requiredAccount,
     groups: groups.results.map((r) => r.group_id),
   };

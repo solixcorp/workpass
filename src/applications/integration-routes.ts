@@ -192,7 +192,7 @@ integrationRoutes.get("/applications/:slug/assignment", async (context) => {
         `SELECT id, name FROM directory_groups WHERE id IN (${groupIds.map(() => "?").join(",")}) ORDER BY name ASC`,
       ).bind(...groupIds).all<{ id: string; name: string }>()).results
     : [];
-  return context.json({ mode: groupIds.length ? "groups" : "everyone", groups });
+  return context.json({ mode: groupIds.length ? "groups" : "everyone", groups, mfaMethods: policy?.mfaMethods ?? [] });
 });
 
 integrationRoutes.put("/applications/:slug/assignment", async (context) => {
@@ -228,6 +228,7 @@ integrationRoutes.put("/applications/:slug/assignment", async (context) => {
         bypassWindowSeconds: existing?.bypassWindowSeconds ?? 28800,
         enforcementMode: existing?.enforcementMode ?? "enforce",
         requireMfa: existing?.requireMfa ?? false,
+        mfaMethods: existing?.mfaMethods ?? [],
         groups,
         requiredAccount: existing?.requiredAccount ?? null,
       }, admin.userId);

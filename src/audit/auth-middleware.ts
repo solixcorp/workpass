@@ -96,12 +96,21 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
 
   if (request.method === "POST" && isFingerprintRiskLogin(path)) {
-    return handleFingerprintRiskLogin(
+    const response = await handleFingerprintRiskLogin(
       request,
       env,
       auth,
       eventType ?? "authentication.login.success_or_failure",
     );
+    if (path === "/api/auth/passkey/verify-authentication" && response.ok) {
+      try {
+        const passkeySession = await findNewSessionFromResponse(env, response);
+        if (passkeySession) await recordSessionMfaProof(env, passkeySession.token, passkeySession.userId, "passkey");
+      } catch {
+        // Without a durable proof, method-specific gates fail closed.
+      }
+    }
+    return response;
   }
 
   if (isInteractiveAuthorization(path)) {
@@ -259,6 +268,12 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
  * recorded.
  */
 export async function handleTwoFactorVerification(request: Request, env: Env, auth: AuthInstance): Promise<Response> {
+  const verifyPath = new URL(request.url).pathname;
+  let otpCode: string | undefined;
+  if (verifyPath === "/api/auth/two-factor/verify-otp") {
+    const body = await request.clone().json().catch(() => null) as { code?: unknown } | null;
+    if (typeof body?.code === "string") otpCode = body.code;
+  }
   let enrolling: Awaited<ReturnType<typeof auth.api.getSession>> | null = null;
   if (new URL(request.url).pathname === "/api/auth/two-factor/verify-totp") {
     try { enrolling = await auth.api.getSession({ headers: request.headers }); } catch { /* Best effort. */ }
@@ -300,7 +315,9 @@ export async function handleTwoFactorVerification(request: Request, env: Env, au
       userId = null;
     }
   }
-  if (!token || !userId || !(await recordSessionMfaProof(env, token, userId))) {
+  const method = verifyPath === "/api/auth/two-factor/verify-totp" ? "totp"
+    : userId && otpCode ? await (await import("../mfa/otp-channel")).otpChannel(env, userId, otpCode) : undefined;
+  if (!token || !userId || !(await recordSessionMfaProof(env, token, userId, method))) {
     return Response.json({ error: "The verification could not be recorded" }, { status: 503 });
   }
   if (enrolling && enrolling.user.id === userId && wasEnabled && !wasEnabled.enabled) {

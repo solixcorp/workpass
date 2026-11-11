@@ -145,7 +145,7 @@ export function createAuth(env: Env) {
         // nesting it inside `jwt:` silently falls back to EdDSA signing.
         jwks: { keyPairConfig: { alg: "ES256" } },
       }),
-      passkey({ rpID: authBaseUrl.hostname, rpName: "Internal Auth" }),
+      passkey({ rpID: authBaseUrl.hostname, rpName: "Internal Auth", authenticatorSelection: { userVerification: "required" } }),
       phoneNumber({
         // sms OTP delivery: the dev/mock webhook records the code; production
         // gateways are wired through env credentials per deployment decision.

@@ -190,8 +190,9 @@ swaUserRoutes.post("/api/swa/grants", async (context) => {
   const policy = await loadAppAccessPolicy(context.env, policySubject);
   if (policy) {
     // requireMfa honors session-bound proofs, not enrollment.
-    if (policy.requireMfa && !(await sessionSatisfiesRequireMfa(context.env, session))) {
+    if (policy.requireMfa && !(await sessionSatisfiesRequireMfa(context.env, session, policy.mfaMethods))) {
       console.error("SWA grant rejected", { stage: "mfa-required" });
+      if (policy.mfaMethods?.length) return (await import("../security/step-up")).appMfaChallenge(context.env, session.user.id, policy.mfaMethods);
       return context.json({ error: GENERIC_REJECTION }, 403);
     }
     const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);

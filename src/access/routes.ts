@@ -8,6 +8,7 @@ import { requireAdministrator } from "../security/authorization";
 import type { Env } from "../env";
 import { auditStandaloneOperation } from "../audit/store";
 import { loadAppAccessPolicy, upsertAppAccessPolicy } from "./policies";
+import { availableAppMfaMethods } from "../mfa/app-methods";
 
 export const accessPolicyRoutes = new Hono<{ Bindings: Env }>();
 
@@ -17,7 +18,7 @@ accessPolicyRoutes.get("/app-access-policies", async (context) => {
   const rows = await context.env.DB.prepare(
     `SELECT subject, allowed_methods AS allowedMethods, session_ttl_seconds AS sessionTtlSeconds,
             bypass_window_seconds AS bypassWindowSeconds, enforcement_mode AS enforcementMode,
-            require_mfa AS requireMfaRaw, required_account AS requiredAccount, updated_at AS updatedAt
+            require_mfa AS requireMfaRaw, mfa_methods AS mfaMethodsRaw, required_account AS requiredAccount, updated_at AS updatedAt
      FROM app_access_policies ORDER BY subject ASC LIMIT 200`,
   ).all<{ subject: string; allowedMethods: string; sessionTtlSeconds: number | null; bypassWindowSeconds: number; enforcementMode: string; updatedAt: string; requiredAccount: string | null }>();
   const subjects = rows.results.map((row) => row.subject);
@@ -37,10 +38,11 @@ accessPolicyRoutes.get("/app-access-policies", async (context) => {
   const policies = rows.results.map((row) => ({
     ...row,
     requireMfa: (row as { requireMfaRaw?: number }).requireMfaRaw === 1,
+    mfaMethods: ((row as { mfaMethodsRaw?: string }).mfaMethodsRaw || "").split(",").filter(Boolean),
     groups: groupIdsBySubject.get(row.subject) ?? [],
     enforcementMode: row.enforcementMode,
   }));
-  return context.json({ policies });
+  return context.json({ policies, availableMfaMethods: await availableAppMfaMethods(context.env) });
 });
 
 accessPolicyRoutes.put("/app-access-policies", async (context) => {
@@ -55,6 +57,10 @@ accessPolicyRoutes.put("/app-access-policies", async (context) => {
   const bypassWindowSeconds = typeof value.bypassWindowSeconds === "number" ? value.bypassWindowSeconds : 28800;
   const enforcementMode = value.enforcementMode === "observe" ? "observe" : "enforce";
   const requireMfa = value.requireMfa === true;
+  if (value.mfaMethods !== undefined && (!Array.isArray(value.mfaMethods) || value.mfaMethods.some((m) => typeof m !== "string"))) {
+    return context.json({ error: "2차 인증 방법은 목록이어야 합니다." }, 400);
+  }
+  const mfaMethods = (value.mfaMethods as string[] | undefined) ?? [];
   const groups = Array.isArray(value.groups) ? value.groups.filter((g): g is string => typeof g === "string" && g.length <= 128) : [];
   const requiredAccount = typeof value.requiredAccount === "string" && value.requiredAccount.length > 0 && value.requiredAccount.length <= 64
     ? value.requiredAccount
@@ -71,6 +77,7 @@ accessPolicyRoutes.put("/app-access-policies", async (context) => {
     bypassWindowSeconds,
     enforcementMode: enforcementMode as "enforce" | "observe",
     requireMfa,
+    mfaMethods: [...new Set(mfaMethods)],
     groups,
     requiredAccount,
   };

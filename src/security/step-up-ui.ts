@@ -59,11 +59,11 @@ const METHOD_UI: Record<StepUpMethodUi["key"], StepUpMethodUi> = {
 /** The sign-in was not risky; the administrator requires a second factor. */
 const POLICY_REASON = "mfa_required";
 
-export function stepUpUi(methods: string[], reasons: string[] = []): StepUpUi {
+export function stepUpUi(methods: string[], reasons: string[] = [], allowBackup = true): StepUpUi {
   const policy = reasons.includes(POLICY_REASON);
   const offered = methods.filter((method): method is StepUpMethodUi["key"] => method in METHOD_UI);
   // Backup codes ride on the authenticator-app enrollment.
-  if (offered.includes("totp") && !offered.includes("backup_code")) offered.push("backup_code");
+  if (allowBackup && offered.includes("totp") && !offered.includes("backup_code")) offered.push("backup_code");
   return {
     title: "추가 인증",
     description: policy

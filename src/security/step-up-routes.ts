@@ -27,6 +27,14 @@ stepUpRoutes.get("/step-up/challenge", async (context) => {
   const auth = createAuth(context.env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);
+  const subject = context.req.query("subject");
+  if (subject) {
+    const policy = await (await import("../access/policies")).loadAppAccessPolicy(context.env, subject);
+    if (!policy?.requireMfa || !policy.mfaMethods?.length) return context.json({ required: false, state: "none" });
+    const satisfied = await (await import("../mfa/second-factor")).sessionSatisfiesRequireMfa(context.env, session, policy.mfaMethods);
+    if (satisfied) return context.json({ required: false, state: "satisfied" });
+    return (await import("./step-up")).appMfaChallenge(context.env, session.user.id, policy.mfaMethods);
+  }
   const token = sessionTokenFromRequest(context.req.raw) ??
     (typeof (session.session as { token?: unknown } | undefined)?.token === "string"
       ? ((session.session as { token: string }).token)

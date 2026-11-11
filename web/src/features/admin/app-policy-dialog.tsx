@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,8 @@ type Policy = {
   bypassWindowSeconds: number
   enforcementMode: 'enforce' | 'observe'
   requireMfa: boolean
+  /** Which second factors count for this app; empty means any the person has. */
+  mfaMethods?: string[]
   groups: string[]
   requiredAccount: string | null
 }
@@ -39,6 +42,18 @@ const METHODS = [
   { key: 'passkey', label: '패스키' },
 ] as const
 
+type MfaMethod = { id: string; label: string; enabledGlobally: boolean }
+
+/** Used until the server says which methods exist and which are switched on. */
+const FALLBACK_MFA_METHODS: MfaMethod[] = [
+  { id: 'totp', label: '인증 앱(TOTP)', enabledGlobally: true },
+  { id: 'hotp', label: '보안 토큰(HOTP)', enabledGlobally: true },
+  { id: 'duo', label: 'Duo', enabledGlobally: true },
+  { id: 'passkey', label: '패스키', enabledGlobally: true },
+  { id: 'email', label: '이메일 코드', enabledGlobally: true },
+  { id: 'sms', label: '문자(SMS) 코드', enabledGlobally: true },
+]
+
 const DEFAULT_POLICY = (subject: string): Policy => ({
   subject,
   allowedMethods: 'password,passkey',
@@ -46,6 +61,7 @@ const DEFAULT_POLICY = (subject: string): Policy => ({
   bypassWindowSeconds: 28800,
   enforcementMode: 'enforce',
   requireMfa: false,
+  mfaMethods: [],
   groups: [],
   requiredAccount: null,
 })
@@ -62,8 +78,8 @@ export function AppPolicyDialog({ app, onClose }: { app: PolicyApp | null; onClo
     queryKey: ['admin', 'app-policy', subject],
     enabled: app !== null,
     queryFn: async () => {
-      const { policies } = await apiFetch<{ policies: Policy[] }>('/api/admin/app-access-policies')
-      return policies.find((policy) => policy.subject === subject) ?? null
+      const { policies, availableMfaMethods } = await apiFetch<{ policies: Policy[]; availableMfaMethods?: MfaMethod[] }>('/api/admin/app-access-policies')
+      return { policy: policies.find((policy) => policy.subject === subject) ?? null, methods: availableMfaMethods ?? FALLBACK_MFA_METHODS }
     },
   })
 
@@ -75,11 +91,13 @@ export function AppPolicyDialog({ app, onClose }: { app: PolicyApp | null; onClo
 
   useEffect(() => {
     if (!app || stored.isPending) return
-    const base = stored.data ?? DEFAULT_POLICY(subject)
+    const base = stored.data?.policy ?? DEFAULT_POLICY(subject)
     setDraft(base)
     setTtlMinutes(base.sessionTtlSeconds ? String(Math.round(base.sessionTtlSeconds / 60)) : '')
     setFailure(null)
   }, [app, subject, stored.data, stored.isPending])
+
+  const mfaMethods = stored.data?.methods ?? FALLBACK_MFA_METHODS
 
   const save = useMutation({
     mutationFn: (policy: Policy) =>
@@ -220,6 +238,33 @@ export function AppPolicyDialog({ app, onClose }: { app: PolicyApp | null; onClo
                   <Switch aria-label="2차 인증 필수" checked={draft.requireMfa} onCheckedChange={(on) => update({ requireMfa: on })} />
                 </ItemActions>
               </Item>
+
+              {draft.requireMfa ? (
+                <FieldSet>
+                  <FieldLegend variant="label">인정할 2차 인증 방식</FieldLegend>
+                  <FieldDescription>
+                    고른 방식 중 하나로 확인한 세션만 이 앱을 열 수 있습니다. 하나도 고르지 않으면 사용자가 가진 어떤 방식이든 됩니다. 사용자가 고른 방식을 하나도 갖고 있지 않으면 이 앱을 열 수 없으니, 먼저 보안 설정에서 등록하게 안내하세요.
+                  </FieldDescription>
+                  <FieldGroup className="gap-3">
+                    {mfaMethods.map((method) => (
+                      <Field key={method.id} orientation="horizontal">
+                        <Checkbox
+                          id={`mfa-method-${method.id}`}
+                          disabled={!method.enabledGlobally}
+                          checked={(draft.mfaMethods ?? []).includes(method.id)}
+                          onCheckedChange={(on) =>
+                            update({ mfaMethods: on === true ? [...(draft.mfaMethods ?? []), method.id] : (draft.mfaMethods ?? []).filter((id) => id !== method.id) })
+                          }
+                        />
+                        <FieldLabel htmlFor={`mfa-method-${method.id}`}>
+                          {method.label}
+                          {!method.enabledGlobally ? <span className="ml-2 text-xs font-normal text-muted-foreground">조직 설정에서 꺼져 있음</span> : null}
+                        </FieldLabel>
+                      </Field>
+                    ))}
+                  </FieldGroup>
+                </FieldSet>
+              ) : null}
 
               <Item variant="outline" size="sm">
                 <ItemContent>

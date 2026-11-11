@@ -120,8 +120,11 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
     const policy = await loadAppAccessPolicy(context.env, policySubject);
     if (policy) {
       if (policy.requireMfa) {
-        const satisfied = await sessionSatisfiesRequireMfa(context.env, session);
-        if (!satisfied) return reject(context, "mfa-required");
+        const satisfied = await sessionSatisfiesRequireMfa(context.env, session, policy.mfaMethods);
+        if (!satisfied) {
+          if (policy.mfaMethods?.length) return (await import("../security/step-up")).appMfaChallenge(context.env, session.user.id, policy.mfaMethods);
+          return reject(context, "mfa-required");
+        }
       }
       const evaluation = await evaluateAppAccess(context.env, policy, session.user.id);
       if (!evaluation.allowed) {

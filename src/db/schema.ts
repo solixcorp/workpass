@@ -483,6 +483,18 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   } catch {
     // Column already present.
   }
+  const appMfaColumns = await env.DB.prepare("PRAGMA table_info(app_access_policies)").all<{ name: string }>();
+  if (!appMfaColumns.results.some((column) => column.name === "mfa_methods")) {
+    await env.DB.prepare("ALTER TABLE app_access_policies ADD COLUMN mfa_methods TEXT NOT NULL DEFAULT ''").run();
+  }
+  const proofMethodColumns = await env.DB.prepare("PRAGMA table_info(session_mfa_proofs)").all<{ name: string }>();
+  if (!proofMethodColumns.results.some((column) => column.name === "methods")) {
+    await env.DB.prepare("ALTER TABLE session_mfa_proofs ADD COLUMN methods TEXT NOT NULL DEFAULT 'unknown'").run();
+  }
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mfa_otp_channels (
+    user_id TEXT PRIMARY KEY NOT NULL, code_hash TEXT NOT NULL,
+    channel TEXT NOT NULL, sent_at TEXT NOT NULL
+  )`).run();
   // Per-application claim release policy: when a row exists for a subject it
   // gates which released claim kinds reach that application (an AND with the
   // global operator flags; no row keeps flag-only behavior).
@@ -549,6 +561,9 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     last_test_at TEXT, last_test_ok INTEGER, last_sync_at TEXT,
     sync_cursor TEXT, sync_lock INTEGER NOT NULL DEFAULT 0
   )`).run();
+  // Provisioning sync leases also upgrade targets created by older deployments.
+  try { await env.DB.prepare("ALTER TABLE app_provisioning_targets ADD COLUMN sync_lock_owner TEXT").run(); } catch { /* already present */ }
+  try { await env.DB.prepare("ALTER TABLE app_provisioning_targets ADD COLUMN sync_lock_at TEXT").run(); } catch { /* already present */ }
   await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS app_provisioning_delete
     AFTER DELETE ON applications BEGIN
       DELETE FROM app_provisioning_targets WHERE slug = OLD.slug;
@@ -561,9 +576,6 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
     // Column already present.
   }
   // Account invitations: opaque single-use join tokens created by the admin
-  // Provisioning sync leases also upgrade targets created by older deployments.
-  try { await env.DB.prepare("ALTER TABLE app_provisioning_targets ADD COLUMN sync_lock_owner TEXT").run(); } catch { /* already present */ }
-  try { await env.DB.prepare("ALTER TABLE app_provisioning_targets ADD COLUMN sync_lock_at TEXT").run(); } catch { /* already present */ }
   // surface and redeemed by a signed-in user (see docs/design/multi-accounts.md).
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS account_invitations (

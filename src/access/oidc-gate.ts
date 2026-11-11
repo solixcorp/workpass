@@ -5,7 +5,7 @@ import { evaluateAppAccess, loadAppAccessPolicy } from "./policies";
 import { hasActiveTemporalGrant } from "./requests";
 import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
 import { userMustUseMfa, workpassMfaRequired } from "../mfa/policy";
-import { usableSecondFactors } from "../security/step-up";
+import { appMfaChallenge, usableSecondFactors } from "../security/step-up";
 import { workpassClientId } from "../auth/workpass";
 
 /** Check every external authorization continuation, not just the consent UI. */
@@ -54,8 +54,8 @@ export async function enforceOidcPolicy(request: Request, env: Env, auth: AuthIn
     }
     const policy = await loadAppAccessPolicy(env, `oidc:${clientId}`);
     if (policy) {
-      if (policy.requireMfa && !(await sessionSatisfiesRequireMfa(env, session))) {
-        return Response.json({ error: "access_denied" }, { status: 403 });
+      if (policy.requireMfa && !(await sessionSatisfiesRequireMfa(env, session, policy.mfaMethods))) {
+        return policy.mfaMethods?.length ? appMfaChallenge(env, session.user.id, policy.mfaMethods) : Response.json({ error: "access_denied" }, { status: 403 });
       }
       if (!(await evaluateAppAccess(env, policy, session.user.id)).allowed) {
         return Response.json({ error: "access_denied" }, { status: 403 });

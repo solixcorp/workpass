@@ -57,7 +57,9 @@ async function evaluateStepUpGate(env: Env, session: ActingSession): Promise<Ste
   const sessionToken = actingSessionToken(session);
   if (sessionToken) {
     const proof = await getSessionMfaProof(env, sessionToken).catch(() => null);
-    if (proof) return { action: "allow" };
+    // A passkey sign-in is recorded as a proof for apps that ask for one, but it is the very
+    // sign-in this gate is judging, so it cannot answer the risk challenge by itself.
+    if (proof && proof.methods.some((method) => method !== "passkey")) return { action: "allow" };
     const challenge = await getStepUpChallenge(env, sessionToken);
     if (challenge.state === "satisfied") return { action: "allow" };
     if (challenge.state === "pending" || challenge.state === "expired") {

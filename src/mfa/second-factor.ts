@@ -36,16 +36,19 @@ function proofSessionToken(session: MfaCheckedSession): string | null {
 }
 
 /** Record a proof: THIS session token belongs to THIS user and verified a second factor. */
-export async function recordSessionMfaProof(env: Env, sessionToken: string, userId: string): Promise<boolean> {
+export async function recordSessionMfaProof(env: Env, sessionToken: string, userId: string, method?: string): Promise<boolean> {
   if (!sessionToken || sessionToken.length > PROOF_TOKEN_MAX_LENGTH || !userId) return false;
   try {
     await env.DB.prepare(
-      `INSERT INTO session_mfa_proofs (session_token, user_id, verified_at)
-       VALUES (?, ?, ?)
+      `INSERT INTO session_mfa_proofs (session_token, user_id, verified_at, methods)
+       VALUES (?, ?, ?, ?)
        ON CONFLICT (session_token) DO UPDATE SET
+         methods = CASE WHEN session_mfa_proofs.user_id != excluded.user_id THEN excluded.methods
+           WHEN instr(',' || session_mfa_proofs.methods || ',', ',' || excluded.methods || ',') > 0 THEN session_mfa_proofs.methods
+           ELSE session_mfa_proofs.methods || ',' || excluded.methods END,
          user_id = excluded.user_id,
          verified_at = excluded.verified_at`,
-    ).bind(sessionToken, userId, new Date().toISOString()).run();
+    ).bind(sessionToken, userId, new Date().toISOString(), ["totp", "hotp", "duo", "passkey", "email", "sms"].includes(method ?? "") ? method : "unknown").run();
     // A durable proof also completes any open step-up challenge for the user
     // (verification may rotate the session, leaving the flagged token behind).
     try {
@@ -64,13 +67,13 @@ export async function recordSessionMfaProof(env: Env, sessionToken: string, user
 export async function getSessionMfaProof(
   env: Env,
   sessionToken: string,
-): Promise<{ userId: string; verifiedAt: string } | null> {
+): Promise<{ userId: string; verifiedAt: string; methods: string[] } | null> {
   if (!sessionToken || sessionToken.length > PROOF_TOKEN_MAX_LENGTH) return null;
   const row = await env.DB.prepare(
-    "SELECT user_id AS userId, verified_at AS verifiedAt FROM session_mfa_proofs WHERE session_token = ?",
-  ).bind(sessionToken).first<{ userId: string; verifiedAt: string }>().catch(() => null);
+    "SELECT user_id AS userId, verified_at AS verifiedAt, methods FROM session_mfa_proofs WHERE session_token = ?",
+  ).bind(sessionToken).first<{ userId: string; verifiedAt: string; methods: string }>().catch(() => null);
   if (!row) return null;
-  return { userId: row.userId, verifiedAt: row.verifiedAt };
+  return { userId: row.userId, verifiedAt: row.verifiedAt, methods: (row.methods ?? "unknown").split(",") };
 }
 
 /**
@@ -78,11 +81,12 @@ export async function getSessionMfaProof(
  * must carry its own verification proof. This deliberately checks the proof
  * rows, not enrollment flags, and denies stale or mismatched records.
  */
-export async function sessionSatisfiesRequireMfa(env: Env, session: MfaCheckedSession): Promise<boolean> {
+export async function sessionSatisfiesRequireMfa(env: Env, session: MfaCheckedSession, requiredMethods: string[] = []): Promise<boolean> {
   const sessionToken = proofSessionToken(session);
   if (!sessionToken) return false;
   const proof = await getSessionMfaProof(env, sessionToken);
-  return proof !== null && proof.userId === session.user.id;
+  return proof !== null && proof.userId === session.user.id &&
+    (requiredMethods.length === 0 || requiredMethods.some((method) => proof.methods.includes(method)));
 }
 
 /** Remove proofs whose backing session can no longer be active. */
