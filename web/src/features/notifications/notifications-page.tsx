@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { CheckCheckIcon, Trash2Icon } from 'lucide-react'
@@ -44,6 +45,7 @@ export function NotificationsPage() {
   const markRead = useMutation({
     mutationFn: (ids?: string[]) => apiFetch('/api/me/notifications/read', { method: 'POST', body: JSON.stringify(ids ? { ids } : {}) }),
     onSuccess: refresh,
+    onError: () => toast.error('읽음으로 표시하지 못했습니다.'),
   })
   const remove = useMutation({
     mutationFn: (id: string) => apiFetch(`/api/me/notifications/${id}`, { method: 'DELETE' }),
@@ -134,9 +136,17 @@ export function NotificationsPage() {
                   <span className="text-xs text-muted-foreground">{notice.body}</span>
                   <span className="text-xs text-muted-foreground">{formatDateTime(notice.createdAt)}</span>
                 </button>
-                <Button variant="ghost" size="icon-sm" aria-label="알림 지우기" disabled={remove.isPending} onClick={() => remove.mutate(notice.id)}>
-                  <Trash2Icon />
-                </Button>
+                <ConfirmAction
+                  title="이 알림을 지울까요?"
+                  description="지운 알림은 다시 볼 수 없습니다."
+                  details={[{ label: '알림', value: notice.title }, { label: '시각', value: formatDateTime(notice.createdAt) }]}
+                  confirmLabel="지우기"
+                  onConfirm={() => remove.mutate(notice.id)}
+                >
+                  <Button variant="ghost" size="icon-sm" aria-label="알림 지우기" disabled={remove.isPending}>
+                    <Trash2Icon />
+                  </Button>
+                </ConfirmAction>
               </li>
             ))}
           </ul>

@@ -12,7 +12,7 @@ A unified application registry, modeled on authentik's Applications: one registr
 - **Bookmark apps.** `binding` is null and `launchUrl` is required — an https URL the user is sent to directly. No SSO protocol involvement.
 - **Icons.** Two independent options: `icon_url` (operator-provided external https URL) and an uploaded icon in R2 (`APPLICATION_ICONS` binding; key `applications/{slug}/icon`, ≤ 1 MiB, png/jpeg/webp/gif/svg, type decided by magic-byte sniffing — never the client content type). Uploads are administrator-only (`POST/DELETE /api/admin/applications/{slug}/icon`, `app.icon.upload` / `app.icon.delete` audited); the public serve path `GET /application/{slug}/icon` streams the object (never sensitive), with SVG under a restrictive CSP. The user surface resolves `icon` = uploaded path first, external URL second. A missing bucket binding fails the icon surface closed (503/404).
 - **Grouping.** `categoryGroup` (≤ 64 characters, optional) is the dashboard grouping label, surfaced in the user list.
-- **Backed apps.** `binding` is required and must reference a registered provider of the declared protocol (SAML entity id, WS-Fed realm, SWA origin, OIDC client id), validated at write time. Deleting an application never touches the provider registration — the dashboard link and the provider lifecycle stay decoupled.
+- **Backed apps.** `binding` is required and must reference a registered provider of the declared protocol (SAML entity id, WS-Fed realm, SWA origin, OIDC client id), validated at write time. Deleting an application also deletes its provider unless another application shares it; the built-in WorkPass client is never deleted.
 - **`launchUrl` for backed apps is optional** — authentik derives launch URLs from providers, but only the bookmark case has a mandatory URL here.
 - **Created disabled** like every registry in this codebase; enablement is a deliberate two-step lifecycle (`/enable`, `/disable`).
 
@@ -37,7 +37,7 @@ All routes live under `/api/admin/applications` and follow the registry lifecycl
 | `DELETE /api/admin/applications/{slug}/icon` | Removes the uploaded object and clears the application's icon key. Audited (`app.icon.delete`). |
 | `PATCH /api/admin/applications/{slug}` | Name/description/launchUrl/iconUrl/categoryGroup/hideFromDashboard/binding updates; `protocol` is immutable (400) since a change would orphan the stored gate policy. Binding integrity rules re-run on every patch. Audited (`app.update`). |
 | `POST /api/admin/applications/{slug}/enable` and `/disable` | Two-step lifecycle, audited (`app.enable`, `app.disable`). |
-| `DELETE /api/admin/applications/{slug}` | 200; removes the dashboard surface only. Audited (`app.delete`). |
+| `DELETE /api/admin/applications/{slug}` | 200; removes the application and its unshared provider (except the built-in WorkPass client). Returns `deleted`, `providerRemoved`, `providerKind`, and `providerShared`. Audited (`app.delete`). |
 
 ## User-facing launch API
 

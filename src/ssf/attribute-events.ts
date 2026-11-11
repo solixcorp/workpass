@@ -14,8 +14,8 @@ import { dispatchSSFEvent, listEnabledSsfRecipients } from "./dispatch";
 export const ATTRIBUTE_CHANGED_EVENT_TYPE = "urn:solixcorp:internal-auth:attributes-changed:1.0";
 
 export interface AttributeChangedInput {
-  /** The user the change is attributed to (actor or owning user). */
-  userId: string;
+  /** Deprecated: the subject is always the affected object, never the actor. */
+  userId?: string;
   objectType: "user" | "group" | "account";
   objectId: string;
   changedKeys: string[];
@@ -35,7 +35,7 @@ export async function emitAttributeChangedEvent(
       await dispatchSSFEvent(env, {
         recipientId: recipient.id,
         eventType: ATTRIBUTE_CHANGED_EVENT_TYPE,
-        subject: { user: { user_id: input.userId } },
+        subject: { [input.objectType]: { [`${input.objectType}_id`]: input.objectId } },
         description: {
           object_type: input.objectType,
           object_id: input.objectId,

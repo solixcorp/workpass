@@ -97,6 +97,17 @@ function parseCustomAttributes(body: Record<string, unknown>): { ok: true; attri
   return { ok: true, attributes: parsed.attributes };
 }
 
+async function replaceScimAttributes(env: Env, userId: string, attributes: Record<string, AttributeValue>): Promise<void> {
+  const previous = (await getObjectAttributes(env, "user", userId)).attributes;
+  const keys = new Set([...Object.keys(previous), ...Object.keys(attributes)]);
+  const changedKeys = [...keys].filter((key) =>
+    Object.hasOwn(previous, key) !== Object.hasOwn(attributes, key) || previous[key] !== attributes[key]);
+  if (changedKeys.length === 0) return;
+  await setObjectAttributes(env, "user", userId, attributes, null);
+  await scheduleScimAttributeSync(env, userId).catch(() => undefined);
+  await emitAttributeChangedEvent(env, { objectType: "user", objectId: userId, changedKeys }).catch(() => undefined);
+}
+
 async function loadUser(env: Env, id: string): Promise<ScimUserRow | null> {
   const row = await env.DB.prepare(
     `SELECT id, name, email, username, (banned IS NULL OR banned = 0) AS active
@@ -233,7 +244,6 @@ inboundScimRoutes.post(`${SCIM_PATH}/Users`, async (context) => {
       await setObjectAttributes(context.env, "user", id, attributes.attributes, null);
       await scheduleScimAttributeSync(context.env, id).catch(() => undefined);
       await emitAttributeChangedEvent(context.env, {
-        userId: id,
         objectType: "user",
         objectId: id,
         changedKeys: Object.keys(attributes.attributes),
@@ -280,8 +290,7 @@ inboundScimRoutes.put(`${SCIM_PATH}/Users/:id`, async (context) => {
     if (attributes.attributes !== null) {
       // Full-resource semantics: the extension replaces the whole set (an
       // empty extension clears it, matching RFC 7644 full replacement).
-      await setObjectAttributes(context.env, "user", row.id, attributes.attributes, null);
-      await scheduleScimAttributeSync(context.env, row.id).catch(() => undefined);
+      await replaceScimAttributes(context.env, row.id, attributes.attributes);
     }
     const updated = await loadUser(context.env, row.id);
     const stored = await getObjectAttributes(context.env, "user", row.id);
@@ -328,8 +337,7 @@ inboundScimRoutes.patch(`${SCIM_PATH}/Users/:id`, async (context) => {
       ).bind(active ? 0 : 1, new Date().toISOString(), row.id).run();
     }
     if (attributesPatch !== undefined && attributesPatch !== null) {
-      await setObjectAttributes(context.env, "user", row.id, attributesPatch, null);
-      await scheduleScimAttributeSync(context.env, row.id).catch(() => undefined);
+      await replaceScimAttributes(context.env, row.id, attributesPatch);
     }
     const updated = await loadUser(context.env, row.id);
     const stored = await getObjectAttributes(context.env, "user", row.id);

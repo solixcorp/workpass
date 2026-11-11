@@ -41,6 +41,8 @@ interface DeliveryRow {
 }
 
 export const SSF_MAX_ATTEMPTS = 10;
+// Longer than the push timeout; also recovers an interrupted initial send or retry.
+export const SSF_DELIVERY_LEASE_MS = 60_000;
 
 // The table-creation cache is per database (WeakMap), not a process-wide
 // singleton: tests and multi-tenant runtimes create SSF tables on several
@@ -163,16 +165,18 @@ export async function dispatchSSFEvent(
     events: { [input.eventType]: input.description ?? {} },
   };
   const token = await signSet(claims, "ssf-1", signingKey);
+  const now = Date.now();
+  const leaseUntil = now + SSF_DELIVERY_LEASE_MS;
+  await env.DB.prepare(`INSERT INTO ssf_deliveries
+    (id, recipient_id, set_id, set_token, state, attempts, next_attempt_at, last_status, last_error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, NULL, ?, ?)`)
+    .bind(claims.jti, recipient.id, claims.jti, token, leaseUntil, now, now).run();
   const attempts = 1;
   const result = await deliverPush(endpoint, token, recipient.deliveryToken ? `Bearer ${recipient.deliveryToken}` : undefined, send);
   const state = result.kind === "delivered" ? "delivered" : result.kind === "retry" ? "retry" : "failed";
-  await env.DB.prepare(`INSERT INTO ssf_deliveries
-    (id, recipient_id, set_id, set_token, state, attempts, next_attempt_at, last_status, last_error, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET set_token=excluded.set_token, state=excluded.state, attempts=excluded.attempts,
-      next_attempt_at=excluded.next_attempt_at, last_status=excluded.last_status, updated_at=excluded.updated_at`)
-    .bind(claims.jti, recipient.id, claims.jti, token, state, attempts, nextAttemptAt(result.kind === "retry" ? 1 : 0),
-      result.status ?? null, null, Date.now(), Date.now()).run();
+  await env.DB.prepare(`UPDATE ssf_deliveries SET state = ?, attempts = ?, next_attempt_at = ?, last_status = ?, updated_at = ?
+    WHERE id = ? AND state = 'pending' AND attempts = 0 AND next_attempt_at = ?`)
+    .bind(state, attempts, nextAttemptAt(result.kind === "retry" ? 1 : 0), result.status ?? null, Date.now(), claims.jti, leaseUntil).run();
   return { state, status: result.status, attempts };
 }
 
@@ -186,27 +190,32 @@ export async function attemptPendingSSFDispatch(env: Env, nowMs: number, limit =
   await ensureSsfDispatchTables(env.DB);
   if (!Number.isSafeInteger(nowMs)) throw new Error("Invalid dispatch time");
   const pending = await env.DB.prepare(
-    `SELECT id, recipient_id, set_token, attempts FROM ssf_deliveries
-     WHERE state = 'retry' AND next_attempt_at <= ? AND attempts < ? ORDER BY next_attempt_at LIMIT ?`,
-  ).bind(nowMs, SSF_MAX_ATTEMPTS, limit).all<{ id: string; recipient_id: string; set_token: string; attempts: number }>();
+    `SELECT id, recipient_id, set_token, state, attempts, next_attempt_at FROM ssf_deliveries
+     WHERE state IN ('pending', 'retry') AND next_attempt_at <= ? AND attempts < ? ORDER BY next_attempt_at LIMIT ?`,
+  ).bind(nowMs, SSF_MAX_ATTEMPTS, limit).all<Pick<DeliveryRow, "id" | "recipient_id" | "set_token" | "state" | "attempts" | "next_attempt_at">>();
   for (const row of pending.results ?? []) {
+    const leaseUntil = Math.max(Date.now(), nowMs) + SSF_DELIVERY_LEASE_MS;
+    const claim = await env.DB.prepare(`UPDATE ssf_deliveries SET next_attempt_at = ?, updated_at = ?
+      WHERE id = ? AND state = ? AND attempts = ? AND next_attempt_at = ?`)
+      .bind(leaseUntil, Date.now(), row.id, row.state, row.attempts, row.next_attempt_at).run();
+    if (claim.meta.changes !== 1) continue;
     const recipient = await loadSsfRecipient(env, row.recipient_id);
     if (!recipient) {
-      await env.DB.prepare("UPDATE ssf_deliveries SET state = 'failed', last_error = 'recipient removed', updated_at = ? WHERE id = ?")
-        .bind(Date.now(), row.id).run();
+      await env.DB.prepare("UPDATE ssf_deliveries SET state = 'failed', last_error = 'recipient removed', updated_at = ? WHERE id = ? AND next_attempt_at = ?")
+        .bind(Date.now(), row.id, leaseUntil).run();
       continue;
     }
     try {
-      const result = await deliverPush(recipient.endpoint, row.set_token, recipient.deliveryToken ?? undefined);
+      const result = await deliverPush(recipient.endpoint, row.set_token, recipient.deliveryToken ? `Bearer ${recipient.deliveryToken}` : undefined);
       const state = result.kind === "delivered" ? "delivered" : result.kind === "retry" ? "retry" : "failed";
       const attempts = row.attempts + 1;
       const abandoned = state !== "delivered" && attempts >= SSF_MAX_ATTEMPTS;
-      await env.DB.prepare("UPDATE ssf_deliveries SET state = ?, attempts = ?, next_attempt_at = ?, last_status = ?, updated_at = ? WHERE id = ?")
-        .bind(abandoned ? "abandoned" : state, attempts, nextAttemptAt(attempts - 1), result.status ?? null, Date.now(), row.id).run();
+      await env.DB.prepare("UPDATE ssf_deliveries SET state = ?, attempts = ?, next_attempt_at = ?, last_status = ?, updated_at = ? WHERE id = ? AND next_attempt_at = ?")
+        .bind(abandoned ? "abandoned" : state, attempts, nextAttemptAt(attempts - 1), result.status ?? null, Date.now(), row.id, leaseUntil).run();
     } catch (error) {
       // Malformed stored token or endpoint: mark so the operator sees it.
-      await env.DB.prepare("UPDATE ssf_deliveries SET state = 'failed', last_error = ?, updated_at = ? WHERE id = ?")
-        .bind(error instanceof Error ? error.name : "delivery error", Date.now(), row.id).run();
+      await env.DB.prepare("UPDATE ssf_deliveries SET state = 'failed', last_error = ?, updated_at = ? WHERE id = ? AND next_attempt_at = ?")
+        .bind(error instanceof Error ? error.name : "delivery error", Date.now(), row.id, leaseUntil).run();
     }
   }
 }

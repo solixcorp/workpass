@@ -10,6 +10,7 @@ import { createScimUser, patchScimUser, type ScimTarget } from "./client";
 import { getObjectAttributes, type AttributeValue } from "../objects/attributes";
 import { claimScimOperation, completeScimCreate, finishScimOperation, getScimOperation } from "./operations";
 import { getScimUserMapping } from "./mappings";
+import { insertAuditEvent } from "../audit/store";
 
 export interface ScimExecutorConfig {
   targetId: string;
@@ -105,22 +106,37 @@ export async function dispatchPendingScimOperations(env: Env, maxOperations = 50
     }
     if (succeeded) executed += 1;
   }
+  if (pending.results.length >= maxOperations && maxOperations > 0) {
+    const remaining = await env.DB.prepare("SELECT COUNT(*) AS count FROM scim_operations WHERE status = 'pending' AND target_id = ?")
+      .bind(config.targetId).first<{ count: number }>();
+    console.info("SCIM pending operations", { processed: pending.results.length, remaining: remaining?.count ?? 0 });
+  }
   return executed;
 }
 
 /**
  * Queue an attribute-propagation update for a user: one attempt per
- * configured target, best-effort (queue-full, unconfigured or flag-off cases
- * no-op and the next attribute write retries). Only pending-or-newer
- * operations pass the single-active constraint; an already-locked user is
- * left alone.
+ * configured target. Unmapped users and single-active-operation conflicts
+ * are recorded in the audit journal for operator reconciliation.
  */
 export async function scheduleScimAttributeSync(env: Env, userId: string): Promise<boolean> {
   const config = loadScimExecutorConfig(env);
   if (!config || env.ENABLE_SCIM_ATTRIBUTE_RELEASE !== "true") return false;
   const mapped = await getScimUserMapping(env, config.targetId, userId);
-  if (!mapped) return false;
+  if (!mapped) {
+    await recordSkippedAttributeSync(env, config.targetId, userId, "사용자 매핑 없음");
+    return false;
+  }
   const { createScimOperation } = await import("./operations");
   const id = await createScimOperation(env, { targetId: config.targetId, userId, operation: "update" });
+  if (id === null) await recordSkippedAttributeSync(env, config.targetId, userId, "진행 중인 작업 있음");
   return id !== null;
+}
+
+async function recordSkippedAttributeSync(env: Env, targetId: string, userId: string, reason: string): Promise<void> {
+  await insertAuditEvent(env, {
+    id: crypto.randomUUID(), actor_user_id: null, target_user_id: userId,
+    event_type: "scim.operation.skipped", outcome: "failure", request_path: "/internal/scim/attributes",
+    event_context: { targetId, reason },
+  });
 }

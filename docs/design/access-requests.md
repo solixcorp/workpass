@@ -52,6 +52,9 @@ recorded in the tamper-evident audit stream.
   are no retry queues: reviewers must also be able to discover pending work from the
   reviewer queue API. Notification modes: `all` (every matched reviewer summarized) or
   `random` (a subset of size `min_reviewers`, sampled with a crypto shuffle).
+  In-app reviewer creation notices and requester decision and revocation notices
+  link to `/requests`. Its review section is available to eligible reviewers
+  whether or not they are administrators.
 
 ## Data model
 

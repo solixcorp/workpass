@@ -1005,6 +1005,7 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS user_notifications_user_idx ON user_notifications (user_id, created_at)",
   ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS user_notifications_read_idx ON user_notifications (read_at)").run();
   // A user's own successful sign-ins: when, from where, on what device.
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS login_history (
@@ -1027,6 +1028,7 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS login_history_user_idx ON login_history (user_id, occurred_at)",
   ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS login_history_occurred_idx ON login_history (occurred_at)").run();
   // "I do not recognise this sign-in": a user's report to the administrators.
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS suspicious_reports (
@@ -1039,7 +1041,6 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       handled_by TEXT,
       handled_at TEXT
     )`,
-  await env.DB.prepare("CREATE INDEX IF NOT EXISTS login_history_occurred_idx ON login_history (occurred_at)").run();
   ).run();
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS suspicious_reports_status_idx ON suspicious_reports (status, created_at)",

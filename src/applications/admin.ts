@@ -233,16 +233,20 @@ applicationAdminRoutes.delete("/applications/:slug", async (context) => {
   return auditStandaloneOperation(context.env, "app.delete", context.req.path, async () => {
     const existing = await getApplication(context.env, slug);
     if (!existing) return { response: await applicationNotFound(context), actorUserId: actor.userId };
-    // Removing the dashboard surface also removes the uploaded icon object;
-    // a provider registration keeps living in its own registry.
+    let provider;
+    try {
+      provider = await removeProvider(context.env, existing);
+    } catch (error) {
+      console.error("Application provider removal failed", error);
+      return { response: Response.json({ error: "연결된 서비스 제공자를 삭제하지 못했습니다. 앱은 삭제되지 않았습니다." }, { status: 500 }), actorUserId: actor.userId, targetUserId: slug };
+    }
     if (existing.iconKey) {
       await deleteApplicationIcon(context.env, slug).catch(() => undefined);
     }
     const removed = await deleteApplication(context.env, slug);
-    if (removed) await removeProvider(context.env, existing).catch(() => undefined);
     return {
       response: removed
-        ? Response.json({ deleted: true })
+        ? Response.json({ deleted: true, ...provider })
         : Response.json({ error: "Application not found" }, { status: 404 }),
       actorUserId: actor.userId,
       targetUserId: slug,

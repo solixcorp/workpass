@@ -78,26 +78,41 @@ export async function syncProvider(env: Env, app: ApplicationRow, enabled: boole
 }
 
 /** Remove the provider an app owned. The default dashboard client is never touched. */
-export async function removeProvider(env: Env, app: ApplicationRow): Promise<void> {
-  if (!app.binding) return;
+export async function removeProvider(env: Env, app: ApplicationRow): Promise<{ providerRemoved: boolean; providerKind: "oidc" | "saml" | "wsfed" | "swa" | null; providerShared: boolean }> {
+  const providerKind = app.binding && app.protocol !== "bookmark" ? app.protocol : null;
+  if (!app.binding || !providerKind) return { providerRemoved: false, providerKind: null, providerShared: false };
   const shared = await env.DB.prepare("SELECT slug FROM applications WHERE protocol = ? AND binding = ? AND slug != ? LIMIT 1")
     .bind(app.protocol, app.binding, app.slug).first();
-  if (shared) return;
+  if (shared) return { providerRemoved: false, providerKind, providerShared: true };
+  const statements: D1PreparedStatement[] = [];
   if (app.protocol === "oidc") {
-    if (app.binding === (await workpassClientId(env))) return;
-    await env.DB.prepare('DELETE FROM "oauthClient" WHERE clientId = ?').bind(app.binding).run();
+    if (app.binding === (await workpassClientId(env))) return { providerRemoved: false, providerKind, providerShared: false };
+    // Some installations may not have optional OAuth tables yet. Delete all
+    // client-bound credentials and pending grants in the same transaction.
+    for (const [table, column] of [
+      ["oauthAccessToken", "clientId"], ["oauthRefreshToken", "clientId"],
+      ["oauthConsent", "clientId"], ["oauthClientResource", "clientId"],
+      ["oauth_device_grants", "client_id"], ["oauth_ciba_requests", "client_id"],
+    ] as const) {
+      const exists = await env.DB.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").bind(table).first();
+      if (exists) statements.push(env.DB.prepare(`DELETE FROM "${table}" WHERE "${column}" = ?`).bind(app.binding));
+    }
+    statements.push(env.DB.prepare('DELETE FROM "oauthClient" WHERE clientId = ?').bind(app.binding));
   } else if (app.protocol === "saml") {
-    await env.DB.prepare("DELETE FROM saml_service_providers WHERE entity_id = ?").bind(app.binding).run();
+    statements.push(env.DB.prepare("DELETE FROM saml_service_providers WHERE entity_id = ?").bind(app.binding));
   } else if (app.protocol === "wsfed") {
-    await env.DB.prepare("DELETE FROM wsfed_relying_parties WHERE realm = ?").bind(app.binding).run();
+    statements.push(env.DB.prepare("DELETE FROM wsfed_relying_parties WHERE realm = ?").bind(app.binding));
   } else if (app.protocol === "swa") {
-    await env.DB.prepare("DELETE FROM swa_applications WHERE origin = ?").bind(app.binding).run();
+    statements.push(env.DB.prepare("DELETE FROM swa_applications WHERE origin = ?").bind(app.binding));
   }
+  const providerIndex = statements.length - 1;
   const subject = protocolSubject(app);
   if (subject) {
-    await env.DB.prepare("DELETE FROM app_access_policies WHERE subject = ?").bind(subject).run();
-    await env.DB.prepare("DELETE FROM app_policy_groups WHERE subject = ?").bind(subject).run();
+    statements.push(env.DB.prepare("DELETE FROM app_policy_groups WHERE subject = ?").bind(subject));
+    statements.push(env.DB.prepare("DELETE FROM app_access_policies WHERE subject = ?").bind(subject));
   }
+  const results = await env.DB.batch(statements);
+  return { providerRemoved: results[providerIndex].meta.changes > 0, providerKind, providerShared: false };
 }
 
 integrationRoutes.get("/applications/:slug/integration", async (context) => {

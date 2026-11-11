@@ -55,13 +55,13 @@ No `address` scope: the user model has no address source. `request_parameter_sup
 
 ## SCIM attribute push and self-propagation
 
-Outbound SCIM attribute push runs behind `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: create/patch payloads to targets carry the user's custom attributes as the `urn:solixcorp:scim:1.0:CustomAttributes` extension (patch as a path-scoped operation, deactivation never carries profile data). Fail-closed default; it remains a deliberate per-target operator decision (privacy review). Attribute changes self-propagate: writes through the admin API and inbound SCIM queue an `update` operation and the daily Worker Cron drains pending operations through the shared executor — no manual trigger is needed anymore.
+Outbound SCIM attribute push runs behind `ENABLE_SCIM_ATTRIBUTE_RELEASE=true`: create/patch payloads to targets carry the user's custom attributes as the `urn:solixcorp:scim:1.0:CustomAttributes` extension (patch as a path-scoped operation, deactivation never carries profile data). Fail-closed default; it remains a deliberate per-target operator decision (privacy review). User attribute changes are queued automatically when the app has a configured target and attribute release is enabled; unmapped or locked changes are visible as `scim.operation.skipped` audit events with a reason and require operator reconciliation. The scheduled run drains up to 50 operations, oldest first.
 
 ## Update events (SSF SET)
 
 Attribute changes emit a SET through the SSF sender when a recipient's registered `event_types` include the URN:
 
-- Event type: `urn:solixcorp:internal-auth:attributes-changed:1.0`; subject `{"user": {"user_id": ...}}`; event payload `{object_type, object_id, changed_keys (≤ 32)}`.
+- Event type: `urn:solixcorp:internal-auth:attributes-changed:1.0`; subject identifies the affected object: `{"user": {"user_id": ...}}`, `{"group": {"group_id": ...}}`, or `{"account": {"account_id": ...}}`; event payload `{object_type, object_id, changed_keys (≤ 32)}`.
 - Emission points: the attributes admin API (set and delete), and inbound SCIM attribute writes — best-effort; delivery failures land in the bounded-retry delivery rows, never block the attribute write. The sender flag (`ENABLE_SSF_SENDER`) gates all of it.
 
 ## What remains open

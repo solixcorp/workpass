@@ -110,7 +110,6 @@ objectAttributeRoutes.put("/attributes/:objectType/:objectId", async (context) =
       }
     }
     await emitAttributeChangedEvent(context.env, {
-      userId: actor.userId,
       objectType: target.type,
       objectId: target.objectId,
       changedKeys: Object.keys(parsed.attributes),
@@ -138,7 +137,6 @@ objectAttributeRoutes.delete("/attributes/:objectType/:objectId", async (context
     }
     if (removed) {
       await emitAttributeChangedEvent(context.env, {
-        userId: actor.userId,
         objectType: target.type,
         objectId: target.objectId,
         changedKeys: [],

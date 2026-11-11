@@ -158,6 +158,19 @@ accessRequestAdminRoutes.post("/access-requests/:id/revoke", async (context) => 
   if (admin instanceof Response) return admin;
   const id = context.req.param("id");
   const revoked = await revokeAccessRequest(context.env, id, admin.userId);
+  if (revoked) {
+    // Notification delivery is best-effort and must not undo the revocation.
+    try {
+      const request = await context.env.DB.prepare("SELECT user_id AS userId, subject FROM access_requests WHERE id = ?")
+        .bind(id).first<{ userId: string; subject: string }>();
+      if (request) await notifyUser(context.env, request.userId, {
+        kind: "access_request", title: "접근 권한이 회수되었습니다",
+        body: await appNameForSubject(context.env, request.subject), link: "/requests",
+      });
+    } catch (error) {
+      console.warn("Access revocation notification failed", { name: error instanceof Error ? error.name : "UnknownError" });
+    }
+  }
   return revoked ? context.json({ revoked: true }) : context.json({ error: "No active grant for this request" }, { status: 404 });
 });
 
@@ -234,7 +247,7 @@ accessRequestUserRoutes.post(USER_PREFIX, async (context) => {
   }
   if (bindingRule) {
     const reviewers = await resolveRuleReviewers(context.env, bindingRule.ruleId, bindingRule.minReviewers, bindingRule.notifyMode);
-    await notifyUsers(context.env, reviewers, { kind: "access_request", title: "새 접근 요청", body: `${await appNameForSubject(context.env, request.subject)} 접근을 요청했습니다.`, link: "/access-requests" });
+    await notifyUsers(context.env, reviewers, { kind: "access_request", title: "새 접근 요청", body: `${await appNameForSubject(context.env, request.subject)} 접근을 요청했습니다.`, link: "/requests" });
   }
   return context.json({ request }, { status: 201 });
 });
@@ -291,7 +304,7 @@ accessRequestUserRoutes.post(`${USER_PREFIX}/:id/review`, async (context) => {
       kind: "access_request",
       title: decision === "approved" ? "접근 요청이 승인되었습니다" : "접근 요청이 거절되었습니다",
       body: `${await appNameForSubject(context.env, outcome.request.subject)}${outcome.request.decisionNote ? ` · ${outcome.request.decisionNote}` : ""}`,
-      link: "/access-requests",
+      link: "/requests",
     });
     // Best-effort; the audit event is written by the engine.
     await notifyAccessRequestEvent(context.env, {

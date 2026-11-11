@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, XIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -379,9 +380,17 @@ function MineSection() {
               </ItemContent>
               {request.status === 'pending' ? (
                 <ItemActions>
-                  <Button variant="outline" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(request.id)}>
-                    취소
-                  </Button>
+                  <ConfirmAction
+                    title="이 접근 요청을 취소할까요?"
+                    description="취소하면 검토가 중단됩니다. 다시 필요하면 새로 요청해야 합니다."
+                    details={[{ label: '앱', value: subjectLabel(request.subject, request.displayName) }]}
+                    confirmLabel="요청 취소"
+                    onConfirm={() => cancel.mutate(request.id)}
+                  >
+                    <Button variant="outline" size="sm" disabled={cancel.isPending}>
+                      취소
+                    </Button>
+                  </ConfirmAction>
                 </ItemActions>
               ) : null}
             </Item>

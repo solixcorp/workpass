@@ -30,6 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ApiError, apiFetch } from '@/lib/api'
+import { deleteMessage, type DeleteResult } from '@/lib/application-delete'
 import { formatDateTime } from '@/lib/format'
 import { PROTOCOL_LABELS } from '@/lib/integrations'
 import { AppPolicyDialog, type PolicyApp } from './app-policy-dialog'
@@ -80,12 +81,13 @@ export function ApplicationsPage() {
   })
 
   const remove = useMutation({
-    mutationFn: (slug: string) => apiFetch(`/api/admin/applications/${slug}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      toast.success('앱을 삭제했습니다.')
+    mutationFn: (slug: string) => apiFetch<DeleteResult>(`/api/admin/applications/${slug}`, { method: 'DELETE' }),
+    onSuccess: (result) => {
+      toast.success(deleteMessage(result))
       return queryClient.invalidateQueries({ queryKey: applicationsKey })
     },
-    onError: () => toast.error('앱을 삭제하지 못했습니다.'),
+    onError: (cause: unknown) =>
+      toast.error(cause instanceof ApiError && /[가-힣]/.test(cause.message) ? cause.message : '앱을 삭제하지 못했습니다.'),
   })
 
   const counts = useMemo(() => {

@@ -21,6 +21,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ApiError, apiFetch } from '@/lib/api'
+import { deleteMessage, type DeleteResult } from '@/lib/application-delete'
 import { PROTOCOL_LABELS } from '@/lib/integrations'
 import { AppPolicyDialog } from '../app-policy-dialog'
 import { ApplicationEditDialog, type EditableApplication } from '../application-edit-dialog'
@@ -36,6 +37,7 @@ type AdminApplication = EditableApplication & {
 }
 
 /** One app: its state, its sign-in connection, and who may open it. */
+
 export function ApplicationPage() {
   const { slug } = useParams({ strict: false }) as { slug: string }
   const queryClient = useQueryClient()
@@ -63,15 +65,15 @@ export function ApplicationPage() {
   })
 
   const remove = useMutation({
-    mutationFn: () => apiFetch(`/api/admin/applications/${slug}`, { method: 'DELETE' }),
-    onSuccess: async () => {
-      toast.success('앱을 삭제했습니다.')
+    mutationFn: () => apiFetch<DeleteResult>(`/api/admin/applications/${slug}`, { method: 'DELETE' }),
+    onSuccess: async (result) => {
+      toast.success(deleteMessage(result))
       await queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
       void navigate({ to: '/admin/applications' })
     },
-    onError: () => {
+    onError: (cause: unknown) => {
       setConfirmDelete(false)
-      toast.error('앱을 삭제하지 못했습니다.')
+      toast.error(cause instanceof ApiError && /[가-힣]/.test(cause.message) ? cause.message : '앱을 삭제하지 못했습니다.')
     },
   })
 

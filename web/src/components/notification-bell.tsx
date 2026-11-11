@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { BellIcon, CheckCheckIcon } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
@@ -13,12 +16,13 @@ export function NotificationBell() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const { data } = useQuery(notificationsQuery)
+  const { data, isPending, error } = useQuery(notificationsQuery)
   const unread = data?.unread ?? 0
 
   const markRead = useMutation({
     mutationFn: (ids?: string[]) => apiFetch('/api/me/notifications/read', { method: 'POST', body: JSON.stringify(ids ? { ids } : {}) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: notificationsQuery.queryKey }),
+    onError: () => toast.error('읽음으로 표시하지 못했습니다.'),
   })
 
   return (
@@ -35,7 +39,7 @@ export function NotificationBell() {
         <SheetContent className="w-full sm:max-w-sm">
           <SheetHeader>
             <SheetTitle>알림</SheetTitle>
-            <SheetDescription>{unread ? `읽지 않은 알림 ${unread}개` : '새 알림이 없습니다.'}</SheetDescription>
+            <SheetDescription>{error ? '알림을 불러오지 못했습니다.' : unread ? `읽지 않은 알림 ${unread}개` : '새 알림이 없습니다.'}</SheetDescription>
           </SheetHeader>
           <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4">
             <div>
@@ -51,7 +55,13 @@ export function NotificationBell() {
                 </Button>
               </div>
             ) : null}
-            {(data?.notifications ?? []).length === 0 ? (
+            {error ? (
+              <Alert variant="destructive">
+                <AlertDescription>알림을 불러오지 못했습니다. 잠시 뒤에 다시 열어 보세요.</AlertDescription>
+              </Alert>
+            ) : isPending ? (
+              <Skeleton className="h-20 w-full" />
+            ) : (data?.notifications ?? []).length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">알림이 없습니다.</p>
             ) : (
               data!.notifications.map((notice) => (
