@@ -1,6 +1,6 @@
 import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PlusIcon, Trash2Icon } from 'lucide-react'
+import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ApiError, apiFetch } from '@/lib/api'
 import { summarize, TARGET_INFO, TYPE_INFO, type Binding, type Policy } from '@/lib/policies'
 import { BindingDialog } from './policy-binding-dialog'
+import { BindingEditDialog } from './policy-binding-edit-dialog'
 import { NotificationRules, useNotificationRules } from './notification-rules'
 import { PolicyDialog } from './policy-dialog'
 
@@ -177,6 +178,7 @@ function BindingList() {
   })
   const rules = useNotificationRules()
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<Binding | null>(null)
 
   const toggle = useMutation({
     mutationFn: ({ binding, enabled }: { binding: Binding; enabled: boolean }) =>
@@ -255,6 +257,9 @@ function BindingList() {
                         disabled={toggle.isPending}
                         onCheckedChange={(enabled) => toggle.mutate({ binding, enabled })}
                       />
+                      <Button variant="ghost" size="icon-sm" aria-label="연결 설정 수정" onClick={() => setEditing(binding)}>
+                        <PencilIcon />
+                      </Button>
                       <ConfirmAction
                         title="이 정책 연결을 해제할까요?"
                         description="연결을 해제하면 이 정책이 더 이상 적용되지 않습니다. 다시 켜려면 새로 연결해야 합니다."
@@ -274,6 +279,7 @@ function BindingList() {
         </div>
       )}
       <BindingDialog open={open} onOpenChange={setOpen} policies={policies.data ?? []} />
+      <BindingEditDialog binding={editing} onClose={() => setEditing(null)} />
     </section>
   )
 }

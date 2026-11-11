@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRoundIcon, LogOutIcon, MoreHorizontalIcon, ShieldCheckIcon, UserCheckIcon, UserXIcon } from 'lucide-react'
+import { KeyRoundIcon, LaptopMinimalIcon, LogOutIcon, MoreHorizontalIcon, ShieldCheckIcon, Trash2Icon, UserCheckIcon, UserXIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { apiFetch } from '@/lib/api'
+import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { sessionQuery } from '@/lib/queries'
 
@@ -32,7 +32,7 @@ export type ManagedUser = {
   banned?: boolean | null
 }
 
-type Action = 'ban' | 'unban' | 'grant-admin' | 'revoke-admin' | 'sessions' | 'unlock'
+type Action = 'ban' | 'unban' | 'grant-admin' | 'revoke-admin' | 'sessions' | 'unlock' | 'devices'
 
 type Lockdown = { id: string; reason: string; createdAt: string; liftedAt: string | null }
 
@@ -68,6 +68,13 @@ const COPY: Record<Action, { title: (u: ManagedUser) => string; body: string; co
     body: '사용자가 직접 잠근 계정이거나 비상 조치로 잠긴 계정입니다. 풀어도 비밀번호 등록이 지워진 상태라서, 풀고 나면 새 비밀번호를 정하는 링크를 바로 보냅니다. 세션과 신뢰한 기기는 이미 끝난 상태 그대로입니다.',
     confirm: '잠금 해제',
     done: '잠금을 풀었습니다. 이어서 비밀번호 설정 링크를 보냅니다.',
+  },
+  devices: {
+    title: (u) => `${u.email}의 신뢰한 기기를 모두 해제할까요?`,
+    body: '다음 로그인부터 모든 기기에서 추가 인증을 다시 합니다. 지금 열려 있는 세션은 그대로이니, 도용이 의심되면 모든 세션 종료도 함께 하세요.',
+    confirm: '신뢰 해제',
+    done: '신뢰한 기기를 모두 해제했습니다.',
+    destructive: true,
   },
   sessions: {
     title: (u) => `${u.email}의 모든 세션을 끝낼까요?`,
@@ -107,6 +114,10 @@ export function UserActions({
         await apiFetch(`/api/security/account-lockdown/user/${user.id}/unlock`, { method: 'POST', body: '{}' })
         return
       }
+      if (kind === 'devices') {
+        await apiFetch(`/api/security/trusted-devices/user/${user.id}`, { method: 'DELETE' })
+        return
+      }
       const result =
         kind === 'ban'
           ? await authClient.admin.banUser({ userId: user.id })
@@ -124,8 +135,9 @@ export function UserActions({
       await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
       if (isSelf) await queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey })
     },
-    onError: () => {
-      toast.error('처리하지 못했습니다.')
+    onError: (error) => {
+      const known = (error instanceof ApiError || error instanceof Error) && /[가-힣]/.test(error.message) ? error.message : null
+      toast.error(known ?? '처리하지 못했습니다.')
       setAction(null)
     },
   })
@@ -156,6 +168,10 @@ export function UserActions({
             <LogOutIcon />
             모든 세션 종료
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setAction('devices')}>
+            <LaptopMinimalIcon />
+            신뢰한 기기 해제
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           {locked ? (
             <DropdownMenuItem onSelect={() => setAction('unlock')}>
@@ -173,6 +189,10 @@ export function UserActions({
               비활성화
             </DropdownMenuItem>
           )}
+          <DropdownMenuItem disabled title="계정을 지우면 연동 앱의 계정을 함께 정리해야 하는데, 중간에 실패해도 안전하게 되돌리는 방법이 아직 없어 막아 두었습니다. 대신 ‘비활성화’를 쓰세요.">
+            <Trash2Icon />
+            사용자 삭제 (준비 중)
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
