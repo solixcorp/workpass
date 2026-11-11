@@ -79,6 +79,61 @@ describe("my activity event details", () => {
     expect(JSON.stringify(list)).not.toContain("actor free text");
   });
 
+  test("renders only whitelisted event details and ignores invalid counts", async () => {
+    const cases: [string, string, Record<string, unknown>, string | null][] = [
+      ["totp", "mfa.totp.verify", { method: "totp" }, "totp"],
+      ["backup", "mfa.backup_code.verify", { method: "backup_code" }, "backup_code"],
+      ["email", "mfa.otp.verify", { method: "email" }, "email"],
+      ["sms", "mfa.otp.enroll_start", { method: "sms" }, "sms"],
+      ["otp", "mfa.otp.enroll_verified", { method: "otp" }, "otp"],
+      ["duo", "mfa.duo.verify", { method: "duo" }, "duo"],
+      ["passkey", "mfa.passkey.step_up", { method: "passkey" }, "passkey"],
+      ["hotp-enroll", "mfa.hotp.enroll", { method: "hotp", tokenLabel: "  Desk key  " }, "hotp · Desk key"],
+      ["hotp-remove", "mfa.hotp.remove", { method: "hotp", tokenLabel: "x".repeat(80) }, `hotp · ${"x".repeat(64)}`],
+      ["hotp-verify", "mfa.hotp.verify", { method: "hotp" }, "hotp"],
+      ["sessions", "identity.user.sessions_revoke.success_or_failure", { sessionCount: 3, secret: "NEVER-LEAK" }, "sessions:3"],
+      ["zero", "identity.user.sessions_revoke.self", { sessionCount: 0 }, "sessions:0"],
+      ["negative", "identity.user.sessions_revoke.self", { sessionCount: -1 }, null],
+      ["fraction", "identity.user.sessions_revoke.self", { sessionCount: 1.5 }, null],
+      ["string", "identity.user.sessions_revoke.self", { sessionCount: "3" }, null],
+      ["other", "identity.user.password_reset", { method: "totp", sessionCount: 3 }, null],
+    ];
+    for (const [id, type, context] of cases) await insert(`detail-${id}`, id === "sessions" ? otherId : userId, type, context);
+    const list = await events();
+    for (const [id, , , detail] of cases) expect(list.find((event) => event.id === `detail-${id}`)?.detail).toBe(detail);
+    expect(list.find((event) => event.id === "detail-sessions")).toMatchObject({ actor: "administrator", ip: null, place: null, device: null });
+    expect(JSON.stringify(list)).not.toContain("NEVER-LEAK");
+    expect((await verifyAuditEventChain(env)).verified).toBe(true);
+  });
+
+  test("real HOTP and passkey events record their method and token label", async () => {
+    const enrolled = await call("/api/mfa/hotp/enroll", { method: "POST", body: { label: "  Desk key  " } });
+    expect(enrolled.status).toBe(201);
+    const token = await json(enrolled);
+    const verify = await call("/api/mfa/hotp/verify", { method: "POST", body: { tokenId: token.tokenId, code: "000000" } });
+    expect(verify.status).toBe(400);
+    const removed = await call(`/api/mfa/hotp/${token.tokenId}`, { method: "DELETE" });
+    expect(removed.status).toBe(200);
+    await call("/api/security/step-up/passkey/verify", { method: "POST", body: {} });
+    const list = await events();
+    expect(list.find((event) => event.type === "mfa.hotp.enroll" && event.id !== "detail-hotp-enroll")?.detail).toBe("hotp · Desk key");
+    expect(list.find((event) => event.type === "mfa.hotp.remove" && event.id !== "detail-hotp-remove")?.detail).toBe("hotp · Desk key");
+    expect(list.find((event) => event.type === "mfa.passkey.step_up" && event.id !== "detail-passkey")?.detail).toBe("passkey");
+    expect((await verifyAuditEventChain(env)).verified).toBe(true);
+  });
+
+  test("verification failures and self-service bulk revocation record their facts", async () => {
+    const verification = await call("/api/auth/two-factor/verify-totp", { method: "POST", body: { code: "000000" } });
+    expect(verification.ok).toBe(false);
+    expect((await events()).some((event) => event.type === "mfa.totp.verify" && event.detail === "totp")).toBe(true);
+    expect((await call("/api/auth/sign-in/username", { method: "POST", body: { username: "activityuser", password: PASSWORD } })).status).toBe(200);
+    expect((await call("/api/auth/revoke-sessions", { method: "POST" })).status).toBe(200);
+    expect((await call("/api/auth/sign-in/username", { method: "POST", body: { username: "activityuser", password: PASSWORD } })).status).toBe(200);
+    const event = (await events()).find((entry) => entry.type === "identity.user.sessions_revoke.success_or_failure");
+    expect(event?.detail).toBe("sessions:2");
+    expect((await verifyAuditEventChain(env)).verified).toBe(true);
+  });
+
   test("requires a session", async () => {
     expect((await call("/api/me/activity", { anonymous: true })).status).toBe(401);
   });

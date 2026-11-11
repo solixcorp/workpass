@@ -199,11 +199,12 @@ mfaEnrollRoutes.delete("/mfa/hotp/:id", async (context) => {
     if (userMustUseMfa(context.env, user) && ownsOnlyThis) {
       return { response: context.json({ error: "필수 2차 인증의 마지막 수단은 삭제할 수 없습니다." }, 409), actorUserId: user.id };
     }
-    const result = await context.env.DB.prepare("DELETE FROM mfa_hotp_tokens WHERE id = ? AND user_id = ?")
-      .bind(id, user.id).run();
+    const result = await context.env.DB.prepare("DELETE FROM mfa_hotp_tokens WHERE id = ? AND user_id = ? RETURNING label")
+      .bind(id, user.id).first<{ label: string }>();
     return {
-      response: result.meta.changes === 1 ? context.json({ removed: true }) : context.json({ error: "토큰을 찾을 수 없습니다." }, 404),
+      response: result ? context.json({ removed: true }) : context.json({ error: "토큰을 찾을 수 없습니다." }, 404),
       actorUserId: user.id,
+      eventContext: result ? { tokenLabel: result.label.trim().slice(0, 64) } : undefined,
     };
-  });
+  }, { method: "hotp" });
 });

@@ -17,6 +17,28 @@ import { myActivityQuery, type MyActivity } from '@/lib/me'
 
 type Login = MyActivity['logins'][number]
 
+const METHOD_LABELS: Record<string, string> = {
+  totp: '인증 앱',
+  hotp: '보안 토큰',
+  duo: 'Duo',
+  passkey: '패스키',
+  email: '이메일 코드',
+  sms: '문자 코드',
+  backup_code: '백업 코드',
+  otp: '일회용 코드',
+}
+
+/** The server sends a method id, `hotp · <token name>` or `sessions:<n>`; show it in plain Korean. */
+function detailText(detail: string | null | undefined): string | null {
+  if (!detail) return null
+  const sessions = detail.match(/^sessions:(\d+)$/)
+  if (sessions) return `세션 ${sessions[1]}개`
+  const [method, ...rest] = detail.split(' · ')
+  const label = METHOD_LABELS[method!]
+  if (!label) return null
+  return rest.length ? `${label} · ${rest.join(' · ')}` : label
+}
+
 /** Recent sign-ins by device, security events of the last 30 days, and a way to report what is not theirs. */
 export function ActivityPage() {
   const activity = useQuery(myActivityQuery)
@@ -85,7 +107,7 @@ export function ActivityPage() {
                   const failed = event.outcome === 'failure'
                   const who = event.actor === 'administrator' ? `관리자${event.actorName ? ` ${event.actorName}` : ''}가 함` : event.actor === 'system' ? '시스템이 함' : event.byAdministrator ? '관리자가 함' : '내가 함'
                   const where = [event.place, event.ip].filter(Boolean).join(' · ')
-                  const how = [event.device, event.detail].filter(Boolean).join(' · ')
+                  const how = [event.device, detailText(event.detail)].filter(Boolean).join(' · ')
                   return (
                     <li key={event.id} className="flex items-start gap-3 px-4 py-3">
                       {failed ? <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-primary" />}

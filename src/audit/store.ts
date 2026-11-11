@@ -109,7 +109,7 @@ export async function insertAuditEvent(
 export async function updateAuditEvent(
   env: Env,
   id: string,
-  update: Pick<AuditEvent, "actor_user_id" | "target_user_id" | "outcome">,
+  update: Pick<AuditEvent, "actor_user_id" | "target_user_id" | "outcome"> & { event_context?: Record<string, unknown> },
 ): Promise<void> {
   const row = await env.DB.prepare(
     `SELECT id, occurred_at, event_type, request_path, client_ip, event_context,
@@ -117,19 +117,21 @@ export async function updateAuditEvent(
      FROM audit_events WHERE id = ?`,
   ).bind(id).first<AuditEvent & { client_ip: string | null; event_context: string | null; hash_version: number }>();
   if (!row) throw new Error("Audit event is missing");
+  const eventContext = row.event_context === null ? null : JSON.parse(row.event_context) as Record<string, unknown>;
+  const mergedContext = update.event_context ? { ...eventContext, ...update.event_context } : eventContext;
   const contentHash = await auditContentHash({
     ...row,
-    event_context: row.event_context === null ? null : JSON.parse(row.event_context) as Record<string, unknown>,
+    event_context: mergedContext,
     actor_user_id: update.actor_user_id,
     target_user_id: update.target_user_id,
     outcome: update.outcome,
   }, row.hash_version);
   const result = await env.DB.prepare(
     `UPDATE audit_events
-     SET actor_user_id = ?, target_user_id = ?, outcome = ?, content_hash = ?
+     SET actor_user_id = ?, target_user_id = ?, outcome = ?, event_context = ?, content_hash = ?
      WHERE id = ? AND outcome = 'started'`,
   )
-    .bind(update.actor_user_id, update.target_user_id, update.outcome, contentHash, id)
+    .bind(update.actor_user_id, update.target_user_id, update.outcome, mergedContext === null ? null : JSON.stringify(mergedContext), contentHash, id)
     .run();
   if (result.meta.changes !== 1) {
     throw new Error("Audit event is missing or already finalized");
@@ -203,7 +205,9 @@ export async function auditStandaloneOperation(
     response: Response;
     actorUserId?: string | null;
     targetUserId?: string | null;
+    eventContext?: Record<string, unknown>;
   }>,
+  eventContext?: Record<string, unknown>,
 ): Promise<Response> {
   const id = crypto.randomUUID();
   try {
@@ -214,6 +218,7 @@ export async function auditStandaloneOperation(
       event_type: eventType,
       outcome: "started",
       request_path: requestPath,
+      event_context: eventContext,
     });
   } catch {
     return Response.json({ error: "Audit event could not be recorded" }, { status: 503 });
@@ -241,6 +246,7 @@ export async function auditStandaloneOperation(
       actor_user_id: result.actorUserId ?? null,
       target_user_id: result.targetUserId ?? null,
       outcome: result.response.ok ? "success" : "failure",
+      event_context: result.eventContext,
     });
   } catch {
     return Response.json(

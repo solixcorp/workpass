@@ -231,6 +231,18 @@ function activityContext(raw: string | null): Record<string, unknown> {
   } catch { return {}; }
 }
 
+function activityDetail(type: string, details: Record<string, unknown>): string | null {
+  if (type.startsWith("mfa.") && typeof details.method === "string" && ["totp", "hotp", "duo", "passkey", "email", "sms", "backup_code", "otp"].includes(details.method)) {
+    if (type.startsWith("mfa.hotp.") && details.method === "hotp" && typeof details.tokenLabel === "string") {
+      const label = details.tokenLabel.trim().slice(0, 64);
+      if (label) return `hotp · ${label}`;
+    }
+    return details.method;
+  }
+  if (type.startsWith("identity.user.sessions_revoke") && typeof details.sessionCount === "number" && Number.isSafeInteger(details.sessionCount) && details.sessionCount >= 0) return `sessions:${details.sessionCount}`;
+  return null;
+}
+
 meRoutes.get("/api/me/activity", async (context) => {
   const me = await requireMe(context);
   if (me instanceof Response) return me;
@@ -280,7 +292,7 @@ meRoutes.get("/api/me/activity", async (context) => {
         ip: actor === "administrator" ? null : event.ip,
         place: actor === "administrator" || !geo ? null : [geo.city, geo.region, geo.country].filter(Boolean).join(", ") || null,
         device: actor === "administrator" || typeof details.device !== "string" ? null : details.device,
-        detail: event.type.startsWith("mfa.") && typeof details.method === "string" && ["totp", "hotp", "duo", "otp"].includes(details.method) ? details.method : null,
+        detail: activityDetail(event.type, details),
       };
     }),
   });

@@ -53,7 +53,7 @@ mfaRoutes.post("/mfa/duo/verify", async (context) => {
       response: Response.json({ result: result.result, status: result.status, statusMessage: result.statusMessage }),
       actorUserId: session.user.id,
     };
-  });
+  }, { method: "duo" });
 });
 
 // --- Hardware OTP (HOTP) tokens managed by this platform ---------------------
@@ -80,7 +80,7 @@ mfaRoutes.post("/mfa/hotp/enroll", async (context) => {
   return auditStandaloneOperation(context.env, "mfa.hotp.enroll", "/api/mfa/hotp/enroll", async () => ({
     response: Response.json({ tokenId: id, label, secretBase32: secret }, { status: 201 }),
     actorUserId: session.user.id,
-  }));
+  }), { method: "hotp", tokenLabel: label.trim().slice(0, 64) });
 });
 
 mfaRoutes.post("/mfa/hotp/verify", async (context) => {
@@ -122,7 +122,7 @@ mfaRoutes.post("/mfa/hotp/verify", async (context) => {
       response: Response.json({ verified: result.verified }, { status: result.verified ? 200 : 400 }),
       actorUserId: session.user.id,
     };
-  });
+  }, { method: "hotp" });
 });
 
 async function enrollmentDigest(secret: string, userId: string, code: string): Promise<string> {
@@ -155,8 +155,9 @@ mfaRoutes.post("/mfa/otp/start", async (context) => {
       await context.env.DB.prepare("DELETE FROM mfa_enroll_verifications WHERE user_id = ? AND code_digest = ?").bind(session.user.id, digest).run();
       return { response: context.json({ error: "The verification code could not be sent" }, 503), actorUserId: session.user.id };
     }
-    return { response: context.json({ sent: true, expires_in: 600 }), actorUserId: session.user.id };
-  });
+    const method = await (await import("./otp-channel")).otpChannel(context.env, session.user.id, otp) ?? "otp";
+    return { response: context.json({ sent: true, expires_in: 600 }), actorUserId: session.user.id, eventContext: { method } };
+  }, { method: "otp" });
 });
 
 mfaRoutes.post("/mfa/otp/confirm", async (context) => {
@@ -178,6 +179,7 @@ mfaRoutes.post("/mfa/otp/confirm", async (context) => {
     await context.env.DB.prepare("UPDATE mfa_enroll_verifications SET attempts = attempts + 1 WHERE user_id = ? AND code_digest = ?").bind(session.user.id, row.code_digest).run();
     return context.json({ error: "Invalid verification code" }, 400);
   }
+  const method = await (await import("./otp-channel")).otpChannel(context.env, session.user.id, body.code) ?? "otp";
   return auditStandaloneOperation(context.env, "mfa.otp.enroll_verified", "/api/mfa/otp/confirm", async () => {
     let response: Response;
     try {
@@ -188,7 +190,7 @@ mfaRoutes.post("/mfa/otp/confirm", async (context) => {
     if (!response.ok) return { response: context.json({ error: "The enrollment could not be completed" }, 400), actorUserId: session.user.id };
     await remove();
     return { response, actorUserId: session.user.id };
-  });
+  }, { method });
 });
 
 interface MfaProofSession {

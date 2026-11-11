@@ -1,6 +1,6 @@
 import type { Env } from "../env";
 import { createAuth, type AuthInstance } from "../auth/config";
-import { insertAuditEvent, updateAuditEvent } from "./store";
+import { auditStandaloneOperation, insertAuditEvent, updateAuditEvent } from "./store";
 import {
   handleFingerprintRiskLogin,
   handleFingerprintRiskAuthorization,
@@ -41,6 +41,7 @@ const auditEventTypes: Record<string, string> = {
   "POST /api/auth/admin/unban-user": "identity.user.enable.success_or_failure",
   "POST /api/auth/admin/remove-user": "identity.user.remove.success_or_failure",
   "POST /api/auth/admin/revoke-user-sessions": "identity.user.sessions_revoke.success_or_failure",
+  "POST /api/auth/revoke-sessions": "identity.user.sessions_revoke.success_or_failure",
   "POST /api/auth/admin/revoke-user-session": "identity.user.session_revoke.success_or_failure",
   "POST /api/auth/oauth2/register": "oauth.client.register.success_or_failure",
 };
@@ -88,7 +89,7 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
 
   if (request.method === "POST" && twoFactorVerifyPaths.has(path)) {
-    return handleTwoFactorVerification(request, env, auth);
+    return auditTwoFactorVerification(request, env, auth);
   }
 
   if (request.method === "POST" && path === "/api/auth/sign-up/email") {
@@ -133,11 +134,7 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   if (!eventType) {
     const removal = request.method === "POST" && ["/api/auth/two-factor/disable", "/api/auth/passkey/delete-passkey"].includes(path);
     const removalSession = removal ? await auth.api.getSession({ headers: request.headers }).catch(() => null) : null;
-    const allSessions = request.method === "POST" && path === "/api/auth/revoke-sessions";
-    const allSessionUser = allSessions ? await auth.api.getSession({ headers: request.headers }).catch(() => null) : null;
-    const appSnapshot = allSessionUser ? await appSessionSnapshot(env, allSessionUser.user.id).catch(() => undefined) : undefined;
     const answer = await auth.handler(request);
-    if (answer.ok && allSessionUser) await logoutUserFromApps(env, allSessionUser.user.id, { reason: "self_all_sessions", snapshot: appSnapshot });
     if (answer.ok && removalSession) await notifySecurity(env, removalSession.user.id, mfaRemovedNotice);
     if (grantCopy && path === "/api/auth/oauth2/continue") {
       const continuing = await auth.api.getSession({ headers: request.headers }).catch(() => null);
@@ -164,6 +161,11 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
     // Continue so the auth endpoint returns its normal authentication error.
   }
 
+  const revokeUserId = path === "/api/auth/revoke-sessions" ? actorUserId : path === "/api/auth/admin/revoke-user-sessions" ? targetUserId : null;
+  const revokeSession = path === "/api/auth/revoke-sessions" ? await auth.api.getSession({ headers: request.headers }).catch(() => null) : null;
+  const beforeSessions = revokeUserId ? await env.DB.prepare('SELECT id FROM "session" WHERE "userId" = ?')
+    .bind(revokeUserId).all<{ id: string }>().catch(() => null) : null;
+
   const eventId = crypto.randomUUID();
   try {
     await insertAuditEvent(env, {
@@ -184,6 +186,7 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   const appLogout = request.method === "POST" && targetUserId &&
     (path === "/api/auth/admin/ban-user" || path === "/api/auth/admin/revoke-user-sessions")
     ? await appSessionSnapshot(env, targetUserId).catch(() => undefined) : undefined;
+  const selfLogout = revokeSession ? await appSessionSnapshot(env, revokeSession.user.id).catch(() => undefined) : undefined;
   try {
     response = await auth.handler(request);
   } catch {
@@ -200,6 +203,16 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
   if (response.ok && targetUserId && (path === "/api/auth/admin/ban-user" || path === "/api/auth/admin/revoke-user-sessions")) {
     await logoutUserFromApps(env, targetUserId, { reason: path, snapshot: appLogout });
+  }
+  if (response.ok && revokeSession) await logoutUserFromApps(env, revokeSession.user.id, { reason: "self_all_sessions", snapshot: selfLogout });
+  let sessionCount: number | undefined;
+  if (response.ok && beforeSessions && revokeUserId) {
+    const afterSessions = await env.DB.prepare('SELECT id FROM "session" WHERE "userId" = ?')
+      .bind(revokeUserId).all<{ id: string }>().catch(() => null);
+    if (afterSessions) {
+      const remaining = new Set(afterSessions.results.map((row) => row.id));
+      sessionCount = beforeSessions.results.filter((row) => !remaining.has(row.id)).length;
+    }
   }
   if (grantCopy) await recordOAuthGrant(env, grantCopy, response, actorUserId);
   if (
@@ -251,6 +264,7 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
       outcome: response.ok || (response.status >= 300 && response.status < 400)
         ? "success"
         : "failure",
+      event_context: sessionCount === undefined ? undefined : { sessionCount },
     });
   } catch {
     return Response.json({ error: "Operation audit finalization failed", eventId }, { status: 503 });
@@ -271,6 +285,20 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
  * recorded.
  */
 export async function handleTwoFactorVerification(request: Request, env: Env, auth: AuthInstance): Promise<Response> {
+  return (await performTwoFactorVerification(request, env, auth)).response;
+}
+
+async function auditTwoFactorVerification(request: Request, env: Env, auth: AuthInstance): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  const factor = path.endsWith("verify-totp") ? "totp" : path.endsWith("verify-backup-code") ? "backup_code" : "otp";
+  const prior = await auth.api.getSession({ headers: request.headers }).catch(() => null);
+  return auditStandaloneOperation(env, `mfa.${factor}.verify`, path, async () => {
+    const result = await performTwoFactorVerification(request, env, auth);
+    return { response: result.response, actorUserId: result.userId ?? prior?.user.id, eventContext: { method: result.method ?? factor } };
+  }, { method: factor });
+}
+
+async function performTwoFactorVerification(request: Request, env: Env, auth: AuthInstance): Promise<{ response: Response; userId?: string; method?: string }> {
   const verifyPath = new URL(request.url).pathname;
   let otpCode: string | undefined;
   if (verifyPath === "/api/auth/two-factor/verify-otp") {
@@ -286,9 +314,9 @@ export async function handleTwoFactorVerification(request: Request, env: Env, au
   try {
     response = await auth.handler(request);
   } catch {
-    return Response.json({ error: "Authentication operation failed" }, { status: 500 });
+    return { response: Response.json({ error: "Authentication operation failed" }, { status: 500 }) };
   }
-  if (!response.ok) return response;
+  if (!response.ok) return { response };
 
   let token: string | null = null;
   let userId: string | null = null;
@@ -322,7 +350,7 @@ export async function handleTwoFactorVerification(request: Request, env: Env, au
   const method = verifyPath === "/api/auth/two-factor/verify-totp" ? "totp"
     : userId && otpCode ? await (await import("../mfa/otp-channel")).otpChannel(env, userId, otpCode) : undefined;
   if (!token || !userId || !(await recordSessionMfaProof(env, token, userId, method))) {
-    return Response.json({ error: "The verification could not be recorded" }, { status: 503 });
+    return { response: Response.json({ error: "The verification could not be recorded" }, { status: 503 }), userId: userId ?? undefined, method };
   }
   if (issuedSession && !priorSession) await recordLogin(env, request, userId, "password", token);
   if (enrolling && enrolling.user.id === userId && wasEnabled && !wasEnabled.enabled) {
@@ -330,7 +358,7 @@ export async function handleTwoFactorVerification(request: Request, env: Env, au
       .bind(userId).first<{ enabled: number | boolean | null }>().catch(() => null);
     if (current?.enabled) await notifySecurity(env, userId, mfaEnrolledNotice);
   }
-  return response;
+  return { response, userId, method };
 }
 
 /** Resolve the owning user of a session token directly from storage. */

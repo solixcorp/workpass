@@ -117,7 +117,7 @@ stepUpRoutes.post("/step-up/passkey/verify", async (context) => {
     } catch {
       return failure();
     }
-  });
+  }, { method: "passkey" });
 });
 
 stepUpRoutes.get("/step-up/challenge", async (context) => {
