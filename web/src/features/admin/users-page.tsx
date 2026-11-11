@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CopyIcon, MailIcon, PlusIcon, ShieldIcon, TagsIcon } from 'lucide-react'
+import { AppWindowIcon, CopyIcon, MailIcon, PlusIcon, ShieldIcon, TagsIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table'
 import { AttributesDialog, type AttributeTarget } from './attributes-dialog'
 import { UserActions } from './user-actions'
+import { UserAppsDialog, type ActivityUser } from './user-apps-dialog'
 import { UserMfaDialog, type MfaUser } from './user-mfa-dialog'
 import { apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
@@ -60,6 +61,7 @@ export function UsersPage() {
   const { data: session } = useQuery(sessionQuery)
   const [createOpen, setCreateOpen] = useState(false)
   const [mfaUser, setMfaUser] = useState<MfaUser | null>(null)
+  const [appsUser, setAppsUser] = useState<ActivityUser | null>(null)
   const [attrTarget, setAttrTarget] = useState<AttributeTarget | null>(null)
   const [linkDialog, setLinkDialog] = useState<LinkDialogState>(null)
   const [term, setTerm] = useState('')
@@ -202,6 +204,14 @@ export function UsersPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        aria-label={`${user.email} 연결된 앱`}
+                        onClick={() => setAppsUser({ id: user.id, name: user.name, email: user.email })}
+                      >
+                        <AppWindowIcon />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         aria-label={`${user.email} 2차 인증 관리`}
                         onClick={() => setMfaUser({ id: user.id, name: user.name, email: user.email })}
                       >
@@ -244,6 +254,7 @@ export function UsersPage() {
         </>
       )}
       <UserMfaDialog user={mfaUser} onClose={() => setMfaUser(null)} />
+      <UserAppsDialog user={appsUser} onClose={() => setAppsUser(null)} />
       <AttributesDialog target={attrTarget} onClose={() => setAttrTarget(null)} />
       <CreateUserDialog
         open={createOpen}
