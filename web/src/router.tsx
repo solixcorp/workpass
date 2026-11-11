@@ -16,6 +16,9 @@ import { AccountsPage } from '@/features/accounts/accounts-page'
 import { ApplicationsPage } from '@/features/admin/applications-page'
 import { ApplicationPage } from '@/features/admin/integration/application-page'
 import { IntegrationWizardPage } from '@/features/admin/integration/integration-wizard-page'
+import { CibaPage } from '@/features/approvals/ciba-page'
+import { ConsentPage } from '@/features/approvals/consent-page'
+import { DevicePage } from '@/features/approvals/device-page'
 import { ReportsPage } from '@/features/admin/reports-page'
 import { ActivityPage } from '@/features/me/activity-page'
 import { MyAccountPage } from '@/features/me/my-account-page'
@@ -102,6 +105,12 @@ const loginRoute = createRoute({
   component: LoginPage,
 })
 
+const consentRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/consent',
+  component: ConsentPage,
+})
+
 const activateRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/activate',
@@ -151,6 +160,18 @@ const requestsRoute = createRoute({
 
 // Administrator screens are hidden for non-admins as a convenience only; every
 // /api/admin/* call is still authorized by the backend's requireAdministrator.
+const deviceRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/device',
+  component: DevicePage,
+})
+
+const cibaRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/ciba',
+  component: CibaPage,
+})
+
 const myAccountRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: '/me',
@@ -263,10 +284,13 @@ const adminAuditRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   activateRoute,
+  consentRoute,
   authenticatedRoute.addChildren([
     homeRoute,
     securityRoute,
     myAccountRoute,
+    deviceRoute,
+    cibaRoute,
     activityRoute,
     requestsRoute,
     accountsRoute,

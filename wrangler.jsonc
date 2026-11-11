@@ -36,7 +36,6 @@
       "/wsfed/*",
       "/scim/*",
       "/sign-in",
-      "/consent",
       "/auth/*",
       "/oauth2/*",
       "/enduser/*",
@@ -44,11 +43,7 @@
       "/health",
       "/dev/*",
       "/_internal/*",
-      "/application/*",
-      "/device",
-      "/device/*",
-      "/ciba",
-      "/ciba/*"
+      "/application/*"
     ]
   },
   "limits": {

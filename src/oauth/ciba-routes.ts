@@ -2,7 +2,7 @@
  * OpenID CIBA poll mode — backchannel authentication endpoint and the human
  * approval surface. Routes fail closed behind ENABLE_CIBA. The client posts
  * the request (client_secret_basic/post — confidential clients only; see the
- * design doc), the user acts on GET /ciba (or through the email notification)
+ * design doc), the user acts on /ciba (the single-page app, or through the email notification)
  * and the token grant (src/oauth/extended-grants.ts) consumes the decision.
  */
 
@@ -20,7 +20,12 @@ import { clientAllowsGrant, loadRegisteredClient, matchesStoredClientSecret } fr
 
 type FormBody = Record<string, string | File>;
 
+/** Clients post forms; the approval page posts JSON. */
 async function formBody(context: Context<{ Bindings: Env }>): Promise<FormBody> {
+  if ((context.req.header("content-type") ?? "").includes("application/json")) {
+    const body = await context.req.json().catch(() => ({})) as unknown;
+    return (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as FormBody;
+  }
   return await context.req.parseBody().catch(() => ({})) as FormBody;
 }
 
@@ -152,90 +157,26 @@ cibaRoutes.post("/api/auth/oauth2/bc-authorize", async (context) => {
     interval: issuance.intervalSeconds }, 200, FORM_HEADERS);
 });
 
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
-/** The approval page: pending requests for the signed-in user. Unauthenticated
- * visits never redirect into a sign-in flow (the canonical /sign-in itself
- * only starts from a signed OIDC continuation) — they get guidance instead. */
-cibaRoutes.get("/ciba", async (context) => {
+/** The signed-in user's pending requests, for the approval page. */
+cibaRoutes.get("/api/ciba/pending", async (context) => {
   const env = context.env;
   if (!enabled(env)) return context.notFound();
-  const auth = createAuth(env);
-  const session = await auth.api.getSession({ headers: context.req.raw.headers });
-  if (!session) {
-    context.header("Cache-Control", "no-store");
-    context.header("Referrer-Policy", "no-referrer");
-    context.header("Content-Security-Policy",
-      "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'");
-    return context.body([
-      "<!DOCTYPE html>",
-      '<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>',
-      "<title>Application access requests</title>",
-      "<style>",
-      "body{font-family:system-ui,sans-serif;background:#f6f6f8;display:flex;min-height:100vh;align-items:center;justify-content:center}",
-      "main{background:#fff;border:1px solid #e4e4e9;border-radius:10px;padding:32px;width:min(360px,90vw)}",
-      "h1{font-size:17px;margin:0 0 8px}p{font-size:13px;color:#3c3c44}",
-      "</style></head><body><main>",
-      "<h1>Application access requests</h1>",
-      "<p>First sign in through your organization's sign-in portal, then reopen this page (or the request link from the email).</p>",
-      "<p>This page never asks for your password. Pending requests expire in 5 minutes.</p>",
-      "</main></body></html>",
-    ].join("\n"), 403, { "Content-Type": "text/html; charset=utf-8" });
-  }
+  const session = await createAuth(env).api.getSession({ headers: context.req.raw.headers });
+  if (!session) return cibaError(context, 401, "invalid_request", "Sign in through your organization's portal first");
   const pending = await listPendingCibaRequests(env, session.user.id);
   const clients = await Promise.all(pending.map((request) => loadRegisteredClient(env, request.clientId)));
-  const rows = pending.map((request, index) => {
-    const clientName = escapeHtml(clients[index]?.name ?? request.clientId);
-    const binding = request.bindingMessage
-      ? `<p class="binding">&ldquo;${escapeHtml(request.bindingMessage)}&rdquo;</p>` : "";
-    return [
-      '<div class="request">',
-      `<p>The application <strong>${clientName}</strong> requests access:</p>`,
-      binding,
-      `<ul>${request.scopes.map((scope) => `<li><code>${escapeHtml(scope)}</code></li>`).join("")}</ul>`,
-      `<form method="post" action="/api/ciba/decide">`,
-      `<input type="hidden" name="request" value="${escapeHtml(request.id)}"/>`,
-      '<button name="decision" value="approve" type="submit">Approve</button>',
-      '<button name="decision" value="deny" type="submit" class="danger">Deny</button>',
-      "</form></div>",
-    ].join("\n");
-  });
-  const nonceBytes = crypto.getRandomValues(new Uint8Array(16));
-  let nonceBinary = "";
-  for (const byte of nonceBytes) nonceBinary += String.fromCharCode(byte);
-  const nonce = btoa(nonceBinary);
-  context.header("Cache-Control", "no-store");
-  context.header("Referrer-Policy", "no-referrer");
-  context.header("Content-Security-Policy",
-    `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`);
-  const body = [
-    "<h1>Application access requests</h1>",
-    rows.length === 0
-      ? "<p>No pending access requests.</p>"
-      : `<p>Signed in as <strong>${escapeHtml(session.user.email ?? session.user.id)}</strong>.</p>${rows.join("\n")}`,
-  ];
-  return context.body([
-    "<!DOCTYPE html>",
-    '<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>',
-    "<title>Application access requests</title>",
-    "<style>",
-    "body{font-family:system-ui,sans-serif;background:#f6f6f8;display:flex;min-height:100vh;align-items:center;justify-content:center}",
-    "main{background:#fff;border:1px solid #e4e4e9;border-radius:10px;padding:32px;width:min(420px,90vw)}",
-    "h1{font-size:17px;margin:0 0 8px}p,li{font-size:13px;color:#3c3c44}",
-    ".binding{font-style:italic}",
-    ".request{border-top:1px solid #e4e4e9;margin-top:16px;padding-top:12px}",
-    "button{margin-top:8px;padding:8px 14px;border:0;border-radius:6px;background:#2f5fe0;color:#fff;font-size:13px;cursor:pointer}",
-    ".danger{background:#b3261e}",
-    "code{background:#f0f0f4;padding:1px 5px;border-radius:4px;font-size:12px}",
-    "</style></head><body><main>",
-    body.join("\n"),
-    "</main></body></html>",
-  ].join("\n"), 200, { "Content-Type": "text/html; charset=utf-8" });
+  return context.json({
+    requests: pending.map((request, index) => ({
+      id: request.id,
+      clientName: clients[index]?.name ?? request.clientId,
+      scopes: request.scopes,
+      bindingMessage: request.bindingMessage || null,
+      expiresAt: request.expiresAt,
+    })),
+  }, 200, FORM_HEADERS);
 });
 
-/** The form actions POST here (no JS: the page works without scripts). */
+/** The approval page posts here; a plain form post still works and goes back to /ciba. */
 cibaRoutes.post("/api/ciba/decide", async (context) => {
   const env = context.env;
   if (!enabled(env)) return context.notFound();
@@ -256,5 +197,10 @@ cibaRoutes.post("/api/ciba/decide", async (context) => {
     outcome: decided ? "success" : "failure",
     request_path: "/api/ciba/decide",
   });
+  if ((context.req.header("content-type") ?? "").includes("application/json")) {
+    return decided
+      ? context.json({ status: approve ? "approved" : "denied" }, 200, FORM_HEADERS)
+      : cibaError(context, 409, "invalid_request", "Unknown, expired, or already-decided request");
+  }
   return context.redirect("/ciba", 303);
 });

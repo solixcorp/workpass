@@ -12,7 +12,6 @@ const BACKEND_PATHS = [
   '/wsfed',
   '/scim',
   '/sign-in',
-  '/consent',
   '/auth',
   '/oauth2',
   '/enduser',
@@ -21,8 +20,6 @@ const BACKEND_PATHS = [
   '/dev',
   '/_internal',
   '/application',
-  '/device',
-  '/ciba',
 ]
 
 const BACKEND_TARGET = process.env.BACKEND_URL ?? 'http://localhost:8787'
@@ -39,7 +36,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: Object.fromEntries(
-      BACKEND_PATHS.map((prefix) => [prefix, { target: BACKEND_TARGET }]),
+      // A bare prefix would also match longer paths (`/dev` would catch `/device`), so match whole segments.
+      BACKEND_PATHS.map((prefix) => [`^${prefix.replaceAll('.', '\\.')}(?:[/?]|$)`, { target: BACKEND_TARGET }]),
     ),
   },
 })

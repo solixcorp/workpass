@@ -106,6 +106,12 @@ Password-free login over OPAQUE (RFC 9807) with the plaintext password never rea
   - Device flow (`ENABLE_DEVICE_FLOW=true`, RFC 8628; `docs/design/device-flow.md`): `POST /api/auth/oauth2/device/authorize` (public client_id + required scope), `GET /device` human approval page, and `POST /api/auth/oauth2/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`. The device code is stored only hashed; issued tokens bind to the approving session; polling follows RFC §3.5 (`authorization_pending`, `slow_down`).
   - CIBA poll mode (`ENABLE_CIBA=true`; `docs/design/ciba.md`): `POST /api/auth/oauth2/bc-authorize` (confidential clients, `client_secret_basic`/`_post`, `login_hint` resolves exactly one email or username), `GET /ciba` approval page, and `POST /api/auth/oauth2/token` with `grant_type=urn:openid:params:grant-type:ciba`. The `auth_req_id` is stored only hashed and never surfaces on the user page; clients poll for `authorization_pending`/`slow_down`.
 
+`/consent`, `/device` and `/ciba` are pages of the single-page app (the Worker no longer renders HTML for them). Their data comes from JSON endpoints, all requiring a session:
+
+- `GET /api/consent/context?client_id=&scope=` returns `allowed` (the app's group gate), the application name/icon, the requested scopes and the signed-in account. The page posts the unchanged signed query to `POST /api/auth/oauth2/consent`.
+- `POST /api/device/flow/verify|approve|deny` (`{ user_code }`, JSON or form) when `ENABLE_DEVICE_FLOW=true`.
+- `GET /api/ciba/pending` and `POST /api/ciba/decide` (`{ request, decision: "approve"|"deny" }`; JSON gets JSON back, a form post still redirects to `/ciba`) when `ENABLE_CIBA=true`.
+
 The authorize flow redirects unauthenticated users to `/sign-in` and users needing consent to `/consent`. These are relying-party/browser return locations, not routes implemented by this Worker; a separate client is required before interactive OIDC can complete. No frontend is included. Confirm the selected OIDC profile, PKCE behavior, logout semantics, claims mapping, and real test-RP interoperability before production.
 
 ## User lifecycle and session revocation

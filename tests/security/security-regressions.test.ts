@@ -158,20 +158,6 @@ describe("security regressions", () => {
     expect((await enforceOidcPolicy(request, env, auth))?.status).toBe(403);
   });
 
-  test("consent scope is never interpolated into an inline script", async () => {
-    const { default: worker } = await import("../../src/index");
-    const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } } as unknown as Env;
-    const scope = "</script><script>alert(1)</script>";
-    const url = new URL("https://idp.test/consent");
-    url.searchParams.set("client_id", "test");
-    url.searchParams.set("scope", scope);
-    const res = await worker.fetch(new Request(url), env, execution);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).not.toContain(scope);
-    expect(html).toContain("&lt;/script&gt;");
-  });
-
   // Regression: the plugin ROTATES the session on the first verify-totp (new
   // cookie + old session row deleted) while the JSON body still echoes the
   // rotated-out token. The proof must bind to the token that is actually
