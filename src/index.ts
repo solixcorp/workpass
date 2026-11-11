@@ -55,11 +55,12 @@ import { applySettings } from "./settings/store";
 import { meRoutes } from "./users/me-routes";
 import { appSessionsRoutes } from "./users/app-sessions-routes";
 import { locationPublicRoutes } from "./security/location-routes";
-const app = new Hono<{ Bindings: Env }>();
 import { auditContextForRequest, auditRequestContext } from "./audit/request-context";
+const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", (context, next) => auditRequestContext.run(auditContextForRequest(context.req.raw), next));
 
+// Global security headers applied to every response. Per-route CSP (set in
 // individual handlers) is preserved; these are the common baseline that does
 // not depend on the rendered content.
 app.use("*", async (context, next) => {
@@ -181,6 +182,7 @@ async function scheduled(
     await attemptPendingSSFDispatch(env, controller.scheduledTime);
     await cleanupAccountSessionContexts(env, new Date(controller.scheduledTime));
     await cleanupAccountInvitations(env, new Date(controller.scheduledTime));
+    await expireScimLeases(env, { now: new Date(controller.scheduledTime) });
     await dispatchPendingScimOperations(env);
     try {
       // Policy notification rules drain from their queue; a failed attempt
