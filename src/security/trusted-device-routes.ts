@@ -151,8 +151,8 @@ trustedDeviceRoutes.post("/trusted-devices", async (context) => {
         event.confidence < minimumConfidence ||
         (event.bot !== undefined && event.bot !== "not_detected") ||
         event.tampering ||
-        event.mitmAttack ||
-        event.locationSpoofing ||
+        event.torNode ||
+        event.attackSource ||
         (suspectThreshold !== null &&
           event.suspectScore !== undefined &&
           event.suspectScore >= suspectThreshold)

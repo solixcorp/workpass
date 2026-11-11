@@ -77,6 +77,7 @@ export function ActivityPage() {
                     <div className="flex min-w-0 flex-1 basis-56 flex-col gap-0.5">
                       <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
                         {login.device}
+                        {login.digestTag ? <span className="text-xs font-normal text-muted-foreground">기기 #{login.digestTag}</span> : null}
                         {login.current ? <Badge variant="secondary">이 기기</Badge> : null}
                       </span>
                       <span className="text-xs text-muted-foreground">{login.location ?? login.ip ?? '알 수 없음'}</span>

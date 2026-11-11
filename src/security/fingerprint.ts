@@ -1,3 +1,11 @@
+/**
+ * Fingerprint v4 signals: bot/bot_info, suspect score, replay, tampering,
+ * VPN, proxy, IP blocklist, incognito, developer tools, privacy settings,
+ * virtual machine, simulator, rare/high-activity device, velocity and IP
+ * information (ASN, datacenter and geolocation). Auxiliary confidence,
+ * ML scores, methods and details are not used in risk decisions.
+ * MITM attack and location spoofing are retired here in favor of network signals.
+ */
 import type { Env } from "../env";
 import { haversineKm, resolveGeoPoint, type GeoPoint } from "./geo";
 
@@ -12,8 +20,21 @@ export interface FingerprintEvent {
   suspectScore?: number;
   replayed: boolean;
   tampering: boolean;
-  mitmAttack: boolean;
-  locationSpoofing: boolean;
+  vpn?: boolean;
+  proxy?: boolean;
+  incognito?: boolean;
+  developerTools?: boolean;
+  privacySettings?: boolean;
+  virtualMachine?: boolean;
+  simulator?: boolean;
+  rareDevice?: boolean;
+  highActivityDevice?: boolean;
+  torNode?: boolean;
+  attackSource?: boolean;
+  emailSpam?: boolean;
+  datacenterIp?: boolean;
+  asnV4?: string;
+  asnV6?: string;
   countryCode: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -380,8 +401,21 @@ export async function evaluateFingerprintRisk(input: {
 
   if (input.event.bot === "bad") reasons.push("bot_detected");
   if (input.event.tampering) reasons.push("tampering_detected");
-  if (input.event.mitmAttack) reasons.push("mitm_attack_detected");
-  if (input.event.locationSpoofing) reasons.push("location_spoofing_detected");
+  const signals = [
+    [input.event.torNode, "tor_network_detected"],
+    [input.event.attackSource, "ip_blocklisted"],
+    [input.event.virtualMachine, "virtual_machine_detected"],
+    [input.event.developerTools, "developer_tools_detected"],
+    [input.event.vpn, "vpn_detected"],
+    [input.event.proxy, "proxy_detected"],
+    [input.event.incognito, "incognito_detected"],
+    [input.event.privacySettings, "privacy_settings_detected"],
+    [input.event.rareDevice, "rare_device_detected"],
+    [input.event.highActivityDevice, "high_activity_device_detected"],
+    [input.event.simulator, "simulator_detected"],
+    [input.event.datacenterIp, "datacenter_ip_detected"],
+  ] as const;
+  for (const [detected, reason] of signals) if (detected === true) reasons.push(reason);
   const suspectThreshold = input.env.FINGERPRINT_SUSPECT_SCORE_THRESHOLD
     ? Number(input.env.FINGERPRINT_SUSPECT_SCORE_THRESHOLD)
     : null;
@@ -489,8 +523,10 @@ export async function evaluateFingerprintRisk(input: {
   const hardSignals = new Set([
     "bot_detected",
     "tampering_detected",
-    "mitm_attack_detected",
-    "location_spoofing_detected",
+    "tor_network_detected",
+    "ip_blocklisted",
+    "virtual_machine_detected",
+    "developer_tools_detected",
     "suspect_score_threshold",
     "rapid_device_and_country_change",
   ]);
@@ -499,6 +535,7 @@ export async function evaluateFingerprintRisk(input: {
     reasons.includes("impossible_travel") ||
     reasons.includes("history_distance_exceeded") ||
     reasons.includes("geo_position_unavailable") ||
+    signals.slice(4).some(([, reason]) => reasons.includes(reason)) ||
     reasons.includes("untrusted_device") ||
     reasons.includes("low_identification_confidence")
   ) {
@@ -617,6 +654,25 @@ function parseEvent(value: unknown): FingerprintEvent | null {
   let countryCode: string | null = null;
   let latitude: number | null = null;
   let longitude: number | null = null;
+  let asnV4: string | undefined;
+  let asnV6: string | undefined;
+  let datacenterIp: boolean | undefined;
+  // Inspect both address families independently of the geolocation selection.
+  if (ipInfo && typeof ipInfo === "object") {
+    const ipRecord = ipInfo as Record<string, unknown>;
+    for (const version of ["v4", "v6"] as const) {
+      const network = ipRecord[version];
+      if (network === undefined) continue;
+      if (!network || typeof network !== "object" || Array.isArray(network)) return null;
+      const fields = network as Record<string, unknown>;
+      if (fields.asn !== undefined && typeof fields.asn !== "string") return null;
+      if (fields.datacenter_result !== undefined && typeof fields.datacenter_result !== "boolean") return null;
+      if (version === "v4") asnV4 = fields.asn as string | undefined;
+      else asnV6 = fields.asn as string | undefined;
+      if (fields.datacenter_result === true) datacenterIp = true;
+      else if (fields.datacenter_result === false && datacenterIp === undefined) datacenterIp = false;
+    }
+  }
   if (ipInfo && typeof ipInfo === "object") {
     const ipRecord = ipInfo as Record<string, unknown>;
     for (const version of ["v4", "v6"]) {
@@ -649,8 +705,25 @@ function parseEvent(value: unknown): FingerprintEvent | null {
   if (bot !== undefined && bot !== "bad" && bot !== "good" && bot !== "not_detected") {
     return null;
   }
-  for (const flag of ["replayed", "tampering", "mitm_attack", "location_spoofing"] as const) {
+  for (const flag of ["replayed", "tampering", "incognito", "developer_tools", "privacy_settings", "simulator", "rare_device", "high_activity_device"] as const) {
     if (record[flag] !== undefined && typeof record[flag] !== "boolean") return null;
+  }
+  const nestedFlags: Record<string, boolean | undefined> = {};
+  for (const name of ["vpn", "proxy", "virtual_machine"] as const) {
+    const value = record[name];
+    if (value === undefined || typeof value === "boolean") {
+      nestedFlags[name] = value;
+    } else if (value && typeof value === "object" && !Array.isArray(value)) {
+      const flag = (value as Record<string, unknown>)[name];
+      if (flag !== undefined && typeof flag !== "boolean") return null;
+      nestedFlags[name] = flag as boolean | undefined;
+    } else return null;
+  }
+  const blocklist = record.ip_blocklist;
+  if (blocklist !== undefined && (!blocklist || typeof blocklist !== "object" || Array.isArray(blocklist))) return null;
+  const blocklistRecord = (blocklist ?? {}) as Record<string, unknown>;
+  for (const flag of ["tor_node", "attack_source", "email_spam"] as const) {
+    if (blocklistRecord[flag] !== undefined && typeof blocklistRecord[flag] !== "boolean") return null;
   }
 
   return {
@@ -662,8 +735,21 @@ function parseEvent(value: unknown): FingerprintEvent | null {
     suspectScore,
     replayed: record.replayed === true,
     tampering: record.tampering === true,
-    mitmAttack: record.mitm_attack === true,
-    locationSpoofing: record.location_spoofing === true,
+    vpn: nestedFlags.vpn,
+    proxy: nestedFlags.proxy,
+    virtualMachine: nestedFlags.virtual_machine,
+    incognito: record.incognito as boolean | undefined,
+    developerTools: record.developer_tools as boolean | undefined,
+    privacySettings: record.privacy_settings as boolean | undefined,
+    simulator: record.simulator as boolean | undefined,
+    rareDevice: record.rare_device as boolean | undefined,
+    highActivityDevice: record.high_activity_device as boolean | undefined,
+    torNode: blocklistRecord.tor_node as boolean | undefined,
+    attackSource: blocklistRecord.attack_source as boolean | undefined,
+    emailSpam: blocklistRecord.email_spam as boolean | undefined,
+    asnV4,
+    asnV6,
+    datacenterIp,
     countryCode,
     latitude,
     longitude,
