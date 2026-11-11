@@ -24,9 +24,11 @@ import { deliveryRoutes } from "../delivery/routes";
 import { settingsRoutes } from "../settings/routes";
 import { mfaAdminRoutes } from "../mfa/admin-routes";
 import { passwordRulesRoutes } from "../policies/password-rules-routes";
+import { integrationsAdminRoutes } from "../integrations/admin-routes";
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
+adminRoutes.route("/", integrationsAdminRoutes);
 adminRoutes.route("/", auditRoutes);
 adminRoutes.route("/", samlAdminRoutes);
 adminRoutes.route("/", scimAdminRoutes);
