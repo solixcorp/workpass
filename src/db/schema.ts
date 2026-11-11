@@ -602,6 +602,17 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       consumed_at TEXT
     )`,
   ).run();
+  const invitationColumns = await env.DB.prepare("PRAGMA table_info(account_invitations)").all<{ name: string }>();
+  for (const name of ["id", "revoked_at"]) {
+    if (!invitationColumns.results.some((column) => column.name === name)) {
+      try { await env.DB.prepare(`ALTER TABLE account_invitations ADD COLUMN ${name} TEXT`).run(); }
+      catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("duplicate column")) throw error;
+      }
+    }
+  }
+  await env.DB.prepare(`UPDATE account_invitations SET id = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', (random() & 3) + 1, 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))) WHERE id IS NULL`).run();
+  await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS account_invitations_id_idx ON account_invitations (id)").run();
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS account_invitations_expiry_idx ON account_invitations (expires_at)",
   ).run();
