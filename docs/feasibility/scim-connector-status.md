@@ -1,5 +1,7 @@
 # Outbound SCIM connector foundation
 
+For application-specific targets and their limitations, see [app provisioning](../design/app-provisioning.md).
+
 The project has a server-side SCIM 2.0 transport for creating users, modifying selected user attributes, and deactivating users with `active: false`. It also has a D1 mapping table for local user IDs and target-side user IDs and an operation journal with atomic claims. Administrators may read an entry at `GET /api/admin/scim-operations/{id}` and initiate a single-target operation through `POST /api/admin/scim-operations`. No production target has been selected and no downstream account has been provisioned.
 
 The transport requires an HTTPS base URL and caller-supplied bearer token, disables redirects, does not store credentials, and never automatically retries a mutation. A timeout or server error has an unknown outcome; operators must reconcile the target before retrying, especially for create. Mapping writes refuse to overwrite existing mappings. The create response must include a target user ID; a missing or malformed response after a successful HTTP mutation also needs reconciliation.

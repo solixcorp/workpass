@@ -16,6 +16,7 @@ import { formatDateTime } from '@/lib/format'
 import { sessionQuery } from '@/lib/queries'
 import { AttributesDialog } from './attributes-dialog'
 import { UserActions } from './user-actions'
+import { AppSessions } from './user-detail/app-sessions'
 import { ApplicationsTab, GroupsTab } from './user-detail/apps-groups'
 import { AuthenticatorsTab, DevicesTab } from './user-detail/devices-auth'
 import { ProfileTab } from './user-detail/profile-tab'
@@ -152,7 +153,12 @@ export function UserDetailPage() {
             </TabsTrigger>
           ))}
         </TabsList>
-        <TabsContent value="apps"><ApplicationsTab id={id} name={user.name} email={user.email} /></TabsContent>
+        <TabsContent value="apps">
+          <div className="flex flex-col gap-8">
+            <ApplicationsTab id={id} name={user.name} email={user.email} />
+            <AppSessions id={id} />
+          </div>
+        </TabsContent>
         <TabsContent value="groups"><GroupsTab id={id} /></TabsContent>
         <TabsContent value="profile"><ProfileTab id={id} /></TabsContent>
         <TabsContent value="devices"><DevicesTab id={id} /></TabsContent>

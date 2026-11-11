@@ -511,6 +511,19 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       updated_at TEXT NOT NULL
     )`,
   ).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS app_provisioning_targets (
+    slug TEXT PRIMARY KEY NOT NULL,
+    base_url TEXT NOT NULL,
+    sealed_token TEXT NOT NULL,
+    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    last_test_at TEXT, last_test_ok INTEGER, last_sync_at TEXT,
+    sync_cursor TEXT, sync_lock INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS app_provisioning_delete
+    AFTER DELETE ON applications BEGIN
+      DELETE FROM app_provisioning_targets WHERE slug = OLD.slug;
+    END`).run();
   // The uploaded-icon key column was added after the registry shipped:
   // in-place ALTER for deployed databases.
   try {
@@ -1026,5 +1039,15 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS notification_preferences (
     user_id TEXT NOT NULL, category TEXT NOT NULL, enabled INTEGER NOT NULL,
     updated_at TEXT NOT NULL, PRIMARY KEY (user_id, category)
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS app_entitlements (
+    id TEXT PRIMARY KEY NOT NULL, application_id TEXT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    key TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+    UNIQUE(application_id, key)
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS app_entitlement_groups (
+    entitlement_id TEXT NOT NULL REFERENCES app_entitlements(id) ON DELETE CASCADE,
+    group_id TEXT NOT NULL REFERENCES directory_groups(id) ON DELETE CASCADE,
+    PRIMARY KEY(entitlement_id, group_id)
   )`).run();
 }

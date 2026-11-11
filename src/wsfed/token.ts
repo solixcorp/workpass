@@ -73,9 +73,11 @@ function buildAttributeStatement(release: NonNullable<WsfedSignInParams["attribu
     `<saml:SubjectConfirmation><saml:ConfirmationMethod>urn:oasis:names:tc:SAML:1.0:cm:bearer</saml:ConfirmationMethod></saml:SubjectConfirmation>` +
     `</saml:Subject>` +
     entries
+      .filter((attribute, index) => index === 0 || entries[index - 1]!.name !== attribute.name)
       .map((attribute) =>
         `<saml:Attribute AttributeNamespace="${escapeSamlAttribute(release.namespace)}" AttributeName="${escapeSamlAttribute(attribute.name)}">` +
-        `<saml:AttributeValue>${escapeSamlText(attribute.value)}</saml:AttributeValue>` +
+        entries.filter((entry) => entry.name === attribute.name).map((entry) =>
+          `<saml:AttributeValue>${escapeSamlText(entry.value)}</saml:AttributeValue>`).join("") +
         `</saml:Attribute>`,
       )
       .join("") +

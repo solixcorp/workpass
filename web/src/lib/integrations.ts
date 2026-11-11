@@ -92,6 +92,8 @@ export type OidcClient = {
   requirePkce: boolean
   dpop: boolean
   disabled: boolean
+  backchannelLogoutUri?: string | null
+  backchannelLogoutSessionRequired?: boolean
 }
 
 export type Integration = {

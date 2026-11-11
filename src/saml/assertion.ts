@@ -94,9 +94,11 @@ function buildAttributeStatement(
   return (
     `<saml:AttributeStatement xmlns:xs="${XS_URN}" xmlns:xsi="${XSI_URN}">` +
     entries
+      .filter((attribute, index) => index === 0 || entries[index - 1]!.name !== attribute.name)
       .map((attribute) =>
         `<saml:Attribute Name="${escapeSamlAttribute(attribute.name)}" NameFormat="${ATTRIBUTE_NAME_FORMAT_URI}">` +
-        `<saml:AttributeValue xsi:type="${ATTRIBUTE_VALUE_TYPE}">${escapeSamlText(attribute.value)}</saml:AttributeValue>` +
+        entries.filter((entry) => entry.name === attribute.name).map((entry) =>
+          `<saml:AttributeValue xsi:type="${ATTRIBUTE_VALUE_TYPE}">${escapeSamlText(entry.value)}</saml:AttributeValue>`).join("") +
         `</saml:Attribute>`,
       )
       .join("") +

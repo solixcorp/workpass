@@ -24,6 +24,15 @@ import type { Env } from "../env";
 import { getObjectAttributes, type AttributeValue } from "../objects/attributes";
 import { getSessionAccountContext } from "../accounts/store";
 import { claimReleaseDecision, userAttributesForSubject } from "./release-policy";
+import { entitlementsForSubject } from "../entitlements/store";
+
+export async function entitlementClaimForSubject(env: Env, userId: string | null | undefined, subject: string | undefined): Promise<Record<string, unknown>> {
+  if (!userId || !subject || !(await claimReleaseDecision(env, subject, "attributes"))) return {};
+  const permitted = await userAttributesForSubject(env, subject, { entitlements: true });
+  if (!("entitlements" in permitted)) return {};
+  const keys = await entitlementsForSubject(env, subject, userId);
+  return keys === null ? {} : { entitlements: keys };
+}
 
 /** URI namespace for released application claims: the configured IdP origin. */
 export function claimNamespace(env: Env): string {
@@ -217,6 +226,7 @@ export async function oidcClaimReleaseForSubject(
     ...(await accountAttributesClaimForSubject(env, sessionId ?? null, subject)),
     ...(await userAttributesClaimForSubject(env, userId, subject)),
     ...(await groupAttributesClaimForSubject(env, userId, subject)),
+    ...(await entitlementClaimForSubject(env, userId, subject)),
   };
 }
 
@@ -263,6 +273,10 @@ export async function samlAttributeRelease(
   if (!accountClaimsEnabled(env) && !attributeClaimsEnabled(env)) return [];
   const names = samlAttributeNames(env);
   const attributes: SamlReleasedAttribute[] = [];
+  const entitlementClaim = await entitlementClaimForSubject(env, userId, subject);
+  if (Array.isArray(entitlementClaim.entitlements)) {
+    for (const value of entitlementClaim.entitlements) attributes.push({ name: "entitlements", value });
+  }
   if (accountClaimsEnabled(env) && sessionToken && sessionId &&
       (await claimReleaseDecision(env, subject, "account"))) {
     const context = await getSessionAccountContext(env, sessionId);

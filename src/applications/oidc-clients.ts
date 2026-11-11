@@ -10,6 +10,7 @@ import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
 import { STANDARD_SCOPES, workpassClientId } from "../auth/workpass";
+import { isSafeBackchannelUri } from "../oauth/backchannel-uri";
 
 export const oidcClientRoutes = new Hono<{ Bindings: Env }>();
 
@@ -64,6 +65,8 @@ export interface ClientInput {
   scopes: string[];
   requirePkce: boolean;
   dpop: boolean;
+  backchannelLogoutUri?: string | null;
+  backchannelLogoutSessionRequired?: boolean;
 }
 
 const CONTROL = /[\u0000-\u001f\u007f]/;
@@ -101,7 +104,9 @@ function uriList(value: unknown, label: string, type: ClientType, max = 10): str
 
 export function validateClientInput(raw: unknown, mode: "create" | "patch"): Partial<ClientInput> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("요청 형식이 올바르지 않습니다.");
-  const value = raw as Record<string, unknown>;
+  const value = { ...(raw as Record<string, unknown>) };
+  if (value.backchannelLogoutUri === undefined && value.backchannel_logout_uri !== undefined) value.backchannelLogoutUri = value.backchannel_logout_uri;
+  if (value.backchannelLogoutSessionRequired === undefined && value.backchannel_logout_session_required !== undefined) value.backchannelLogoutSessionRequired = value.backchannel_logout_session_required;
   const out: Partial<ClientInput> = {};
 
   if (mode === "create" || value.name !== undefined) {
@@ -165,6 +170,17 @@ export function validateClientInput(raw: unknown, mode: "create" | "patch"): Par
   }
   if (typeof value.requirePkce === "boolean") out.requirePkce = value.requirePkce;
   if (typeof value.dpop === "boolean") out.dpop = value.dpop;
+  if (value.backchannelLogoutUri !== undefined) {
+    if (value.backchannelLogoutUri === null || value.backchannelLogoutUri === "") out.backchannelLogoutUri = null;
+    else {
+      if (typeof value.backchannelLogoutUri !== "string" || !isSafeBackchannelUri(value.backchannelLogoutUri)) throw new Error("로그아웃 주소는 공개 HTTPS 주소여야 합니다.");
+      out.backchannelLogoutUri = value.backchannelLogoutUri;
+    }
+  }
+  if (value.backchannelLogoutSessionRequired !== undefined) {
+    if (typeof value.backchannelLogoutSessionRequired !== "boolean") throw new Error("세션 필요 설정이 올바르지 않습니다.");
+    out.backchannelLogoutSessionRequired = value.backchannelLogoutSessionRequired;
+  }
   return out;
 }
 
@@ -183,6 +199,8 @@ interface Row {
   dpopBoundAccessTokens: number | null;
   disabled: number | null;
   createdAt: string | number | null;
+  backchannelLogoutUri: string | null;
+  backchannelLogoutSessionRequired: number | null;
 }
 
 function parseList(value: string | null): string[] {
@@ -196,7 +214,8 @@ function parseList(value: string | null): string[] {
 }
 
 const SELECT = `SELECT id, clientId, name, redirectUris, postLogoutRedirectUris, scopes, clientCredentialsScopes,
-  grantTypes, tokenEndpointAuthMethod, applicationType, requirePKCE, dpopBoundAccessTokens, disabled, createdAt
+  grantTypes, tokenEndpointAuthMethod, applicationType, requirePKCE, dpopBoundAccessTokens, disabled, createdAt,
+  backchannelLogoutUri, backchannelLogoutSessionRequired
   FROM "oauthClient"`;
 
 function present(row: Row) {
@@ -216,6 +235,10 @@ function present(row: Row) {
     requirePkce: row.requirePKCE === 1,
     dpop: row.dpopBoundAccessTokens === 1,
     disabled: row.disabled === 1,
+    backchannelLogoutUri: row.backchannelLogoutUri ?? null,
+    backchannelLogoutSessionRequired: row.backchannelLogoutSessionRequired === 1,
+    backchannel_logout_uri: row.backchannelLogoutUri ?? null,
+    backchannel_logout_session_required: row.backchannelLogoutSessionRequired === 1,
   };
 }
 
@@ -277,11 +300,16 @@ oidcClientRoutes.post("/oidc-clients", async (context) => {
       scopes: partial.scopes ?? [],
       requirePkce: partial.requirePkce ?? true,
       dpop: partial.dpop ?? false,
+      backchannelLogoutUri: partial.backchannelLogoutUri ?? null,
+      backchannelLogoutSessionRequired: partial.backchannelLogoutSessionRequired ?? false,
     };
   } catch (error) {
     return context.json({ error: error instanceof Error ? error.message : "요청이 올바르지 않습니다." }, 400);
   }
   return auditStandaloneOperation(context.env, "oauth.client.create", "/api/admin/oidc-clients", async () => {
+    if (input.backchannelLogoutUri && !await context.env.DB.prepare("SELECT 1 FROM oidc_logout_uri_approvals WHERE uri = ?").bind(input.backchannelLogoutUri).first()) {
+      return { response: Response.json({ error: "승인되지 않은 로그아웃 주소입니다." }, { status: 400 }), actorUserId: admin.userId, targetUserId: null };
+    }
     const clientId = randomId(24);
     const confidential = input.applicationType === "web" || input.applicationType === "service";
     const secret = confidential ? newSecret() : null;
@@ -291,13 +319,13 @@ oidcClientRoutes.post("/oidc-clients", async (context) => {
       `INSERT INTO "oauthClient"
          (id, clientId, clientSecret, name, redirectUris, postLogoutRedirectUris, scopes, clientCredentialsScopes,
           grantTypes, responseTypes, tokenEndpointAuthMethod, applicationType, skipConsent, requirePKCE,
-          dpopBoundAccessTokens, enableEndSession, disabled, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, 1, ?, ?)`,
+          dpopBoundAccessTokens, enableEndSession, disabled, createdAt, updatedAt, backchannelLogoutUri, backchannelLogoutSessionRequired)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, 1, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(), clientId, secret ? await hashSecret(secret) : null, input.name,
       cols.redirectUris, cols.postLogoutRedirectUris, cols.scopes, cols.clientCredentialsScopes,
       cols.grantTypes, cols.responseTypes, cols.tokenEndpointAuthMethod, cols.applicationType,
-      cols.requirePKCE, cols.dpop, now, now,
+      cols.requirePKCE, cols.dpop, now, now, input.backchannelLogoutUri, input.backchannelLogoutSessionRequired ? 1 : 0,
     ).run();
     const client = await loadOidcClient(context.env, clientId);
     return {
@@ -330,6 +358,8 @@ oidcClientRoutes.patch("/oidc-clients/:clientId", async (context) => {
       scopes: patch.scopes ?? current.scopes,
       requirePkce: patch.requirePkce ?? current.requirePkce,
       dpop: patch.dpop ?? current.dpop,
+      backchannelLogoutUri: patch.backchannelLogoutUri === undefined ? current.backchannelLogoutUri : patch.backchannelLogoutUri,
+      backchannelLogoutSessionRequired: patch.backchannelLogoutSessionRequired ?? current.backchannelLogoutSessionRequired,
     };
     // Re-run the cross-field rules on the merged result.
     validateClientInput({ ...merged, grants: merged.grants, redirectUris: merged.redirectUris, applicationType: merged.applicationType }, "create");
@@ -337,14 +367,17 @@ oidcClientRoutes.patch("/oidc-clients/:clientId", async (context) => {
     return context.json({ error: error instanceof Error ? error.message : "요청이 올바르지 않습니다." }, 400);
   }
   return auditStandaloneOperation(context.env, "oauth.client.update", context.req.path, async () => {
+    if (merged.backchannelLogoutUri && !await context.env.DB.prepare("SELECT 1 FROM oidc_logout_uri_approvals WHERE uri = ?").bind(merged.backchannelLogoutUri).first()) {
+      return { response: Response.json({ error: "승인되지 않은 로그아웃 주소입니다." }, { status: 400 }), actorUserId: admin.userId, targetUserId: clientId };
+    }
     const cols = columnsFor(merged);
     await context.env.DB.prepare(
       `UPDATE "oauthClient" SET name = ?, redirectUris = ?, postLogoutRedirectUris = ?, scopes = ?,
          clientCredentialsScopes = ?, grantTypes = ?, responseTypes = ?, requirePKCE = ?,
-         dpopBoundAccessTokens = ?, updatedAt = ? WHERE clientId = ?`,
+          dpopBoundAccessTokens = ?, updatedAt = ?, backchannelLogoutUri = ?, backchannelLogoutSessionRequired = ? WHERE clientId = ?`,
     ).bind(
       merged.name, cols.redirectUris, cols.postLogoutRedirectUris, cols.scopes, cols.clientCredentialsScopes,
-      cols.grantTypes, cols.responseTypes, cols.requirePKCE, cols.dpop, new Date().toISOString(), clientId,
+      cols.grantTypes, cols.responseTypes, cols.requirePKCE, cols.dpop, new Date().toISOString(), merged.backchannelLogoutUri, merged.backchannelLogoutSessionRequired ? 1 : 0, clientId,
     ).run();
     return {
       response: Response.json({ client: await loadOidcClient(context.env, clientId) }),

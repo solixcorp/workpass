@@ -52,6 +52,7 @@ import { dispatchPendingEventNotifications } from "./policies/notifications";
 import { applySettings } from "./settings/store";
 
 import { meRoutes } from "./users/me-routes";
+import { appSessionsRoutes } from "./users/app-sessions-routes";
 import { locationPublicRoutes } from "./security/location-routes";
 const app = new Hono<{ Bindings: Env }>();
 
@@ -149,6 +150,7 @@ app.route("/", devMockRoutes);
 app.route("/api/admin", accessRequestAdminRoutes);
 app.route("/", accessRequestUserRoutes);
 app.route("/", meRoutes);
+app.route("/", appSessionsRoutes);
 app.route("/", locationPublicRoutes);
 
 async function scheduled(

@@ -25,6 +25,8 @@ import { PROTOCOL_LABELS } from '@/lib/integrations'
 import { AppPolicyDialog } from '../app-policy-dialog'
 import { ApplicationEditDialog, type EditableApplication } from '../application-edit-dialog'
 import { AssignmentPanel } from './assignment-panel'
+import { EntitlementsPanel } from './entitlements-panel'
+import { ProvisioningPanel } from './provisioning-panel'
 import { SignOnPanel } from './sign-on-panel'
 
 type AdminApplication = EditableApplication & {
@@ -149,12 +151,20 @@ export function ApplicationPage() {
         <TabsList variant="line">
           <TabsTrigger value="sign-on">로그인 방식</TabsTrigger>
           <TabsTrigger value="assignments">할당</TabsTrigger>
+          {['oidc', 'saml', 'wsfed'].includes(app.protocol) ? <TabsTrigger value="entitlements">권한</TabsTrigger> : null}
+          <TabsTrigger value="provisioning">프로비저닝</TabsTrigger>
         </TabsList>
         <TabsContent value="sign-on">
           <SignOnPanel slug={app.slug} name={app.name} protocol={app.protocol} />
         </TabsContent>
         <TabsContent value="assignments">
           <AssignmentPanel slug={app.slug} />
+        </TabsContent>
+        <TabsContent value="entitlements">
+          <EntitlementsPanel slug={app.slug} />
+        </TabsContent>
+        <TabsContent value="provisioning">
+          <ProvisioningPanel slug={app.slug} />
         </TabsContent>
       </Tabs>
 

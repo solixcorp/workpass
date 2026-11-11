@@ -300,7 +300,7 @@ export async function setApplicationEnabled(env: Env, slug: string, enabled: boo
 
 export async function deleteApplication(env: Env, slug: string): Promise<boolean> {
   const result = await env.DB.prepare("DELETE FROM applications WHERE slug = ?").bind(slug).run();
-  return result.meta.changes === 1;
+  return result.meta.changes > 0;
 }
 
 interface ApplicationRowRow {

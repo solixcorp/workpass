@@ -23,6 +23,7 @@ type UserApp = {
   access: 'everyone' | 'group' | 'none'
   via: string[]
   lastSignInAt: string | null
+  entitlements?: string[]
 }
 
 const PROTOCOLS: Record<string, string> = { bookmark: '북마크', saml: 'SAML', wsfed: 'WS-Fed', oidc: 'OIDC', swa: 'SWA' }
@@ -53,6 +54,7 @@ export function ApplicationsTab({ id, name, email }: { id: string; name: string;
                 <TableHead>앱</TableHead>
                 <TableHead>방식</TableHead>
                 <TableHead>할당 경로</TableHead>
+                <TableHead>권한</TableHead>
                 <TableHead>상태</TableHead>
                 <TableHead>마지막 로그인</TableHead>
               </TableRow>
@@ -81,6 +83,11 @@ export function ApplicationsTab({ id, name, email }: { id: string; name: string;
                         ))}
                       </div>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {(app.entitlements ?? []).length ? app.entitlements!.map((entry) => <Badge key={entry} variant="outline" className="font-mono text-xs">{entry}</Badge>) : <span className="text-xs text-muted-foreground">—</span>}
+                    </div>
                   </TableCell>
                   <TableCell>{app.enabled ? <Badge variant="secondary">켜짐</Badge> : <Badge variant="outline">꺼짐</Badge>}</TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{app.lastSignInAt ? formatDateTime(app.lastSignInAt) : '기록 없음'}</TableCell>

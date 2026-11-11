@@ -17,6 +17,7 @@ import { mfaEnrolledNotice, mfaRemovedNotice } from "../users/security-notices";
 import { recordSessionMfaProof } from "../mfa/second-factor";
 import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
 import { enforceMfaPolicy } from "../mfa/policy";
+import { appSessionSnapshot, logoutUserFromApps } from "../oauth/app-logout";
 
 const auditEventTypes: Record<string, string> = {
   "POST /api/auth/sign-up/email": "identity.user.public_registration.denied",
@@ -120,7 +121,11 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   if (!eventType) {
     const removal = request.method === "POST" && ["/api/auth/two-factor/disable", "/api/auth/passkey/delete-passkey"].includes(path);
     const removalSession = removal ? await auth.api.getSession({ headers: request.headers }).catch(() => null) : null;
+    const allSessions = request.method === "POST" && path === "/api/auth/revoke-sessions";
+    const allSessionUser = allSessions ? await auth.api.getSession({ headers: request.headers }).catch(() => null) : null;
+    const appSnapshot = allSessionUser ? await appSessionSnapshot(env, allSessionUser.user.id).catch(() => undefined) : undefined;
     const answer = await auth.handler(request);
+    if (answer.ok && allSessionUser) await logoutUserFromApps(env, allSessionUser.user.id, { reason: "self_all_sessions", snapshot: appSnapshot });
     if (answer.ok && removalSession) await notifySecurity(env, removalSession.user.id, mfaRemovedNotice);
     if (grantCopy && path === "/api/auth/oauth2/continue") {
       const continuing = await auth.api.getSession({ headers: request.headers }).catch(() => null);
@@ -162,6 +167,11 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
 
   let response: Response;
+  // The ban trigger and session FK actions can erase the active-token/sid
+  // evidence. Capture it before the mutation; only dispatch after success.
+  const appLogout = request.method === "POST" && targetUserId &&
+    (path === "/api/auth/admin/ban-user" || path === "/api/auth/admin/revoke-user-sessions")
+    ? await appSessionSnapshot(env, targetUserId).catch(() => undefined) : undefined;
   try {
     response = await auth.handler(request);
   } catch {
@@ -175,6 +185,9 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
       // Keep the started event for operational reconciliation.
     }
     return Response.json({ error: "Authentication operation failed" }, { status: 500 });
+  }
+  if (response.ok && targetUserId && (path === "/api/auth/admin/ban-user" || path === "/api/auth/admin/revoke-user-sessions")) {
+    await logoutUserFromApps(env, targetUserId, { reason: path, snapshot: appLogout });
   }
   if (grantCopy) await recordOAuthGrant(env, grantCopy, response, actorUserId);
   if (

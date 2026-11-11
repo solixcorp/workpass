@@ -50,7 +50,7 @@ integrationsAdminRoutes.get("/integrations/status", async (context) => {
   const env = context.env;
   await ssfTables(env);
   const receiver = receiverConfig(env);
-  const [counts, activity, senderCount, senderActivity, receiverActivity, inboundActivity, claimActivity] = await Promise.all([
+  const [counts, activity, senderCount, senderActivity, receiverActivity, inboundActivity, claimActivity, appTargets] = await Promise.all([
     env.DB.prepare("SELECT status, COUNT(*) AS count FROM scim_operations GROUP BY status").all<{ status: string; count: number }>(),
     env.DB.prepare("SELECT MAX(updated_at) AS time FROM scim_operations").first<{ time: string | null }>(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM ssf_recipients").first<{ count: number }>(),
@@ -58,11 +58,13 @@ integrationsAdminRoutes.get("/integrations/status", async (context) => {
     env.DB.prepare("SELECT MAX(received_at) AS time FROM ssf_inbox").first<{ time: number | null }>(),
     env.DB.prepare("SELECT MAX(occurred_at) AS time FROM audit_events WHERE event_type LIKE 'scim.inbound.%'").first<{ time: string | null }>(),
     env.DB.prepare("SELECT MAX(updated_at) AS time FROM claim_release_policies").first<{ time: string | null }>(),
+    env.DB.prepare("SELECT COUNT(*) AS configured, COALESCE(SUM(enabled), 0) AS enabled FROM app_provisioning_targets").first<{ configured: number; enabled: number }>(),
   ]);
   const operationCounts: Record<string, number> = { pending: 0, in_progress: 0, succeeded: 0, failed: 0, outcome_unknown: 0 };
   for (const row of counts.results) operationCounts[row.status] = row.count;
   return context.json({
     scimOutbound: { enabled: env.ENABLE_SCIM_PROVISIONING === "true", configured: scimConfigured(env), baseUrlHost: host(env.SCIM_BASE_URL), operationCounts, lastActivityAt: activity?.time ?? null },
+    scimApplicationTargets: { configured: appTargets?.configured ?? 0, enabled: appTargets?.enabled ?? 0 },
     scimInbound: { enabled: env.ENABLE_INBOUND_SCIM === "true", configured: (env.INBOUND_SCIM_BEARER_TOKEN?.length ?? 0) >= 32, lastActivityAt: inboundActivity?.time ?? null },
     ssfSender: { enabled: env.ENABLE_SSF_SENDER === "true", configured: Boolean(env.SSF_MANAGEMENT_TOKEN && env.AEAD_SEALING_KEY), streamCount: senderCount?.count ?? 0, lastActivityAt: senderActivity?.time ? new Date(senderActivity.time).toISOString() : null },
     ssfReceiver: { enabled: env.ENABLE_SSF_RECEIVER === "true", configured: receiver.valid && receiver.streams.length > 0, streamCount: receiver.streams.length, lastActivityAt: receiverActivity?.time ? new Date(receiverActivity.time * 1000).toISOString() : null },
@@ -76,15 +78,17 @@ integrationsAdminRoutes.get("/scim-operations", async (context) => {
   const pagination = paging(context.req.query("page"), context.req.query("limit"));
   const status = context.req.query("status");
   const userId = context.req.query("userId");
-  if (!pagination || (status !== undefined && !["pending", "in_progress", "succeeded", "failed", "outcome_unknown"].includes(status)) || (userId !== undefined && (!userId || userId.length > 256))) return context.json({ error: "검색 조건을 확인해 주세요." }, 400);
+  const applicationSlug = context.req.query("applicationSlug");
+  if (!pagination || (status !== undefined && !["pending", "in_progress", "succeeded", "failed", "outcome_unknown"].includes(status)) || (userId !== undefined && (!userId || userId.length > 256)) || (applicationSlug !== undefined && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(applicationSlug))) return context.json({ error: "검색 조건을 확인해 주세요." }, 400);
   const clauses: string[] = [];
   const values: string[] = [];
   if (status) { clauses.push("o.status = ?"); values.push(status); }
   if (userId) { clauses.push("o.user_id = ?"); values.push(userId); }
+  if (applicationSlug) { clauses.push("o.target_id = ?"); values.push(`app:${applicationSlug}`); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const [total, rows] = await Promise.all([
     context.env.DB.prepare(`SELECT COUNT(*) AS count FROM scim_operations o ${where}`).bind(...values).first<{ count: number }>(),
-    context.env.DB.prepare(`SELECT o.id, o.target_id, o.user_id, o.operation, o.status, o.remote_status, o.created_at, o.updated_at, u.name AS user_name, u.email AS user_email FROM scim_operations o LEFT JOIN "user" u ON u.id = o.user_id ${where} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`).bind(...values, pagination.limit, pagination.offset).all(),
+    context.env.DB.prepare(`SELECT o.id, o.target_id, o.user_id, o.operation, o.status, o.remote_status, o.created_at, o.updated_at, u.name AS user_name, u.email AS user_email, a.name AS applicationName FROM scim_operations o LEFT JOIN "user" u ON u.id = o.user_id LEFT JOIN applications a ON o.target_id = 'app:' || a.slug ${where} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`).bind(...values, pagination.limit, pagination.offset).all(),
   ]);
   return context.json({ operations: rows.results, total: total?.count ?? 0, page: pagination.page, limit: pagination.limit });
 });

@@ -11,6 +11,7 @@ import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
 import { describeDevice } from "./device";
 import { PROFILE_FIELDS, readProfile, validateProfile } from "./profile";
+import { effectiveEntitlements } from "../entitlements/store";
 
 export const userDetailRoutes = new Hono<{ Bindings: Env }>();
 
@@ -77,9 +78,9 @@ userDetailRoutes.get("/users/:id/applications", async (context) => {
     "SELECT g.id, g.name FROM directory_group_members m JOIN directory_groups g ON g.id = m.group_id WHERE m.user_id = ?",
   ).bind(id).all<{ id: string; name: string }>())).map((g) => [g.id, g.name]));
   const apps = await rows(db.prepare(
-    `SELECT slug, name, protocol, binding, enabled, icon_key AS iconKey, icon_url AS iconUrl, hide_from_dashboard AS hidden
+    `SELECT id, slug, name, protocol, binding, enabled, icon_key AS iconKey, icon_url AS iconUrl, hide_from_dashboard AS hidden
      FROM applications ORDER BY name ASC LIMIT 300`,
-  ).all<{ slug: string; name: string; protocol: string; binding: string | null; enabled: number; iconKey: string | null; iconUrl: string | null; hidden: number }>());
+  ).all<{ id: string; slug: string; name: string; protocol: string; binding: string | null; enabled: number; iconKey: string | null; iconUrl: string | null; hidden: number }>());
   const policyGroups = await rows(db.prepare("SELECT subject, group_id FROM app_policy_groups").all<{ subject: string; group_id: string }>());
   const bySubject = new Map<string, string[]>();
   for (const row of policyGroups) bySubject.set(row.subject, [...(bySubject.get(row.subject) ?? []), row.group_id]);
@@ -87,7 +88,7 @@ userDetailRoutes.get("/users/:id/applications", async (context) => {
     "SELECT subject, MAX(occurred_at) AS at FROM app_grant_events WHERE user_id = ? GROUP BY subject",
   ).bind(id).all<{ subject: string; at: string }>())).map((r) => [r.subject, r.at]));
 
-  const result = apps.map((app) => {
+  const result = await Promise.all(apps.map(async (app) => {
     const required = bySubject.get(`app:${app.slug}`) ?? [];
     const matching = required.filter((groupId) => memberOf.has(groupId));
     const subject = app.binding ? `${app.protocol}:${app.binding}` : null;
@@ -97,8 +98,9 @@ userDetailRoutes.get("/users/:id/applications", async (context) => {
       access: required.length === 0 ? "everyone" : matching.length > 0 ? "group" : "none",
       via: matching.map((groupId) => memberOf.get(groupId)!),
       lastSignInAt: subject ? last.get(subject) ?? null : null,
+      entitlements: await effectiveEntitlements(context.env, app, id),
     };
-  });
+  }));
   return context.json({ applications: result });
 });
 

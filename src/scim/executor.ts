@@ -44,7 +44,7 @@ export function loadScimExecutorConfig(env: Env): ScimExecutorConfig | null {
  */
 export async function executeScimOperation(env: Env, config: ScimExecutorConfig, operationId: string): Promise<boolean> {
   const operation = await getScimOperation(env, operationId);
-  if (!operation) return false;
+  if (!operation || operation.target_id !== config.targetId) return false;
   if ((await claimScimOperation(env, operationId)) === false) return false;
   const attributeRelease = env.ENABLE_SCIM_ATTRIBUTE_RELEASE === "true";  const mapped = await getScimUserMapping(env, config.targetId, operation.user_id);
   if ((operation.operation === "create" && mapped) || (operation.operation !== "create" && !mapped)) {
@@ -66,7 +66,7 @@ export async function executeScimOperation(env: Env, config: ScimExecutorConfig,
     ? await createScimUser(config.target, { externalId: user.id, userName: user.username || user.email, displayName: user.name, email: user.email, active: true, customAttributes })
     : await patchScimUser(config.target, mapped!, operation.operation === "deactivate"
       ? { active: false }
-      : { userName: user.username || user.email, displayName: user.name, email: user.email, customAttributes });
+      : { userName: user.username || user.email, displayName: user.name, email: user.email, ...(config.targetId.startsWith("app:") ? { active: true } : {}), customAttributes });
   if (!result.ok) {
     const unknown = result.kind === "outcome_unknown" || result.kind === "invalid_response";
     await finishScimOperation(env, operationId, unknown ? "outcome_unknown" : "failed", result.status ?? null);
@@ -88,8 +88,8 @@ export async function dispatchPendingScimOperations(env: Env, maxOperations = 50
   const config = loadScimExecutorConfig(env);
   if (!config) return 0;
   const pending = await env.DB.prepare(
-    "SELECT id FROM scim_operations WHERE status = 'pending' ORDER BY created_at ASC, id ASC LIMIT ?",
-  ).bind(maxOperations).all<{ id: string }>();
+    "SELECT id FROM scim_operations WHERE status = 'pending' AND target_id = ? ORDER BY created_at ASC, id ASC LIMIT ?",
+  ).bind(config.targetId, maxOperations).all<{ id: string }>();
   let executed = 0;
   for (const row of pending.results) {
     let succeeded: boolean;

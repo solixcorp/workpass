@@ -1,5 +1,6 @@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import type { ClientType, GrantKey, OidcClient } from '@/lib/integrations'
 import { GrantsField, SettingRow, UriListField } from './parts'
 
@@ -10,6 +11,8 @@ export type OidcDraft = {
   scopes: string[]
   requirePkce: boolean
   dpop: boolean
+  backchannelLogoutUri: string
+  backchannelLogoutSessionRequired: boolean
 }
 
 const USER_SCOPES: Array<{ key: string; label: string; description: string }> = [
@@ -27,6 +30,8 @@ export function defaultOidcDraft(type: ClientType): OidcDraft {
     scopes: type === 'service' ? [''] : ['profile', 'email'],
     requirePkce: true,
     dpop: false,
+    backchannelLogoutUri: '',
+    backchannelLogoutSessionRequired: false,
   }
 }
 
@@ -39,6 +44,8 @@ export function draftFromClient(client: OidcClient): OidcDraft {
     scopes: user ? client.scopes.filter((scope) => scope !== 'openid' && scope !== 'offline_access') : client.scopes.length ? client.scopes : [''],
     requirePkce: client.requirePkce,
     dpop: client.dpop,
+    backchannelLogoutUri: client.backchannelLogoutUri ?? '',
+    backchannelLogoutSessionRequired: client.backchannelLogoutSessionRequired ?? false,
   }
 }
 
@@ -52,6 +59,8 @@ export function oidcBody(type: ClientType, draft: OidcDraft) {
     scopes: clean(draft.scopes),
     requirePkce: draft.requirePkce,
     dpop: draft.dpop,
+    backchannelLogoutUri: type === 'service' ? null : draft.backchannelLogoutUri.trim() || null,
+    backchannelLogoutSessionRequired: type === 'service' ? false : draft.backchannelLogoutSessionRequired,
   }
 }
 
@@ -158,6 +167,30 @@ export function OidcFields({
               values={draft.postLogoutRedirectUris}
               onChange={(postLogoutRedirectUris) => patch({ postLogoutRedirectUris })}
             />
+          </SettingRow>
+          <SettingRow
+            title="백채널 로그아웃 주소"
+            description="사용자가 앱에서 로그아웃되어야 할 때 이 주소로 로그아웃 토큰을 보냅니다. 선택 사항입니다. 보안상 운영자가 서버에서 미리 승인한 주소만 저장할 수 있습니다."
+          >
+            <Input
+              aria-label="백채널 로그아웃 주소"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="https://app.example.com/backchannel-logout"
+              value={draft.backchannelLogoutUri}
+              onChange={(event) => patch({ backchannelLogoutUri: event.target.value })}
+            />
+            <Field orientation="horizontal">
+              <Checkbox
+                id="oidc-bcl-session"
+                checked={draft.backchannelLogoutSessionRequired}
+                onCheckedChange={(on) => patch({ backchannelLogoutSessionRequired: on === true })}
+              />
+              <div className="flex flex-col gap-0.5">
+                <FieldLabel htmlFor="oidc-bcl-session">세션 ID 포함</FieldLabel>
+                <FieldDescription>로그아웃 토큰에 세션 ID(sid)를 넣어, 앱이 그 세션만 끝낼 수 있게 합니다.</FieldDescription>
+              </div>
+            </Field>
           </SettingRow>
           <SettingRow title="받을 수 있는 정보" description="앱이 사용자에 대해 읽을 수 있는 항목입니다. 기본 신원 정보(openid)는 항상 포함됩니다.">
             <FieldGroup className="gap-3">

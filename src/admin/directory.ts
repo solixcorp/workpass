@@ -133,7 +133,7 @@ directoryRoutes.delete("/directory-groups/:id", async (context) => {
       ).bind(id),
       context.env.DB.prepare("DELETE FROM directory_groups WHERE id = ?").bind(id),
     ]);
-    if (removed[2]!.meta.changes !== 1) {
+    if (removed[2]!.meta.changes < 1) {
       return { response: Response.json({ error: "Group not found" }, { status: 404 }), actorUserId: actor.userId };
     }
     return { response: Response.json({ deleted: true }), actorUserId: actor.userId, targetUserId: id };

@@ -15,6 +15,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { myProfileQuery, type MyProfile } from '@/lib/me'
+import { ConnectedApps } from './connected-apps'
 import { VerifyPhoneDialog } from './verify-phone-dialog'
 
 function Row({ label, children, action }: { label: string; children: ReactNode; action?: ReactNode }) {
@@ -143,6 +144,8 @@ export function MyAccountPage() {
         </Row>
         <p className="pt-3 text-xs text-muted-foreground">패스키, 인증 앱, 보안 토큰과 신뢰한 기기는 보안 화면에서 관리합니다.</p>
       </Card>
+
+      <ConnectedApps />
 
       <Card title="세션">
         <Row
