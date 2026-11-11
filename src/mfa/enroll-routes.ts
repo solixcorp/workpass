@@ -54,7 +54,7 @@ export interface EnrollmentView {
   methods: MethodView[];
   /** The card shown during sign-in when a required second factor is not set up yet. */
   signIn: { title: string; description: string; requiredHeading: string; hint: string; setup: string; back: string };
-  hotpTokens: Array<{ id: string; label: string; createdAt: string }>;
+  hotpTokens: Array<{ id: string; label: string; createdAt: string; verified: boolean }>;
   backupCodes: { available: boolean; label: string; description: string };
   disable: { available: boolean; label: string; description: string; blockedReason?: string };
   labels: Record<string, string>;
@@ -70,8 +70,8 @@ export async function buildEnrollmentView(
     .bind(user.id).first<{ verified: number | boolean | null }>().catch(() => null);
   const hasTotp = twoFactorEnabled && secret !== null && secret.verified !== 0 && secret.verified !== false;
   const tokens = await env.DB.prepare(
-    "SELECT id, label, created_at AS createdAt FROM mfa_hotp_tokens WHERE user_id = ? ORDER BY created_at ASC LIMIT 20",
-  ).bind(user.id).all<{ id: string; label: string; createdAt: string }>().catch(() => ({ results: [] }));
+    "SELECT id, label, created_at AS createdAt, verified FROM mfa_hotp_tokens WHERE user_id = ? ORDER BY created_at ASC LIMIT 20",
+  ).bind(user.id).all<{ id: string; label: string; createdAt: string; verified: number | boolean }>().catch(() => ({ results: [] }));
   const phone = await env.DB.prepare('SELECT "phoneNumber" FROM "user" WHERE id = ? AND "phoneNumberVerified" = 1 AND "phoneNumber" IS NOT NULL LIMIT 1')
     .bind(user.id).first().catch(() => null);
   const smsDelivery = Boolean(phone) && isSmsOtpAvailable(env);
@@ -103,7 +103,7 @@ export async function buildEnrollmentView(
       key: "hotp",
       label: "보안 토큰",
       description: "버튼을 누르면 6자리 코드를 보여주는 하드웨어 토큰입니다. 등록 후 토큰을 눌러 나온 코드를 입력합니다.",
-      state: pick(policy.allow.hotp, tokens.results.length > 0),
+      state: pick(policy.allow.hotp, tokens.results.some((token) => token.verified === 1 || token.verified === true)),
       stateLabel: "",
       actions: policy.allow.hotp ? ["add"] : [],
     },
@@ -145,7 +145,7 @@ export async function buildEnrollmentView(
       setup: "설정",
       back: "로그인으로 돌아가기",
     },
-    hotpTokens: tokens.results,
+    hotpTokens: tokens.results.map((token) => ({ ...token, verified: token.verified === 1 || token.verified === true })),
     backupCodes: {
       available: hasTotp,
       label: "백업 코드 다시 받기",

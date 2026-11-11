@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { createAuth } from "../auth/config";
+import { describeDevice } from "../users/device";
 import { auditStandaloneOperation } from "../audit/store";
 import { revokeTrustedDevices } from "./trusted-device-store";
 import {
@@ -11,6 +12,43 @@ import {
 } from "./fingerprint";
 
 export const trustedDeviceRoutes = new Hono<{ Bindings: Env }>();
+
+trustedDeviceRoutes.get("/sessions/overview", async (context) => {
+  context.header("Cache-Control", "no-store");
+  const auth = createAuth(context.env);
+  const headers = context.req.raw.headers;
+  const session = await auth.api.getSession({ headers });
+  if (!session) return context.json({ error: "Unauthorized" }, 401);
+
+  const sessions = await auth.api.listSessions({ headers });
+  const history = await context.env.DB.prepare(
+    `SELECT ip, user_agent, city, region, country FROM login_history
+     WHERE user_id = ? ORDER BY occurred_at DESC LIMIT 100`,
+  ).bind(session.user.id).all<{
+    ip: string | null;
+    user_agent: string | null;
+    city: string | null;
+    region: string | null;
+    country: string | null;
+  }>();
+
+  return context.json({ sessions: sessions.map((item) => {
+    const matches = item.ipAddress ? history.results.filter((row) => row.ip === item.ipAddress) : [];
+    const match = (item.userAgent ? matches.find((row) => row.user_agent === item.userAgent) : undefined) ?? matches[0];
+    return {
+      token: item.token,
+      id: item.id,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt ?? null,
+      expiresAt: item.expiresAt ?? null,
+      current: item.token === session.session.token,
+      ipAddress: item.ipAddress ?? null,
+      userAgent: item.userAgent ?? null,
+      label: describeDevice(item.userAgent ?? match?.user_agent).label,
+      location: match ? { city: match.city, region: match.region, country: match.country } : null,
+    };
+  }) });
+});
 
 trustedDeviceRoutes.get("/trusted-devices", async (context) => {
   const auth = createAuth(context.env);

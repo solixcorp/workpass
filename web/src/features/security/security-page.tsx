@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRoundIcon, MonitorSmartphoneIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { KeyRoundIcon, LaptopIcon, MonitorSmartphoneIcon, PlusIcon, SmartphoneIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -17,8 +17,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { authClient } from '@/lib/auth-client'
+import { apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
-import { sessionQuery } from '@/lib/queries'
 import { TrustedDevicesSection } from './devices-section'
 import { LockdownSection } from './lockdown-section'
 import { MfaSection } from './mfa-section'
@@ -27,48 +27,23 @@ import { loginConfigQuery } from '@/lib/fingerprint'
 type DeviceSession = {
   id: string
   token: string
-  userAgent?: string | null
-  ipAddress?: string | null
-  createdAt: string | Date
+  createdAt: string
+  updatedAt: string | null
+  expiresAt: string | null
+  current: boolean
+  ipAddress: string | null
+  userAgent: string | null
+  label: string
+  location: { city: string | null; region: string | null; country: string | null } | null
 }
 
 type PasskeyRow = { id: string; name?: string | null; createdAt?: string | Date | null }
 
-function describeAgent(userAgent: string | null | undefined): string {
-  if (!userAgent) return '알 수 없는 기기'
-  const browser = /Edg\//.test(userAgent)
-    ? 'Edge'
-    : /Chrome\//.test(userAgent)
-      ? 'Chrome'
-      : /Firefox\//.test(userAgent)
-        ? 'Firefox'
-        : /Safari\//.test(userAgent)
-          ? 'Safari'
-          : '브라우저'
-  const system = /Windows/.test(userAgent)
-    ? 'Windows'
-    : /Mac OS X/.test(userAgent)
-      ? 'macOS'
-      : /Android/.test(userAgent)
-        ? 'Android'
-        : /iPhone|iPad/.test(userAgent)
-          ? 'iOS'
-          : /Linux/.test(userAgent)
-            ? 'Linux'
-            : ''
-  return system ? `${browser} · ${system}` : browser
-}
-
 function SessionsSection() {
   const queryClient = useQueryClient()
-  const { data: current } = useQuery(sessionQuery)
   const { data, isPending, error } = useQuery({
     queryKey: ['security', 'sessions'],
-    queryFn: async () => {
-      const result = await authClient.listSessions()
-      if (result.error) throw new Error(result.error.message ?? 'Failed to load sessions')
-      return result.data as DeviceSession[]
-    },
+    queryFn: async () => (await apiFetch<{ sessions: DeviceSession[] }>('/api/security/sessions/overview')).sessions,
   })
 
   const revoke = useMutation({
@@ -95,20 +70,31 @@ function SessionsSection() {
       ) : (
         <ItemGroup className="gap-2">
           {data.map((entry) => {
-            const isCurrent = entry.token === current?.session.token
+            const isCurrent = entry.current
+            const location = entry.location
+              ? [entry.location.city, entry.location.region, entry.location.country].filter(Boolean).join(', ')
+              : ''
             return (
               <Item key={entry.id} variant="outline">
                 <ItemMedia variant="icon">
-                  <MonitorSmartphoneIcon />
+                  {entry.label === '알 수 없는 기기' ? (
+                    <MonitorSmartphoneIcon />
+                  ) : /iOS|Android/i.test(entry.label) ? (
+                    <SmartphoneIcon />
+                  ) : (
+                    <LaptopIcon />
+                  )}
                 </ItemMedia>
                 <ItemContent>
                   <ItemTitle>
-                    {describeAgent(entry.userAgent)}
+                    {entry.label}
                     {isCurrent ? <Badge variant="secondary">이 기기</Badge> : null}
                   </ItemTitle>
                   <ItemDescription>
-                    {entry.ipAddress ? `${entry.ipAddress} · ` : ''}
-                    {formatDateTime(entry.createdAt)}
+                    {location ? <span className="block">{location}</span> : null}
+                    {entry.ipAddress ? <span className="block">{entry.ipAddress}</span> : null}
+                    {!location && !entry.ipAddress ? <span className="block">IP/위치 정보 없음</span> : null}
+                    <span className="block">마지막 활동 {formatDateTime(entry.updatedAt ?? entry.createdAt)}</span>
                   </ItemDescription>
                 </ItemContent>
                 {!isCurrent ? (

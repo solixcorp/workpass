@@ -103,7 +103,7 @@ export function MfaSection() {
       {data.hotpTokens.length > 0 ? (
         <ItemGroup className="gap-2">
           {data.hotpTokens.map((token) => (
-            <HotpTokenRow key={token.id} id={token.id} label={token.label} createdAt={token.createdAt} removeLabel={data.labels.remove} />
+            <HotpTokenRow key={token.id} id={token.id} label={token.label} createdAt={token.createdAt} verified={token.verified} removeLabel={data.labels.remove} />
           ))}
         </ItemGroup>
       ) : null}
@@ -158,14 +158,30 @@ function HotpTokenRow({
   id,
   label,
   createdAt,
+  verified,
   removeLabel,
 }: {
   id: string
   label: string
   createdAt: string
+  verified: boolean
   removeLabel: string
 }) {
   const queryClient = useQueryClient()
+  const [verifyOpen, setVerifyOpen] = useState(false)
+  const [code, setCode] = useState('')
+  const [verifyError, setVerifyError] = useState<string | null>(null)
+  const verify = useMutation({
+    mutationFn: () => apiFetch('/api/mfa/hotp/verify', { method: 'POST', body: JSON.stringify({ tokenId: id, code }) }),
+    onSuccess: () => {
+      toast.success('토큰을 인증했습니다.')
+      setVerifyOpen(false)
+      setCode('')
+      setVerifyError(null)
+      return queryClient.invalidateQueries({ queryKey: enrollmentKey })
+    },
+    onError: () => setVerifyError('코드가 올바르지 않습니다. 토큰의 새 코드를 입력하세요.'),
+  })
   const remove = useMutation({
     mutationFn: () => apiFetch(`/api/mfa/hotp/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
@@ -178,14 +194,26 @@ function HotpTokenRow({
   return (
     <Item variant="muted" size="sm">
       <ItemContent>
-        <ItemTitle>{label}</ItemTitle>
+        <ItemTitle>{label}{verified ? null : <Badge variant="outline">확인 대기</Badge>}</ItemTitle>
         <ItemDescription>{formatDateTime(createdAt)}</ItemDescription>
       </ItemContent>
       <ItemActions>
+        {!verified ? <Button variant="outline" size="sm" onClick={() => setVerifyOpen(true)}>인증 계속</Button> : null}
         <Button variant="ghost" size="icon-sm" aria-label={`${label} ${removeLabel}`} disabled={remove.isPending} onClick={() => remove.mutate()}>
           <Trash2Icon />
         </Button>
       </ItemActions>
+      <Dialog open={verifyOpen} onOpenChange={(next) => !next && !verify.isPending && setVerifyOpen(false)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>보안 토큰 확인</DialogTitle><DialogDescription>토큰의 새 코드를 입력하세요.</DialogDescription></DialogHeader>
+          <Field data-invalid={verifyError ? true : undefined}>
+            <FieldLabel htmlFor={`hotp-verify-${id}`}>인증 코드</FieldLabel>
+            <CodeInput id={`hotp-verify-${id}`} value={code} onChange={(value) => { setCode(value); setVerifyError(null) }} />
+            {verifyError ? <FieldError>{verifyError}</FieldError> : null}
+          </Field>
+          <DialogFooter><Button disabled={verify.isPending || code.length !== 6} onClick={() => verify.mutate()}>{verify.isPending ? <Spinner data-icon="inline-start" /> : null}확인</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Item>
   )
 }
@@ -387,30 +415,62 @@ function TotpDialog({ view, open, onClose }: { view: EnrollmentView; open: boole
 function OtpDialog({ view, open, onClose }: { view: EnrollmentView; open: boolean; onClose: () => void }) {
   const refresh = useRefresh()
   const [password, setPassword] = useState('')
+  const [step, setStep] = useState<1 | 2>(1)
+  const [code, setCode] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function enable(event: FormEvent) {
+  async function start(event: FormEvent) {
     event.preventDefault()
     setError(null)
     setPending(true)
-    const result = await authClient.twoFactor.enable({
-      method: 'otp',
-      ...(view.passwordRequired ? { password } : {}),
-    } as { password: string; method: 'otp' })
-    setPending(false)
-    if (result.error) {
-      setError(message(result.error, '일회용 코드를 켜지 못했습니다.'))
-      return
+    try {
+      await apiFetch('/api/mfa/otp/start', { method: 'POST' })
+      setStep(2)
+    } catch (cause) {
+      setError(message(cause instanceof ApiError ? cause : null, '인증 코드를 보내지 못했습니다.'))
+    } finally {
+      setPending(false)
     }
-    toast.success(view.labels.otpEnabled)
+  }
+
+  async function confirm(event: FormEvent) {
+    event.preventDefault()
+    setError(null)
+    setPending(true)
+    try {
+      await apiFetch('/api/mfa/otp/confirm', { method: 'POST', body: JSON.stringify({ code, ...(view.passwordRequired ? { password } : {}) }) })
+      toast.success(view.labels.otpEnabled)
+      setPassword('')
+      setCode('')
+      await refresh()
+      onClose()
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 429) setError('시도 횟수를 넘었습니다. 처음부터 다시 시작하세요.')
+      else if (cause instanceof ApiError && cause.status === 400) {
+        setError('코드가 올바르지 않습니다. 최신 코드를 입력하세요.')
+        setCode('')
+      } else setError(message(cause instanceof ApiError ? cause : null, '일회용 코드를 켜지 못했습니다.'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  function close() {
     setPassword('')
-    await refresh()
+    setCode('')
+    setStep(1)
+    setError(null)
     onClose()
   }
 
+  /*
+   * Starting delivery does not enable the method; only a successful final
+   * code check does.
+   */
+
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && !pending && onClose()}>
+    <Dialog open={open} onOpenChange={(next) => !next && !pending && close()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>일회용 코드 켜기</DialogTitle>
@@ -418,16 +478,22 @@ function OtpDialog({ view, open, onClose }: { view: EnrollmentView; open: boolea
             {view.methods.find((method) => method.key === 'otp')?.description}
           </DialogDescription>
         </DialogHeader>
-        <form id="mfa-otp" onSubmit={enable} noValidate>
+        <form id="mfa-otp" onSubmit={step === 1 ? start : confirm} noValidate>
           <FieldGroup>
-            <PasswordField view={view} value={password} onChange={setPassword} />
+            {step === 1 ? <PasswordField view={view} value={password} onChange={setPassword} /> : <>
+              <p className="text-sm text-muted-foreground">등록된 휴대폰(또는 계정 이메일)으로 코드를 보냈습니다. 10분 안에 입력하세요.</p>
+              <Field data-invalid={error ? true : undefined}>
+                <FieldLabel htmlFor="mfa-otp-code">인증 코드</FieldLabel>
+                <CodeInput id="mfa-otp-code" value={code} onChange={setCode} />
+              </Field>
+            </>}
             {error ? <FieldError>{error}</FieldError> : null}
           </FieldGroup>
         </form>
         <DialogFooter>
-          <Button type="submit" form="mfa-otp" disabled={pending || (view.passwordRequired && !password)}>
+          <Button type="submit" form="mfa-otp" disabled={pending || (step === 1 ? view.passwordRequired && !password : code.length !== 6)}>
             {pending ? <Spinner data-icon="inline-start" /> : null}
-            켜기
+            {step === 1 ? '인증 코드 받기' : '확인'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -438,7 +504,7 @@ function OtpDialog({ view, open, onClose }: { view: EnrollmentView; open: boolea
 function HotpDialog({ view, open, onClose }: { view: EnrollmentView; open: boolean; onClose: () => void }) {
   const refresh = useRefresh()
   const [label, setLabel] = useState('')
-  const [token, setToken] = useState<{ secret: string } | null>(null)
+  const [token, setToken] = useState<{ secret: string; tokenId: string } | null>(null)
   const [code, setCode] = useState('')
   const [done, setDone] = useState(false)
   const [pending, setPending] = useState(false)
@@ -458,11 +524,11 @@ function HotpDialog({ view, open, onClose }: { view: EnrollmentView; open: boole
     setError(null)
     setPending(true)
     try {
-      const result = await apiFetch<{ secretBase32: string }>('/api/mfa/hotp/enroll', {
+      const result = await apiFetch<{ secretBase32: string; tokenId: string }>('/api/mfa/hotp/enroll', {
         method: 'POST',
         body: JSON.stringify({ label: label.trim() }),
       })
-      setToken({ secret: result.secretBase32 })
+      setToken({ secret: result.secretBase32, tokenId: result.tokenId })
       await refresh()
     } catch {
       setError('토큰을 등록하지 못했습니다.')
@@ -476,11 +542,11 @@ function HotpDialog({ view, open, onClose }: { view: EnrollmentView; open: boole
     setError(null)
     setPending(true)
     try {
-      await apiFetch('/api/mfa/hotp/verify', { method: 'POST', body: JSON.stringify({ code }) })
+      await apiFetch('/api/mfa/hotp/verify', { method: 'POST', body: JSON.stringify({ code, tokenId: token!.tokenId }) })
       setDone(true)
       await refresh()
     } catch {
-      setError('코드가 올바르지 않습니다. 토큰을 다시 눌러 새 코드를 입력하세요.')
+      setError('코드가 올바르지 않습니다. 토큰의 새 코드를 입력하세요.')
       setCode('')
     } finally {
       setPending(false)

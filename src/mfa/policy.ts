@@ -90,7 +90,7 @@ export async function enforceMfaPolicy(
       // Default method applies.
     }
     if (method === "totp" && !policy.allow.totp) return deny("인증 앱은 사용할 수 없습니다.");
-    if (method === "otp" && !policy.allow.otp) return deny("일회용 코드는 사용할 수 없습니다.");
+    if (method === "otp") return deny("Use OTP enrollment verification to enable one-time codes.");
   }
   if (path === "/api/auth/two-factor/disable" && session && userMustUseMfa(env, session.user)) {
     return deny("2차 인증이 필수라서 끌 수 없습니다.");

@@ -22,7 +22,7 @@ export type EnrollmentView = {
     actions: Array<'enroll' | 'add' | 'remove'>
   }>
   signIn: { title: string; description: string; requiredHeading: string; hint: string; setup: string; back: string }
-  hotpTokens: Array<{ id: string; label: string; createdAt: string }>
+  hotpTokens: Array<{ id: string; label: string; createdAt: string; verified: boolean }>
   backupCodes: { available: boolean; label: string; description: string }
   disable: { available: boolean; label: string; description: string; blockedReason?: string }
   labels: Record<string, string>

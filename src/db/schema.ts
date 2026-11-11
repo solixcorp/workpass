@@ -354,8 +354,27 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       created_at TEXT NOT NULL
     )`,
   ).run();
+  // Verify-gated enrollment (2026-11): a self-enrolled token stays pending
+  // until its first code verifies; pre-existing rows and operator-attached
+  // tokens (admin route) default to verified.
+  const hotpColumns = await env.DB.prepare("PRAGMA table_info(mfa_hotp_tokens)").all<{ name: string }>();
+  if (!hotpColumns.results.some((column) => column.name === "verified")) {
+    await env.DB.prepare("ALTER TABLE mfa_hotp_tokens ADD COLUMN verified INTEGER NOT NULL DEFAULT 1").run();
+  }
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS mfa_hotp_tokens_user_idx ON mfa_hotp_tokens (user_id)",
+  ).run();
+  // One-time-code confirmation for OTP (SMS/email) second-factor enrollment:
+  // the method only turns on after one issued code verifies (replaces the old
+  // enable-now-verify-later flow).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS mfa_enroll_verifications (
+      user_id TEXT PRIMARY KEY NOT NULL,
+      code_digest TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`,
   ).run();
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS wsfed_relying_parties (
