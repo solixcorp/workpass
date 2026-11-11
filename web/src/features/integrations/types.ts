@@ -23,6 +23,10 @@ export type ScimOperation = {
   updated_at: string
   user_name: string | null
   user_email: string | null
+  resolved_at?: string | null
+  resolved_by_name?: string | null
+  resolution_note?: string | null
+  abandoned?: boolean
 }
 
 export type Stream = {

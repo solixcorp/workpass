@@ -267,6 +267,16 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
      ON scim_operations (target_id, user_id)
      WHERE status IN ('pending', 'in_progress', 'outcome_unknown')`,
   ).run();
+  // Additive migration for operator reconciliation of abandoned operations.
+  const scimColumns = await env.DB.prepare("PRAGMA table_info(scim_operations)").all<{ name: string }>();
+  for (const [name, definition] of [["resolved_by", "TEXT"], ["resolved_at", "TEXT"], ["resolution_note", "TEXT"], ["abandoned", "INTEGER NOT NULL DEFAULT 0"]]) {
+    if (!scimColumns.results.some((column) => column.name === name)) {
+      try { await env.DB.prepare(`ALTER TABLE scim_operations ADD COLUMN ${name} ${definition}`).run(); }
+      catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("duplicate column")) throw error;
+      }
+    }
+  }
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS directory_groups (
       id TEXT PRIMARY KEY NOT NULL,

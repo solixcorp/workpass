@@ -2,12 +2,14 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Paginator } from '@/components/paginator'
 import { apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
+import { ResolveDialog } from './resolve-dialog'
 import type { Paged, ScimOperation } from './types'
 
 const STATUS: Record<ScimOperation['status'], { label: string; variant: 'secondary' | 'destructive' | 'outline' | 'default' }> = {
@@ -24,6 +26,7 @@ export function ProvisioningTab() {
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
+  const [resolving, setResolving] = useState<ScimOperation | null>(null)
   const query = useQuery({
     queryKey: ['admin', 'integrations', 'scim', status, page, pageSize],
     queryFn: () => apiFetch<Paged<'operations', ScimOperation>>(`/api/admin/scim-operations?${new URLSearchParams({ page: String(page), limit: String(pageSize), ...(status === 'all' ? {} : { status }) })}`),
@@ -68,6 +71,7 @@ export function ProvisioningTab() {
                   <TableHead>작업</TableHead>
                   <TableHead>결과</TableHead>
                   <TableHead>응답 코드</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -85,11 +89,21 @@ export function ProvisioningTab() {
                       <Badge variant={STATUS[operation.status].variant}>{STATUS[operation.status].label}</Badge>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{operation.remote_status ?? '—'}</TableCell>
+                    <TableCell className="text-right">
+                      {operation.status === 'outcome_unknown' ? (
+                        <Button variant="outline" size="sm" onClick={() => setResolving(operation)}>
+                          확인했음
+                        </Button>
+                      ) : operation.resolved_at ? (
+                        <span className="text-xs text-muted-foreground">{operation.resolved_by_name ?? '관리자'}가 확인함{operation.resolution_note ? `: ${operation.resolution_note}` : ''}</span>
+                      ) : null}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
+          <ResolveDialog operation={resolving} onClose={() => setResolving(null)} />
           <Paginator page={page} pageSize={pageSize} total={query.data.total} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1) }} />
         </>
       )}

@@ -160,6 +160,7 @@ describe("SWA grant consumption", () => {
 describe("SCIM operation creation", () => {
   test("creates when no unresolved operation exists", async () => {
     const env = new FakeEnv(handlerMap([
+      ["SELECT id, user_id FROM scim_operations", { rows: [] }],
       ["INSERT INTO scim_operations", { changes: 1 }],
     ]));
     const id = await createScimOperation(env as unknown as Parameters<typeof createScimOperation>[0]["env"], { targetId: "t-1", userId: "u-1", operation: "create" });
@@ -168,6 +169,7 @@ describe("SCIM operation creation", () => {
 
   test("returns null when the single-active constraint holds", async () => {
     const env = new FakeEnv(handlerMap([
+      ["SELECT id, user_id FROM scim_operations", { rows: [] }],
       ["INSERT INTO scim_operations", { changes: 0 }],
     ]));
     const id = await createScimOperation(env as unknown as Parameters<typeof createScimOperation>[0]["env"], { targetId: "t-1", userId: "u-1", operation: "create" });

@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { auditStandaloneOperation } from "../audit/store";
 
 export type ScimOperationType = "create" | "update" | "deactivate";
 export type ScimOperationStatus = "pending" | "in_progress" | "succeeded" | "failed" | "outcome_unknown";
@@ -14,12 +15,31 @@ export interface ScimOperation {
   updated_at: string;
 }
 
+/** Expiry never retries a remote mutation: its outcome must be reconciled. */
+export async function expireScimLeases(env: Env, filter: { targetId?: string; userId?: string; now?: Date } = {}): Promise<void> {
+  const now = filter.now ?? new Date();
+  const cutoff = new Date(now.getTime() - 10 * 60_000).toISOString();
+  const clauses = ["status = 'in_progress'", "updated_at < ?"];
+  const values = [cutoff];
+  if (filter.targetId !== undefined) { clauses.push("target_id = ?"); values.push(filter.targetId); }
+  if (filter.userId !== undefined) { clauses.push("user_id = ?"); values.push(filter.userId); }
+  const rows = await env.DB.prepare(`SELECT id, user_id FROM scim_operations WHERE ${clauses.join(" AND ")}`).bind(...values).all<{ id: string; user_id: string }>();
+  for (const row of rows.results) {
+    const response = await auditStandaloneOperation(env, "scim.operation.lease_expired", "/internal/scim/lease", async () => {
+      const result = await env.DB.prepare("UPDATE scim_operations SET status = 'outcome_unknown', abandoned = 1, updated_at = ? WHERE id = ? AND status = 'in_progress' AND updated_at < ?").bind(now.toISOString(), row.id, cutoff).run();
+      return { response: new Response(null, { status: result.meta.changes ? 204 : 409 }), targetUserId: row.user_id };
+    });
+    if (response.status !== 204 && response.status !== 409) throw new Error("SCIM lease expiry audit failed");
+  }
+}
+
 /** Persist intent without credentials or profile data. Duplicate active work is refused. */
 export async function createScimOperation(
   env: Env,
   input: { targetId: string; userId: string; operation: ScimOperationType },
 ): Promise<string | null> {
   if (!input.targetId || !input.userId) throw new Error("SCIM operation identifiers are required");
+  await expireScimLeases(env, { targetId: input.targetId, userId: input.userId });
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   // A duplicate insert (the single-active-operation constraint) creates no

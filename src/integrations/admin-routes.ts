@@ -4,14 +4,15 @@ import { requireAdministrator } from "../security/authorization";
 import { ensureSsfDispatchTables } from "../ssf/dispatch";
 import { ensureSsfInboxTable } from "../ssf/inbox";
 import { parseSsfStreams } from "../ssf/streams";
+import { auditStandaloneOperation } from "../audit/store";
 
 export const integrationsAdminRoutes = new Hono<{ Bindings: Env }>();
 
 integrationsAdminRoutes.use("*", async (context, next) => {
-  if (["/api/admin/integrations/status", "/api/admin/scim-operations", "/api/admin/ssf/streams", "/api/admin/ssf/events", "/api/admin/claim-release-policies"].includes(context.req.path) && context.req.method === "GET") {
+  await next();
+  if ((["/api/admin/integrations/status", "/api/admin/scim-operations", "/api/admin/ssf/streams", "/api/admin/ssf/events", "/api/admin/claim-release-policies"].includes(context.req.path) && context.req.method === "GET") || context.req.path.startsWith("/api/admin/scim-operations/")) {
     context.header("Cache-Control", "no-store");
   }
-  await next();
 });
 
 function host(value: string | undefined): string | null {
@@ -88,9 +89,27 @@ integrationsAdminRoutes.get("/scim-operations", async (context) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const [total, rows] = await Promise.all([
     context.env.DB.prepare(`SELECT COUNT(*) AS count FROM scim_operations o ${where}`).bind(...values).first<{ count: number }>(),
-    context.env.DB.prepare(`SELECT o.id, o.target_id, o.user_id, o.operation, o.status, o.remote_status, o.created_at, o.updated_at, u.name AS user_name, u.email AS user_email, a.name AS applicationName FROM scim_operations o LEFT JOIN "user" u ON u.id = o.user_id LEFT JOIN applications a ON o.target_id = 'app:' || a.slug ${where} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`).bind(...values, pagination.limit, pagination.offset).all(),
+    context.env.DB.prepare(`SELECT o.id, o.target_id, o.user_id, o.operation, o.status, o.remote_status, o.created_at, o.updated_at, o.resolved_at, r.name AS resolved_by_name, o.resolution_note, o.abandoned, u.name AS user_name, u.email AS user_email, a.name AS applicationName FROM scim_operations o LEFT JOIN "user" u ON u.id = o.user_id LEFT JOIN "user" r ON r.id = o.resolved_by LEFT JOIN applications a ON o.target_id = 'app:' || a.slug ${where} ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`).bind(...values, pagination.limit, pagination.offset).all<{ abandoned: number }>(),
   ]);
-  return context.json({ operations: rows.results, total: total?.count ?? 0, page: pagination.page, limit: pagination.limit });
+  return context.json({ operations: rows.results.map((row) => ({ ...row, abandoned: row.abandoned === 1 })), total: total?.count ?? 0, page: pagination.page, limit: pagination.limit });
+});
+
+integrationsAdminRoutes.post("/scim-operations/:id/resolve", async (context) => {
+  const admin = await requireAdministrator(context);
+  if (admin instanceof Response) { admin.headers.set("Cache-Control", "no-store"); return admin; }
+  const body = await context.req.json().catch(() => null) as { note?: unknown } | null;
+  if (!body || typeof body !== "object" || Array.isArray(body) || (body.note !== undefined && (typeof body.note !== "string" || body.note.length > 2000))) return context.json({ error: "메모를 확인해 주세요." }, 400);
+  const id = context.req.param("id");
+  return auditStandaloneOperation(context.env, "scim.operation.resolve", context.req.path, async () => {
+    const now = new Date().toISOString();
+    const result = await context.env.DB.prepare("UPDATE scim_operations SET status = 'failed', resolved_by = ?, resolved_at = ?, resolution_note = ?, updated_at = ? WHERE id = ? AND status = 'outcome_unknown'").bind(admin.userId, now, body.note ?? null, now, id).run();
+    if (!result.meta.changes) {
+      const existing = await context.env.DB.prepare("SELECT id FROM scim_operations WHERE id = ?").bind(id).first();
+      return { response: Response.json({ error: existing ? "결과를 알 수 없는 작업만 해결할 수 있습니다." : "작업을 찾을 수 없습니다." }, { status: existing ? 409 : 404 }), actorUserId: admin.userId };
+    }
+    const row = await context.env.DB.prepare(`SELECT o.id, o.target_id, o.user_id, o.operation, o.status, o.remote_status, o.created_at, o.updated_at, o.resolved_at, r.name AS resolved_by_name, o.resolution_note, o.abandoned, u.name AS user_name, u.email AS user_email, a.name AS applicationName FROM scim_operations o LEFT JOIN "user" u ON u.id = o.user_id LEFT JOIN "user" r ON r.id = o.resolved_by LEFT JOIN applications a ON o.target_id = 'app:' || a.slug WHERE o.id = ?`).bind(id).first<{ abandoned: number; user_id: string }>();
+    return { response: Response.json({ operation: { ...row, abandoned: row?.abandoned === 1 } }), actorUserId: admin.userId, targetUserId: row?.user_id };
+  });
 });
 
 integrationsAdminRoutes.get("/ssf/streams", async (context) => {

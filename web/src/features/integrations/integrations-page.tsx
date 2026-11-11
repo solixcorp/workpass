@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
+import { ApprovalsTab } from './approvals-tab'
 import { ClaimsTab } from './claims-tab'
 import { ProvisioningTab } from './provisioning-tab'
 import { SignalsTab } from './signals-tab'
@@ -109,11 +110,13 @@ export function IntegrationsPage() {
           <TabsTrigger value="provisioning">프로비저닝 기록</TabsTrigger>
           <TabsTrigger value="signals">보안 이벤트</TabsTrigger>
           <TabsTrigger value="claims">클레임 발급</TabsTrigger>
+          <TabsTrigger value="approvals">로그아웃 주소 승인</TabsTrigger>
         </TabsList>
         <TabsContent value="overview"><Overview /></TabsContent>
         <TabsContent value="provisioning"><ProvisioningTab /></TabsContent>
         <TabsContent value="signals"><SignalsTab /></TabsContent>
         <TabsContent value="claims"><ClaimsTab /></TabsContent>
+        <TabsContent value="approvals"><ApprovalsTab /></TabsContent>
       </Tabs>
     </div>
   )

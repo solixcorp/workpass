@@ -44,6 +44,7 @@ import { applicationUserRoutes } from "./applications/user";
 import { applicationIconRoutes } from "./applications/icon-routes";
 import { cleanupAccountSessionContexts, cleanupAccountInvitations } from "./accounts/store";
 import { dispatchPendingScimOperations } from "./scim/executor";
+import { expireScimLeases } from "./scim/operations";
 import { devMockRoutes } from "./dev/mock-mail";
 import { accessRequestAdminRoutes, accessRequestUserRoutes } from "./access/request-routes";
 import { cleanupAccessRequests } from "./access/requests";
@@ -57,7 +58,6 @@ import { locationPublicRoutes } from "./security/location-routes";
 const app = new Hono<{ Bindings: Env }>();
 import { auditContextForRequest, auditRequestContext } from "./audit/request-context";
 
-// Global security headers applied to every response. Per-route CSP (set in
 app.use("*", (context, next) => auditRequestContext.run(auditContextForRequest(context.req.raw), next));
 
 // individual handlers) is preserved; these are the common baseline that does
