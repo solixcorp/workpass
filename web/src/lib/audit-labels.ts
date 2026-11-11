@@ -86,6 +86,20 @@ const EXACT: Record<string, string> = {
   'authentication.device_flow.verify_failed': '기기 코드 확인 실패',
   'authentication.ciba.approved': '로그인 승인 요청 승인',
   'authentication.ciba.denied': '로그인 승인 요청 거절',
+  'authentication.location.denied': '허용되지 않은 위치에서 로그인 차단',
+  'authentication.location.observe': '허용된 장소 밖 로그인(기록만)',
+  'identity.user.phone_code_sent': '휴대전화 인증 코드 발송',
+  'identity.user.phone_verify': '휴대전화 번호 확인',
+  'location.place.create': '로그인 허용 장소 추가',
+  'location.place.update': '로그인 허용 장소 수정',
+  'location.place.delete': '로그인 허용 장소 삭제',
+  'location.policy.update': '로그인 위치 정책 변경',
+  'delivery.email.update': '이메일 발송 설정 변경',
+  'delivery.email.reset': '이메일 발송 설정 초기화',
+  'delivery.email.test': '이메일 테스트 발송',
+  'delivery.sms.update': 'SMS 발송 설정 변경',
+  'delivery.sms.reset': 'SMS 발송 설정 초기화',
+  'delivery.sms.test': 'SMS 테스트 발송',
 }
 
 /** The families the log can be narrowed to; `prefix` is what the server matches. */

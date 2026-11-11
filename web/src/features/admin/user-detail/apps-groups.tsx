@@ -61,13 +61,13 @@ export function ApplicationsTab({ id, name, email }: { id: string; name: string;
               {mine.map((app) => (
                 <TableRow key={app.slug}>
                   <TableCell>
-                    <Link to="/admin/applications/$slug" params={{ slug: app.slug }} className="flex items-center gap-3 font-medium hover:underline">
+                    <Link to="/admin/applications/$slug" params={{ slug: app.slug }} className="flex min-w-0 max-w-56 items-center gap-3 font-medium hover:underline">
                       {app.icon ? (
                         <img src={app.icon} alt="" className="size-6 rounded-md border object-contain" />
                       ) : (
                         <span className="flex size-6 items-center justify-center rounded-md bg-muted text-xs">{app.name.slice(0, 1)}</span>
                       )}
-                      {app.name}
+                      <span className="truncate">{app.name}</span>
                     </Link>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{PROTOCOLS[app.protocol] ?? app.protocol}</TableCell>

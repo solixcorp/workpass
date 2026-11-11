@@ -164,7 +164,7 @@ export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: s
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-medium">{eventLabel(event.event_type)}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{event.event_type}</span>
+                        {eventLabel(event.event_type) !== event.event_type ? <span className="font-mono text-xs text-muted-foreground">{event.event_type}</span> : null}
                       </div>
                     </TableCell>
                     {userId ? (
