@@ -163,52 +163,47 @@ async function scheduled(
   _context: ExecutionContext,
 ): Promise<void> {
   try {
-    // Cleanup runs even while the related features are disabled.
-    await cleanupFingerprintData(env, new Date(controller.scheduledTime));
-    await cleanupSessionNetworkBindings(env, new Date(controller.scheduledTime));
-    await cleanupStepUpChallenges(env, new Date(controller.scheduledTime));
-    await cleanupRecoveryTokens(env, new Date(controller.scheduledTime));
-    await cleanupActivationTokens(env, new Date(controller.scheduledTime));
-    await cleanupSamlRequestClaims(env, new Date(controller.scheduledTime));
-    await cleanupSwaGrants(env, new Date(controller.scheduledTime));
-    await cleanupSessionMfaProofs(env, new Date(controller.scheduledTime));
-    await cleanupOAuth1Temporaries(env, controller.scheduledTime);
-    // Extended grant stores: expired and decided rows are dead weight (the
-    // flags do not gate cleanup — data dies with its expiry either way).
-    await cleanupDeviceGrants(env, new Date(controller.scheduledTime));
-    await cleanupCibaRequests(env, new Date(controller.scheduledTime));
-    await cleanupSsfInbox(env.DB, controller.scheduledTime);
-    await cleanupSsfDeliveries(env, controller.scheduledTime);
-    await attemptPendingSSFDispatch(env, controller.scheduledTime);
-    await cleanupAccountSessionContexts(env, new Date(controller.scheduledTime));
-    await cleanupAccountInvitations(env, new Date(controller.scheduledTime));
-    await expireScimLeases(env, { now: new Date(controller.scheduledTime) });
-    await dispatchPendingScimOperations(env);
-    try {
-      // Policy notification rules drain from their queue; a failed attempt
-      // retries on the next run with an attempt cap.
-      await dispatchPendingEventNotifications(env, controller.scheduledTime);
-    } catch (error) {
-      console.error("Notification dispatch failed", {
-        name: error instanceof Error ? error.name : "UnknownError",
-      });
-    }
-    await cleanupAccessRequests(env, controller.scheduledTime);
-    try {
-      // Independent audit backup: watermark-guarded R2 export; fails safe
-      // without the AUDIT_BACKUP binding and never blocks other cleanups.
-      await backupAuditEvents(env, controller.scheduledTime);
-    } catch (error) {
-      console.error("Audit backup export failed", {
-        name: error instanceof Error ? error.name : "UnknownError",
-      });
-    }
+    env = await applySettings(env);
   } catch (error) {
-    console.error("Scheduled security cleanup failed", {
-      cron: controller.cron,
+    console.error("Scheduled settings overlay failed", {
+      job: "applySettings",
       name: error instanceof Error ? error.name : "UnknownError",
     });
-    throw error;
+  }
+  const time = controller.scheduledTime;
+  // Cleanup runs even when its related feature is disabled.
+  const jobs: Array<[string, () => Promise<unknown>]> = [
+    ["cleanupFingerprintData", () => cleanupFingerprintData(env, new Date(time))],
+    ["cleanupSessionNetworkBindings", () => cleanupSessionNetworkBindings(env, new Date(time))],
+    ["cleanupStepUpChallenges", () => cleanupStepUpChallenges(env, new Date(time))],
+    ["cleanupRecoveryTokens", () => cleanupRecoveryTokens(env, new Date(time))],
+    ["cleanupActivationTokens", () => cleanupActivationTokens(env, new Date(time))],
+    ["cleanupSamlRequestClaims", () => cleanupSamlRequestClaims(env, new Date(time))],
+    ["cleanupSwaGrants", () => cleanupSwaGrants(env, new Date(time))],
+    ["cleanupSessionMfaProofs", () => cleanupSessionMfaProofs(env, new Date(time))],
+    ["cleanupOAuth1Temporaries", () => cleanupOAuth1Temporaries(env, time)],
+    ["cleanupDeviceGrants", () => cleanupDeviceGrants(env, new Date(time))],
+    ["cleanupCibaRequests", () => cleanupCibaRequests(env, new Date(time))],
+    ["cleanupSsfInbox", () => cleanupSsfInbox(env.DB, time)],
+    ["cleanupSsfDeliveries", () => cleanupSsfDeliveries(env, time)],
+    ["attemptPendingSSFDispatch", () => attemptPendingSSFDispatch(env, time)],
+    ["cleanupAccountSessionContexts", () => cleanupAccountSessionContexts(env, new Date(time))],
+    ["cleanupAccountInvitations", () => cleanupAccountInvitations(env, new Date(time))],
+    ["expireScimLeases", () => expireScimLeases(env, { now: new Date(time) })],
+    ["dispatchPendingScimOperations", () => dispatchPendingScimOperations(env)],
+    ["dispatchPendingEventNotifications", () => dispatchPendingEventNotifications(env, time)],
+    ["cleanupAccessRequests", () => cleanupAccessRequests(env, time)],
+    ["backupAuditEvents", () => backupAuditEvents(env, time)],
+  ];
+  for (const [job, run] of jobs) {
+    try {
+      await run();
+    } catch (error) {
+      console.error("Scheduled job failed", {
+        job,
+        name: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
   }
 }
 

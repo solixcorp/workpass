@@ -6,7 +6,7 @@
 
 import { Hono } from "hono";
 import type { Env } from "../env";
-import { requireAdministrator } from "./authorization";
+import { requireAdministrator, requireSameOrigin } from "./authorization";
 import { auditStandaloneOperation } from "../audit/store";
 import { createAuth } from "../auth/config";
 import { hashPassword } from "../auth/password";
@@ -46,6 +46,8 @@ async function readBody(context: {
 // Self-service lockdown: a signed-in user locks their own account. The acting
 // session is destroyed by the lockdown itself, so the response is final.
 lockdownRoutes.post("/account-lockdown", async (context) => {
+  const originFailure = requireSameOrigin(context);
+  if (originFailure) return originFailure;
   const auth = createAuth(context.env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);

@@ -4,6 +4,7 @@ import { createAuth } from "../auth/config";
 import { describeDevice } from "../users/device";
 import { auditStandaloneOperation } from "../audit/store";
 import { revokeTrustedDevices } from "./trusted-device-store";
+import { requireSameOrigin } from "./authorization";
 import {
   consumeFingerprintLookupBudget,
   digestVisitorId,
@@ -72,6 +73,8 @@ trustedDeviceRoutes.get("/trusted-devices", async (context) => {
 });
 
 trustedDeviceRoutes.post("/trusted-devices", async (context) => {
+  const originFailure = requireSameOrigin(context);
+  if (originFailure) return originFailure;
   const auth = createAuth(context.env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);
@@ -246,6 +249,8 @@ trustedDeviceRoutes.post("/trusted-devices", async (context) => {
 });
 
 trustedDeviceRoutes.delete("/trusted-devices", async (context) => {
+  const originFailure = requireSameOrigin(context);
+  if (originFailure) return originFailure;
   const auth = createAuth(context.env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);
@@ -269,6 +274,8 @@ trustedDeviceRoutes.delete("/trusted-devices", async (context) => {
 });
 
 trustedDeviceRoutes.delete("/trusted-devices/:deviceId", async (context) => {
+  const originFailure = requireSameOrigin(context);
+  if (originFailure) return originFailure;
   const auth = createAuth(context.env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);
@@ -299,6 +306,8 @@ trustedDeviceRoutes.delete("/trusted-devices/:deviceId", async (context) => {
 });
 
 trustedDeviceRoutes.delete("/trusted-devices/user/:userId", async (context) => {
+  const originFailure = requireSameOrigin(context);
+  if (originFailure) return originFailure;
   const auth = createAuth(context.env);
   const session = await auth.api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);

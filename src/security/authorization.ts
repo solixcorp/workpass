@@ -11,6 +11,13 @@ import type { Context } from "hono";
 import { createAuth } from "../auth/config";
 import type { Env } from "../env";
 
+export function requireSameOrigin(context: Context<{ Bindings: Env }>): Response | null {
+  if (context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
+    return Response.json({ error: "Invalid origin" }, { status: 403 });
+  }
+  return null;
+}
+
 /**
  * Guard an administrator surface. Returns the acting administrator's user ID,
  * or a rejection Response (401 unauthenticated, 403 role or origin) that the
@@ -28,8 +35,9 @@ export async function requireAdministrator(
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
   const mutating = context.req.method !== "GET";
-  if (mutating && context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
-    return Response.json({ error: "Invalid origin" }, { status: 403 });
+  if (mutating) {
+    const rejection = requireSameOrigin(context);
+    if (rejection) return rejection;
   }
   return { userId: session.user.id };
 }
