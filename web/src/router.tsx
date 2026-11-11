@@ -16,6 +16,7 @@ import { AccountsPage } from '@/features/accounts/accounts-page'
 import { ApplicationsPage } from '@/features/admin/applications-page'
 import { ApplicationPage } from '@/features/admin/integration/application-page'
 import { IntegrationWizardPage } from '@/features/admin/integration/integration-wizard-page'
+import { UserDetailPage } from '@/features/admin/user-detail-page'
 import { NewIntegrationPage } from '@/features/admin/integration/new-integration-page'
 import { AuditPage } from '@/features/admin/audit-page'
 import { PoliciesPage } from '@/features/admin/policies-page'
@@ -168,6 +169,12 @@ const adminUsersRoute = createRoute({
   component: UsersPage,
 })
 
+const adminUserRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/users/$id',
+  component: UserDetailPage,
+})
+
 const adminGroupsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/groups',
@@ -243,6 +250,7 @@ const routeTree = rootRoute.addChildren([
     adminRoute.addChildren([
       adminIndexRoute,
       adminUsersRoute,
+      adminUserRoute,
       adminGroupsRoute,
       adminAccountsRoute,
       adminApplicationsRoute,

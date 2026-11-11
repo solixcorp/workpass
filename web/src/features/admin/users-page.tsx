@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AppWindowIcon, CopyIcon, MailIcon, PlusIcon, ShieldIcon, TagsIcon } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -170,7 +171,9 @@ export function UsersPage() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium">{user.name}</span>
+                          <Link to="/admin/users/$id" params={{ id: user.id }} className="truncate font-medium hover:underline">
+                            {user.name}
+                          </Link>
                           <span className="truncate text-xs text-muted-foreground">{user.email}</span>
                         </div>
                       </div>

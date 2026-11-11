@@ -195,6 +195,20 @@ An app (`/api/admin/applications`) points at a protocol provider through `bindin
 
 Every code issued by `/api/auth/oauth2/authorize`, `/consent` or `/continue`, and every SAML, WS-Federation or SWA assertion, writes a row to `app_grant_events` with a copy of the device-risk verdict that was current: the decision taken for that app in the last 10 minutes (`scope: "app"`; authorization decisions now store the app in `fingerprint_risk_decisions.subject`), otherwise the user's latest decision of the last 12 hours (`scope: "session"`). With `FINGERPRINT_MODE=disabled` there is no verdict and the field is `null`. Sign-ins from before this was kept appear from `app_issuance_history` without a verdict. Rows are removed after one year.
 
+### One user in detail (administrator)
+
+All reads are `no-store` and administrator-only.
+
+- `GET /api/admin/users/:id/detail`: name, email, roles, `active`, `lockedDown`, phone number and whether it is verified, `twoFactorEnabled`, `lastLoginAt` and the number of open suspicious-activity reports.
+- `GET /api/admin/users/:id/groups`: the user's directory groups.
+- `GET /api/admin/users/:id/applications`: every app with `access` (`everyone`, `group` or `none`), the groups it comes `via`, and the last sign-in. Assignment is group-based only; there is no per-user assignment.
+- `GET /api/admin/users/:id/devices`: devices (grouped from the sign-in history), open sessions, trusted devices, the last 100 sign-ins with location and method, and the user's reports.
+- `GET /api/admin/users/:id/authenticators`: password, passkeys, authenticator app, e-mail/SMS code and hardware tokens.
+- `GET|PUT /api/admin/users/:id/profile`: name, phone number (E.164, saved unverified) and a fixed set of administrator-kept fields (`schema` lists them). An empty string clears a field. Unknown fields are rejected.
+- `GET /api/admin/audit-events?userId=` returns events the user did or that were done to them.
+
+Sign-ins are recorded in `login_history` (180 days) with IP, user agent and, when Cloudflare provides it, country, region and city.
+
 ### First administrator
 
 `POST /api/admin/bootstrap` also returns `activation: { url, expiresAt }`, a one-time link to `/activate` (valid for the activation TTL). Plaintext sign-in is disabled by default, so this link is the only way for the first administrator to set a password (OPAQUE registration). The `password` in the request body is a placeholder required by the account creation call.
