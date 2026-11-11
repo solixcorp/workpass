@@ -239,6 +239,8 @@ export async function recordAppIssuance(env: Env, subject: string, userId: strin
   )
     .bind(subject, userId, new Date().toISOString(), enforcementMode, method)
     .run();
+  const { recordAppGrant } = await import("../security/app-grants");
+  await recordAppGrant(env, { userId, subject, kind: "sign_in", method });
 }
 
 /** A prior successful issuance within the bypass window. */

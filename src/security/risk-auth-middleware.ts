@@ -173,6 +173,8 @@ async function handleFingerprintRiskAuthorizationEnabled(
 
   const url = new URL(input.request.url);
   const eventId = url.searchParams.get("fingerprint_event_id");
+  const requestedClient = url.searchParams.get("client_id");
+  const appSubject = requestedClient ? `oidc:${requestedClient.slice(0, 200)}` : null;
   let withinBudget = false;
   try {
     withinBudget = await consumeFingerprintLookupBudget({
@@ -195,6 +197,7 @@ async function handleFingerprintRiskAuthorizationEnabled(
       mode === "enforce" ? "deny" : "observe",
       [verification.error ?? "lookup_rate_limited"],
       url.pathname,
+      appSubject,
     );
     if (mode === "enforce" && !recorded) {
       return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
@@ -219,6 +222,7 @@ async function handleFingerprintRiskAuthorizationEnabled(
       mode === "enforce" ? "deny" : "observe",
       ["replayed_event"],
       url.pathname,
+      appSubject,
     );
     if (mode === "enforce" && !recorded) {
       return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
@@ -254,6 +258,7 @@ async function handleFingerprintRiskAuthorizationEnabled(
     effectiveAction,
     risk.reasons,
     url.pathname,
+    appSubject,
   );
   if (mode === "enforce" && !recorded) {
     return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
@@ -638,16 +643,17 @@ export async function writeRiskDecision(
   action: "allow" | "step_up" | "deny" | "observe",
   reasons: string[],
   requestPath: string,
+  subject: string | null = null,
 ): Promise<boolean> {  const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const safeReasons = JSON.stringify(reasons.slice(0, 12));
   try {
     await env.DB.prepare(
       `INSERT INTO fingerprint_risk_decisions
-        (id, user_id, event_id, action, reasons, request_path, occurred_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (id, user_id, event_id, action, reasons, request_path, occurred_at, subject)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, userId, null, action, safeReasons, requestPath, now)
+      .bind(id, userId, null, action, safeReasons, requestPath, now, subject)
       .run();
     await insertAuditEvent(env, {
       id: crypto.randomUUID(),

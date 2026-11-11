@@ -14,7 +14,8 @@ export async function cleanupFingerprintData(env: Env, now = new Date()): Promis
        'auth_device_observations',
        'fingerprint_risk_decisions',
        'trusted_devices',
-       'fingerprint_lookup_limits'
+       'fingerprint_lookup_limits',
+       'app_grant_events'
      )`,
   ).all<{ name: string }>();
   const tables = new Set(existingTables.results.map((table) => table.name));
@@ -40,6 +41,11 @@ export async function cleanupFingerprintData(env: Env, now = new Date()): Promis
        WHERE (revoked_at IS NOT NULL AND revoked_at < ?)
           OR (revoked_at IS NULL AND expires_at < ?)`,
     ).bind(decisionsBefore, decisionsBefore));
+  }
+  // Grants are kept for the one-year audit window, with the verdict copied in.
+  if (tables.has("app_grant_events")) {
+    statements.push(env.DB.prepare("DELETE FROM app_grant_events WHERE occurred_at < ?")
+      .bind(new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString()));
   }
   if (tables.has("fingerprint_lookup_limits")) {
     statements.push(env.DB.prepare("DELETE FROM fingerprint_lookup_limits WHERE window_start < ?").bind(lookupsBefore));

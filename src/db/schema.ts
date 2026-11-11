@@ -203,6 +203,36 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS fingerprint_risk_decisions_time_idx ON fingerprint_risk_decisions (occurred_at)",
   ).run();
+  // Which app a decision was taken for (set on authorization requests).
+  const decisionColumns = await env.DB.prepare("PRAGMA table_info(fingerprint_risk_decisions)")
+    .all<{ name: string }>();
+  if (!decisionColumns.results.some((column) => column.name === "subject")) {
+    await env.DB.prepare("ALTER TABLE fingerprint_risk_decisions ADD COLUMN subject TEXT").run();
+  }
+  // What a user allowed or signed in to, with the device-risk verdict that was
+  // current at that moment (a copy, so it outlives the decision's retention).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS app_grant_events (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('consent', 'sign_in')),
+      scopes TEXT,
+      method TEXT,
+      occurred_at TEXT NOT NULL,
+      risk_action TEXT,
+      risk_reasons TEXT,
+      risk_at TEXT,
+      risk_scope TEXT CHECK (risk_scope IN ('app', 'session')),
+      country_code TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS app_grant_events_user_idx ON app_grant_events (user_id, occurred_at)",
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS app_grant_events_time_idx ON app_grant_events (occurred_at)",
+  ).run();
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS fingerprint_lookup_limits (
       budget_key TEXT PRIMARY KEY NOT NULL,

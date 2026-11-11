@@ -9,6 +9,7 @@ import {
 } from "../security/risk-auth-middleware";
 import { revokeTrustedDevices } from "../security/trusted-device-store";
 import { enforceOidcPolicy } from "../access/oidc-gate";
+import { recordOAuthGrant } from "../security/app-grants";
 import { recordSessionMfaProof } from "../mfa/second-factor";
 import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
 import { enforceMfaPolicy } from "../mfa/policy";
@@ -99,7 +100,17 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
     return auditClientRegistration(request, env, auth, eventType);
   }
 
-  if (!eventType) return auth.handler(request);
+  // A copy taken before the provider reads the body, for the grant record.
+  const grantCopy = path.startsWith("/api/auth/oauth2/") ? request.clone() : null;
+
+  if (!eventType) {
+    const answer = await auth.handler(request);
+    if (grantCopy && path === "/api/auth/oauth2/continue") {
+      const continuing = await auth.api.getSession({ headers: request.headers }).catch(() => null);
+      await recordOAuthGrant(env, grantCopy, answer, continuing?.user.id ?? null);
+    }
+    return answer;
+  }
 
   let targetUserId: string | null = null;
   if (request.method === "POST" && path.startsWith("/api/auth/admin/")) {
@@ -148,6 +159,7 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
     }
     return Response.json({ error: "Authentication operation failed" }, { status: 500 });
   }
+  if (grantCopy) await recordOAuthGrant(env, grantCopy, response, actorUserId);
   if (
     response.ok &&
     (path === "/api/auth/admin/ban-user" ||

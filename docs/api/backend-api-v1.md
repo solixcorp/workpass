@@ -189,6 +189,12 @@ An app (`/api/admin/applications`) points at a protocol provider through `bindin
 - Enabling or disabling an app now enables or disables its provider too (OIDC client, SAML SP, WS-Fed party, SWA origin). Enabling a SAML app with an unusable certificate answers 409 and leaves the app off. Deleting an app deletes its provider and its protocol access policy.
 - `GET|PUT /api/admin/applications/:slug/assignment` sets who may open the app: `{ mode: "everyone" }` or `{ mode: "groups", groups: [id…] }`. The groups are written to the dashboard gate (`app:<slug>`) and to the protocol's own gate (`saml:`, `oidc:`, `wsfed:`, `swa:`) together.
 
+### A user's connected apps (administrator)
+
+`GET /api/admin/users/:id/app-activity` returns `apps` (per app: name, protocol, number of sign-ins, last sign-in, the permissions the user allowed with the time, and the latest device verdict) and `events` (newest first, up to 300: time, app, `consent` or `sign_in`, scopes, method, country, and the verdict).
+
+Every code issued by `/api/auth/oauth2/authorize`, `/consent` or `/continue`, and every SAML, WS-Federation or SWA assertion, writes a row to `app_grant_events` with a copy of the device-risk verdict that was current: the decision taken for that app in the last 10 minutes (`scope: "app"`; authorization decisions now store the app in `fingerprint_risk_decisions.subject`), otherwise the user's latest decision of the last 12 hours (`scope: "session"`). With `FINGERPRINT_MODE=disabled` there is no verdict and the field is `null`. Sign-ins from before this was kept appear from `app_issuance_history` without a verdict. Rows are removed after one year.
+
 ### First administrator
 
 `POST /api/admin/bootstrap` also returns `activation: { url, expiresAt }`, a one-time link to `/activate` (valid for the activation TTL). Plaintext sign-in is disabled by default, so this link is the only way for the first administrator to set a password (OPAQUE registration). The `password` in the request body is a placeholder required by the account creation call.
