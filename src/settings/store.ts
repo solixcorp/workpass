@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { deliveryOverrides } from "../delivery/store";
 import { SETTINGS, settingDefinition, type SettingDefinition } from "./registry";
 
 const CACHE_TTL_MS = 30_000;
@@ -55,6 +56,8 @@ export async function applySettings(env: Env): Promise<Env> {
   }
   // Lockout recovery: the operator sets FINGERPRINT_BREAK_GLASS=true on the
   // deployment and device-risk checks are off again, whatever was stored.
+  // How e-mail and SMS leave the system, when an administrator chose.
+  Object.assign(overrides, await deliveryOverrides(env));
   if (env.FINGERPRINT_BREAK_GLASS === "true") overrides.FINGERPRINT_MODE = "disabled";
   if (Object.keys(overrides).length === 0) return env;
   return { ...env, ...overrides } as Env;

@@ -104,6 +104,16 @@ export interface Env extends Partial<WorkerBindings> {
   SAML_IDP_PREVIOUS_SIGNING_PRIVATE_KEY?: string;
   MFA_OTP_EMAIL_WEBHOOK_URL?: string;
   MFA_SMS_WEBHOOK_URL?: string;
+  /** SMS provider (twilio|solapi|webhook); with none selected, a legacy MFA_SMS_WEBHOOK_URL keeps working. */
+  SMS_PROVIDER?: string;
+  /** Sender number (or, for Twilio, a Messaging Service SID starting with MG). */
+  SMS_FROM?: string;
+  SMS_TWILIO_ACCOUNT_SID?: string;
+  SMS_TWILIO_AUTH_TOKEN?: string;
+  SMS_SOLAPI_API_KEY?: string;
+  SMS_SOLAPI_API_SECRET?: string;
+  /** Sent as a bearer token to the SMS webhook, when set. */
+  SMS_WEBHOOK_TOKEN?: string;
   /** Sealed-storage AEAD key: 32 bytes, base64-encoded. */
   AEAD_SEALING_KEY?: string;
   /** Cipher for sealed storage; xchacha20poly1305 (default) or aes256gcm (FIPS-aligned). */

@@ -990,4 +990,16 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS location_proofs_ip_idx ON location_proofs (client_ip, created_at)",
   ).run();
+  // How e-mail and SMS leave this system, chosen by an administrator. Secrets
+  // are sealed; this row replaces the matching deployment variables.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS delivery_settings (
+      kind TEXT PRIMARY KEY NOT NULL CHECK (kind IN ('email', 'sms')),
+      provider TEXT NOT NULL,
+      config TEXT NOT NULL,
+      secrets TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
 }

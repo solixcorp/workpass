@@ -5,6 +5,7 @@ import { transactionEmailAvailable } from "../mail/send";
 import { auditStandaloneOperation } from "../audit/store";
 import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
+import { smsAvailable } from "../sms/provider";
 import { notifyUser } from "./notifications";
 
 export const overviewRoutes = new Hono<{ Bindings: Env }>();
@@ -68,7 +69,7 @@ overviewRoutes.get("/overview", async (context) => {
     services: [
       { name: "인증 서버와 데이터베이스", state: "ok", note: "응답 중" },
       { name: "메일 발송", state: transactionEmailAvailable(env) ? "ok" : "off", note: transactionEmailAvailable(env) ? "설정됨" : "설정하지 않음" },
-      { name: "문자(SMS) 코드", state: env.MFA_SMS_WEBHOOK_URL ? "ok" : "off", note: env.MFA_SMS_WEBHOOK_URL ? "설정됨" : "설정하지 않음" },
+      { name: "문자(SMS) 코드", state: smsAvailable(env) ? "ok" : "off", note: smsAvailable(env) ? "설정됨" : "설정하지 않음" },
       { name: "기기 위험 판정", state: fingerprint === "disabled" ? "off" : "ok", note: fingerprint === "disabled" ? "꺼짐" : fingerprint === "observe" ? "관찰만" : "적용 중" },
     ],
     tasks,

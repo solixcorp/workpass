@@ -19,6 +19,7 @@ import { IntegrationWizardPage } from '@/features/admin/integration/integration-
 import { CibaPage } from '@/features/approvals/ciba-page'
 import { ConsentPage } from '@/features/approvals/consent-page'
 import { DevicePage } from '@/features/approvals/device-page'
+import { DeliveryPage } from '@/features/delivery/delivery-page'
 import { LocationPage } from '@/features/location/location-page'
 import { LocationsPage } from '@/features/location/locations-page'
 import { ReportsPage } from '@/features/admin/reports-page'
@@ -233,6 +234,12 @@ const adminLocationsRoute = createRoute({
   component: LocationsPage,
 })
 
+const adminDeliveryRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/delivery',
+  component: DeliveryPage,
+})
+
 const adminGroupsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/groups',
@@ -317,6 +324,7 @@ const routeTree = rootRoute.addChildren([
       adminUserRoute,
       adminReportsRoute,
       adminLocationsRoute,
+      adminDeliveryRoute,
       adminGroupsRoute,
       adminAccountsRoute,
       adminApplicationsRoute,

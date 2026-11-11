@@ -236,6 +236,10 @@ All are `no-store`; writes need the configured origin.
 
 Limits sign-in to people near named places; see [sign-in places](../security/login-locations.md). Administrator: `GET /api/admin/location`, `PUT /api/admin/location/policy` (`mode`, `signal`, `networkMarginKm`, `maxAccuracyM`, `exemptGroups`; refuses to enforce when the saving administrator would be locked out), `POST|PUT|DELETE /api/admin/location/places[/:id]` (name, latitude, longitude, `radiusM` 50 to 500000, `enabled`). Public: `GET /api/location/status`, `POST /api/location/proof`. A refused password or passkey sign-in answers `403 { code: "location_denied" }`; a refused app sign-in start redirects to `/location` or the access-denied page.
 
+### E-mail and SMS providers (administrator)
+
+`GET|PUT|DELETE /api/admin/delivery[/:kind]` and `POST /api/admin/delivery/:kind/test` choose and test how e-mail and SMS are sent; secrets are sealed and never returned. See [delivery settings](../design/delivery-settings.md).
+
 ### First administrator
 
 `POST /api/admin/bootstrap` also returns `activation: { url, expiresAt }`, a one-time link to `/activate` (valid for the activation TTL). Plaintext sign-in is disabled by default, so this link is the only way for the first administrator to set a password (OPAQUE registration). The `password` in the request body is a placeholder required by the account creation call.

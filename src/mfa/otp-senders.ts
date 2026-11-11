@@ -11,6 +11,8 @@
 
 import type { Env } from "../env";
 import { deliverMessage } from "../mail/send";
+import { sendSms, smsAvailable } from "../sms/provider";
+import { organizationName } from "../settings/registry";
 
 export interface OtpDelivery {
   to: string;
@@ -34,24 +36,11 @@ export async function sendOtpEmail(env: Env, delivery: OtpDelivery): Promise<voi
 }
 
 /**
- * SMS delivery for the phone-number OTP. Same pluggable pattern as the email
- * sender: a dev/mock webhook or a production gateway, configured per
- * deployment. Fail-closed when unconfigured.
+ * SMS delivery for the phone-number OTP, through the provider an administrator
+ * chose (or a legacy webhook). Fail-closed when unconfigured.
  */
 export async function sendSmsCode(env: Env, delivery: { to: string; code: string }): Promise<void> {
-  if (env.MFA_SMS_WEBHOOK_URL) {
-    const response = await fetch(env.MFA_SMS_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...delivery, sentAt: new Date().toISOString() }),
-    });
-    if (!response.ok) {
-      throw new Error(`SMS webhook delivery failed with status ${response.status}`);
-    }
-    return;
-  }
-  console.error("SMS delivery is requested but no gateway is configured");
-  throw new Error("SMS delivery is not configured");
+  await sendSms(env, { to: delivery.to, code: delivery.code, text: `[${organizationName(env)}] 인증 코드: ${delivery.code}` });
 }
 
 /**
@@ -77,5 +66,5 @@ export async function sendOtpWithFallback(env: Env, delivery: { userId: string; 
 
 /** Is SMS delivery configured for this deployment? */
 export function isSmsOtpAvailable(env: Env): boolean {
-  return Boolean(env.MFA_SMS_WEBHOOK_URL);
+  return smsAvailable(env);
 }
