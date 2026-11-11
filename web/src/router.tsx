@@ -16,6 +16,9 @@ import { AccountsPage } from '@/features/accounts/accounts-page'
 import { ApplicationsPage } from '@/features/admin/applications-page'
 import { ApplicationPage } from '@/features/admin/integration/application-page'
 import { IntegrationWizardPage } from '@/features/admin/integration/integration-wizard-page'
+import { ReportsPage } from '@/features/admin/reports-page'
+import { ActivityPage } from '@/features/me/activity-page'
+import { MyAccountPage } from '@/features/me/my-account-page'
 import { UserDetailPage } from '@/features/admin/user-detail-page'
 import { NewIntegrationPage } from '@/features/admin/integration/new-integration-page'
 import { AuditPage } from '@/features/admin/audit-page'
@@ -148,6 +151,18 @@ const requestsRoute = createRoute({
 
 // Administrator screens are hidden for non-admins as a convenience only; every
 // /api/admin/* call is still authorized by the backend's requireAdministrator.
+const myAccountRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/me',
+  component: MyAccountPage,
+})
+
+const activityRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/activity',
+  component: ActivityPage,
+})
+
 const adminRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: '/admin',
@@ -173,6 +188,12 @@ const adminUserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/users/$id',
   component: UserDetailPage,
+})
+
+const adminReportsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/reports',
+  component: ReportsPage,
 })
 
 const adminGroupsRoute = createRoute({
@@ -245,12 +266,15 @@ const routeTree = rootRoute.addChildren([
   authenticatedRoute.addChildren([
     homeRoute,
     securityRoute,
+    myAccountRoute,
+    activityRoute,
     requestsRoute,
     accountsRoute,
     adminRoute.addChildren([
       adminIndexRoute,
       adminUsersRoute,
       adminUserRoute,
+      adminReportsRoute,
       adminGroupsRoute,
       adminAccountsRoute,
       adminApplicationsRoute,

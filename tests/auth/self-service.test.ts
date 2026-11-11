@@ -111,6 +111,8 @@ describe("self service and overview", () => {
     const told = await db.prepare("SELECT title, body FROM user_notifications WHERE kind = 'app_request'").all<{ title: string; body: string }>();
     expect(told.results[0]).toMatchObject({ title: "앱 접근 요청: Figma" });
     expect(told.results[0]!.body).toContain("디자인 작업에 필요합니다");
+    // Without an app, the message still goes out.
+    expect((await call("/api/me/app-requests", { method: "POST", body: { message: "회계 도구가 필요해요" } })).status).toBe(201);
   });
 
   test("the overview counts, lists things to do and the security signals", async () => {

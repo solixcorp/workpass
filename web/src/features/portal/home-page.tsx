@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { AppWindowIcon, ExternalLinkIcon } from 'lucide-react'
+import { AppWindowIcon, ExternalLinkIcon, HandHelpingIcon } from 'lucide-react'
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { RequestAppDialog } from '@/features/me/request-app-dialog'
 import { Badge } from '@/components/ui/badge'
 import {
   Empty,
@@ -78,13 +81,21 @@ function ApplicationItem({ application }: { application: PortalApplication }) {
 export function PortalHomePage() {
   const { data: session } = useQuery(sessionQuery)
   const { data: applications, isPending, error } = useQuery(applicationsQuery)
+  const [requesting, setRequesting] = useState(false)
   const firstName = session?.user.name?.split(' ')[0] ?? ''
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
-      <h1 className="text-2xl font-semibold">
-        {firstName ? `${firstName}님, 안녕하세요` : '내 앱'}
-      </h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">
+          {firstName ? `${firstName}님, 안녕하세요` : '내 앱'}
+        </h1>
+        <Button variant="outline" size="sm" onClick={() => setRequesting(true)}>
+          <HandHelpingIcon data-icon="inline-start" />
+          앱 요청
+        </Button>
+      </div>
+      <RequestAppDialog open={requesting} onOpenChange={setRequesting} />
 
       {error ? (
         <Alert variant="destructive">

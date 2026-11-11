@@ -217,7 +217,7 @@ All are `no-store`; writes need the configured origin.
 - `GET|PUT /api/me/profile`: name and phone number (E.164). Changing the number clears its verified flag; there is no phone verification flow yet, so a number is never used to send codes. Administrator-kept fields (title, department, organization, manager) are returned read-only.
 - `GET /api/me/activity`: sign-ins grouped by device and place (newest 200 records) and the account's security events of the last 30 days (password, passkey, second factor, session, lockdown and recovery events).
 - `POST /api/me/suspicious-reports` `{ loginId?, summary? }` reports a sign-in the person does not recognise; one open report per sign-in. It notifies every administrator.
-- `POST /api/me/app-requests` `{ slug, message }` sends a message to the administrators asking for an app. It does not create an access request.
+- `POST /api/me/app-requests` `{ message, slug? }` sends a message to the administrators asking for an app. It does not create an access request.
 
 ### Overview and reports (administrator)
 

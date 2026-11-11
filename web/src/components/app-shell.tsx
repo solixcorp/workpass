@@ -8,6 +8,8 @@ import {
   BuildingIcon,
   ChevronsUpDownIcon,
   HandHelpingIcon,
+  HistoryIcon,
+  UserRoundIcon,
   InboxIcon,
   LayoutDashboardIcon,
   LogOutIcon,
@@ -45,6 +47,7 @@ import {
 import { authClient, isAdministrator } from '@/lib/auth-client'
 import { sessionQuery } from '@/lib/queries'
 import { loginConfigQuery } from '@/lib/fingerprint'
+import { NotificationBell } from '@/components/notification-bell'
 import { StepUpBanner } from '@/features/auth/step-up-banner'
 
 type NavItem = { to: string; label: string; icon: typeof AppWindowIcon; exact?: boolean }
@@ -53,6 +56,8 @@ const PORTAL_NAV: NavItem[] = [
   { to: '/', label: '내 앱', icon: AppWindowIcon, exact: true },
   { to: '/requests', label: '접근 요청', icon: HandHelpingIcon },
   { to: '/accounts', label: '계정', icon: BuildingIcon },
+  { to: '/me', label: '내 정보', icon: UserRoundIcon },
+  { to: '/activity', label: '최근 활동', icon: HistoryIcon },
   { to: '/security', label: '보안', icon: ShieldCheckIcon },
 ]
 
@@ -168,6 +173,9 @@ export function AppShell() {
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />
+          <div className="ml-auto">
+            <NotificationBell />
+          </div>
         </header>
         <div className="flex flex-1 flex-col gap-6 px-4 pb-10 md:px-8">
           <StepUpBanner />

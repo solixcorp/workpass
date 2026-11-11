@@ -182,7 +182,7 @@ meRoutes.post("/api/me/suspicious-reports", async (context) => {
   });
 });
 
-/** Ask the administrators for an app the person cannot open. */
+/** Ask the administrators for an app the person cannot open; `slug` is optional. */
 meRoutes.post("/api/me/app-requests", async (context) => {
   const me = await requireMe(context);
   if (me instanceof Response) return me;
@@ -190,13 +190,18 @@ meRoutes.post("/api/me/app-requests", async (context) => {
   const slug = typeof body?.slug === "string" ? body.slug : "";
   const message = typeof body?.message === "string" ? body.message.trim().slice(0, 500) : "";
   if (!message) return context.json({ error: "관리자에게 보낼 내용을 적어 주세요." }, 400);
-  const app = await context.env.DB.prepare("SELECT name FROM applications WHERE slug = ?").bind(slug).first<{ name: string }>().catch(() => null);
-  if (!app) return context.json({ error: "앱을 찾을 수 없습니다." }, 404);
+  // The app is optional: a person may not know what it is called in this system.
+  let appName: string | null = null;
+  if (slug) {
+    const app = await context.env.DB.prepare("SELECT name FROM applications WHERE slug = ?").bind(slug).first<{ name: string }>().catch(() => null);
+    if (!app) return context.json({ error: "앱을 찾을 수 없습니다." }, 404);
+    appName = app.name;
+  }
   return auditStandaloneOperation(context.env, "app.access_request_message", context.req.path, async () => {
     await notifyAdmins(context.env, {
-      kind: "app_request", title: `앱 접근 요청: ${app.name}`,
+      kind: "app_request", title: appName ? `앱 접근 요청: ${appName}` : "앱 접근 요청",
       body: `${me.name}(${me.email}): ${message}`, link: `/admin/users/${me.userId}`,
     });
-    return { response: Response.json({ sent: true }, { status: 201 }), actorUserId: me.userId, targetUserId: slug };
+    return { response: Response.json({ sent: true }, { status: 201 }), actorUserId: me.userId, targetUserId: slug || null };
   });
 });
