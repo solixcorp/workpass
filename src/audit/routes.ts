@@ -116,6 +116,13 @@ auditRoutes.get("/audit-events", async (context) => {
     }
   }
 
+  // Everything done by or to one user.
+  const involved = query.get("userId");
+  if (involved) {
+    clauses.push("(actor_user_id = ? OR target_user_id = ?)");
+    values.push(involved, involved);
+  }
+
   const search = query.get("search");
   if (search !== null) {
     try { akqlParse(search); } catch (error) {

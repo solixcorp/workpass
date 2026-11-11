@@ -72,7 +72,7 @@ export async function buildEnrollmentView(
   const tokens = await env.DB.prepare(
     "SELECT id, label, created_at AS createdAt FROM mfa_hotp_tokens WHERE user_id = ? ORDER BY created_at ASC LIMIT 20",
   ).bind(user.id).all<{ id: string; label: string; createdAt: string }>().catch(() => ({ results: [] }));
-  const phone = await env.DB.prepare("SELECT phoneNumber FROM phone_number WHERE userId = ? LIMIT 1")
+  const phone = await env.DB.prepare('SELECT "phoneNumber" FROM "user" WHERE id = ? AND "phoneNumberVerified" = 1 AND "phoneNumber" IS NOT NULL LIMIT 1')
     .bind(user.id).first().catch(() => null);
   const smsDelivery = Boolean(phone) && isSmsOtpAvailable(env);
 

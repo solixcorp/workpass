@@ -10,6 +10,7 @@ import {
 import { revokeTrustedDevices } from "../security/trusted-device-store";
 import { enforceOidcPolicy } from "../access/oidc-gate";
 import { recordOAuthGrant } from "../security/app-grants";
+import { recordLogin } from "../users/login-history";
 import { recordSessionMfaProof } from "../mfa/second-factor";
 import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
 import { enforceMfaPolicy } from "../mfa/policy";
@@ -187,6 +188,7 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
       ) {
         actorUserId = responseUserId;
         targetUserId = null;
+        if (path === "/api/auth/passkey/verify-authentication") await recordLogin(env, request, responseUserId, "passkey");
       }
     } catch {
       // Some successful endpoints have no JSON body.

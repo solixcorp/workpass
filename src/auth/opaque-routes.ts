@@ -24,6 +24,7 @@ import {
 } from "./opaque";
 import { sealString, unsealString } from "../crypto/sealed";
 import { insertAuditEvent } from "../audit/store";
+import { recordLogin } from "../users/login-history";
 import { auditStandaloneOperation } from "../audit/store";
 import { evaluateOpaqueLoginGate } from "./opaque-login";
 import { getStepUpChallenge, openStepUpChallenge, usableSecondFactors } from "../security/step-up";
@@ -432,6 +433,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
     request_path: "/api/opaque/auth/finish",
     client_ip: clientIp(context),
   });
+  await recordLogin(context.env, context.req.raw, transcriptRow.user_id, "password");
   const headers = new Headers({
     "Cache-Control": "no-store",
     "Content-Type": "application/json",

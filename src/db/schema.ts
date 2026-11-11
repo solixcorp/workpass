@@ -890,4 +890,62 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS account_activation_tokens_user_idx ON account_activation_tokens (user_id)",
   ).run();
+  // Administrator-kept profile fields (title, department, ...), as one JSON object.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS user_profiles (
+      user_id TEXT PRIMARY KEY NOT NULL,
+      data TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  // Per-user notifications (the bell in the portal).
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS user_notifications (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      link TEXT,
+      created_at TEXT NOT NULL,
+      read_at TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS user_notifications_user_idx ON user_notifications (user_id, created_at)",
+  ).run();
+  // A user's own successful sign-ins: when, from where, on what device.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS login_history (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      ip TEXT,
+      user_agent TEXT,
+      country TEXT,
+      region TEXT,
+      city TEXT,
+      method TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS login_history_user_idx ON login_history (user_id, occurred_at)",
+  ).run();
+  // "I do not recognise this sign-in": a user's report to the administrators.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS suspicious_reports (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      login_id TEXT,
+      summary TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+      handled_by TEXT,
+      handled_at TEXT
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS suspicious_reports_status_idx ON suspicious_reports (status, created_at)",
+  ).run();
 }

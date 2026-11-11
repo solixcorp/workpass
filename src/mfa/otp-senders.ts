@@ -62,11 +62,11 @@ export async function sendOtpWithFallback(env: Env, delivery: { userId: string; 
   let phoneNumber: string | null = null;
   try {
     const row = await env.DB.prepare(
-      "SELECT phoneNumber FROM phone_number WHERE userId = ? ORDER BY createdAt DESC LIMIT 1",
+      'SELECT "phoneNumber" AS phoneNumber FROM "user" WHERE id = ? AND "phoneNumberVerified" = 1 AND "phoneNumber" IS NOT NULL',
     ).bind(delivery.userId).first<{ phoneNumber: string }>();
     phoneNumber = row?.phoneNumber ?? null;
   } catch {
-    // The phone-number table may not be migrated yet; fall back to email.
+    // Not migrated yet, or no verified number: fall back to email.
   }
   if (phoneNumber) {
     await sendSmsCode(env, { to: phoneNumber, code: delivery.otp });
