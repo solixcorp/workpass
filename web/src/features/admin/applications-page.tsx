@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PlusIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-react'
+import { PencilIcon, PlusIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -46,6 +46,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { AppPolicyDialog, type PolicyApp } from './app-policy-dialog'
+import { ApplicationEditDialog } from './application-edit-dialog'
 import { apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 
@@ -57,6 +58,9 @@ type AdminApplication = {
   binding: string | null
   launchUrl: string | null
   categoryGroup: string | null
+  hideFromDashboard?: boolean
+  iconKey?: string | null
+  iconUrl?: string | null
   enabled: boolean
   protected?: boolean
   createdAt: string
@@ -77,6 +81,7 @@ export function ApplicationsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<AdminApplication | null>(null)
   const [policyApp, setPolicyApp] = useState<PolicyApp | null>(null)
+  const [editing, setEditing] = useState<AdminApplication | null>(null)
 
   const { data, isPending, error } = useQuery({
     queryKey: applicationsKey,
@@ -142,11 +147,20 @@ export function ApplicationsPage() {
               {data.map((application) => (
                 <TableRow key={application.slug}>
                   <TableCell>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="truncate font-medium">{application.name}</span>
-                      <span className="truncate font-mono text-xs text-muted-foreground">
-                        {application.slug}
-                      </span>
+                    <div className="flex min-w-0 items-center gap-3">
+                      {application.iconKey || application.iconUrl ? (
+                        <img
+                          src={application.iconKey ? `/application/${application.slug}/icon` : (application.iconUrl ?? '')}
+                          alt=""
+                          className="size-8 shrink-0 rounded-md object-contain"
+                        />
+                      ) : null}
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate font-medium">{application.name}</span>
+                        <span className="truncate font-mono text-xs text-muted-foreground">
+                          {application.slug}
+                        </span>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -166,6 +180,14 @@ export function ApplicationsPage() {
                         disabled={toggle.isPending || application.protected}
                         onCheckedChange={(enabled) => toggle.mutate({ slug: application.slug, enabled })}
                       />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`${application.name} 편집`}
+                        onClick={() => setEditing(application)}
+                      >
+                        <PencilIcon />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -197,6 +219,7 @@ export function ApplicationsPage() {
 
       <CreateApplicationDialog open={createOpen} onOpenChange={setCreateOpen} />
       <AppPolicyDialog app={policyApp} onClose={() => setPolicyApp(null)} />
+      <ApplicationEditDialog app={editing} onClose={() => setEditing(null)} />
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
