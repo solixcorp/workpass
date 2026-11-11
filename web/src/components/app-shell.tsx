@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import {
   ActivityIcon,
   AppWindowIcon,
@@ -79,6 +80,14 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/settings', label: '설정', icon: SettingsIcon },
 ]
 
+/** The page's own name for the browser tab and for screen readers announcing a route change. */
+function pageTitle(pathname: string): string {
+  const adminItem = [...ADMIN_NAV].sort((a, b) => b.to.length - a.to.length).find((item) => (item.exact ? pathname === item.to : pathname.startsWith(item.to)) && pathname.startsWith('/admin'))
+  if (adminItem) return `${adminItem.label} · 관리`
+  const portalItem = [...PORTAL_NAV].sort((a, b) => b.to.length - a.to.length).find((item) => (item.exact ? pathname === item.to : pathname.startsWith(item.to)))
+  return portalItem?.label ?? ''
+}
+
 function initials(name: string | undefined, email: string | undefined): string {
   const source = (name || email || '?').trim()
   return source.slice(0, 2).toUpperCase()
@@ -117,6 +126,11 @@ export function AppShell() {
   const navigate = useNavigate()
   const admin = isAdministrator(session)
   const user = session?.user
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  useEffect(() => {
+    const title = pageTitle(pathname)
+    document.title = title ? `${title} · WorkPass` : 'WorkPass'
+  }, [pathname])
 
   async function signOut() {
     await authClient.signOut()
@@ -126,6 +140,9 @@ export function AppShell() {
 
   return (
     <SidebarProvider>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-lg focus:border focus:bg-background focus:px-3 focus:py-2 focus:text-sm">
+        본문으로 건너뛰기
+      </a>
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <SidebarMenu>
@@ -176,7 +193,7 @@ export function AppShell() {
           </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset id="main-content" tabIndex={-1} className="outline-none">
         <header className="flex h-12 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />
           <div className="ml-auto">
