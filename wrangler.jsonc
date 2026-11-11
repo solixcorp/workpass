@@ -87,6 +87,10 @@
     {
       "binding": "AUDIT_BACKUP",
       "bucket_name": "internal-auth-audit-backup"
+    },
+    {
+      "binding": "APPLICATION_ICONS",
+      "bucket_name": "internal-auth-application-icons"
     }
   ]
 }

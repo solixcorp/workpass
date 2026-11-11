@@ -30,18 +30,24 @@ describe("audit-backup bucket provisioning", () => {
     const calls: string[][] = [];
     const first = await main(config, (args) => {
       calls.push(args);
-      return { code: 0, output: "Created bucket internal-auth-audit-backup." };
+      return { code: 0, output: args[2] === "list" ? "internal-auth-audit-backup\ninternal-auth-application-icons" : "Created bucket." };
     });
     expect(first).toBe(0);
     expect(calls[0]).toEqual(["r2", "bucket", "create", "internal-auth-audit-backup"]);
-    expect(calls[1]).toEqual(["r2", "bucket", "list"]);
+    expect(calls[1]).toEqual(["r2", "bucket", "create", "internal-auth-application-icons"]);
+    expect(calls[2]).toEqual(["r2", "bucket", "list"]);
 
     // A create wrapper failure that is not "already exists" fails the run.
     const failed = await main(config, (args) =>
-      args[1] === "create"
+      args[2] === "create"
         ? { code: 1, output: "Error: quota exceeded" }
         : { code: 0, output: "" });
     expect(failed).toBe(1);
+
+    // One of the two buckets missing from the list also fails closed.
+    const oneMissing = await main(config, (args) =>
+      args[2] === "list" ? { code: 0, output: "internal-auth-audit-backup" } : { code: 0, output: "Created bucket." });
+    expect(oneMissing).toBe(1);
 
     // A bucket that never becomes visible after creation fails closed too.
     const invisible = await main(config, () => ({ code: 0, output: "Created bucket." }));

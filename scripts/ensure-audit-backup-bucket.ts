@@ -1,6 +1,6 @@
 /**
- * Operator provisioning: guarantee the R2 bucket named in wrangler.jsonc
- * (the AUDIT_BACKUP binding) exists before the worker referencing it deploys.
+ * Operator provisioning: guarantee every R2 bucket named in wrangler.jsonc
+ * (AUDIT_BACKUP and APPLICATION_ICONS) exists before the worker referencing it deploys.
  *
  * Idempotent — safe to run before every deploy (wired as the `predeploy`
  * lifecycle hook, so `bun run deploy` provisions first) and as part of the
@@ -14,13 +14,17 @@ import { spawnSync } from "node:child_process";
 
 export const DEFAULT_CONFIG_PATH = "wrangler.jsonc";
 
-/** Pull the r2 bucket name out of the wrangler config text (jsonc-tolerant). */
-export function bucketNameFromConfig(configText: string): string | null {
+/** Every r2 bucket name in the wrangler config text (jsonc-tolerant). */
+export function bucketNamesFromConfig(configText: string): string[] {
   const r2Section = configText.match(/"r2_buckets"\s*:\s*\[/);
-  if (!r2Section) return null;
+  if (!r2Section) return [];
   const after = configText.slice(r2Section.index, configText.indexOf("]", r2Section.index));
-  const name = after.match(/"bucket_name"\s*:\s*"([^"]+)"/);
-  return name?.[1] ?? null;
+  return [...after.matchAll(/"bucket_name"\s*:\s*"([^"]+)"/g)].map((match) => match[1]!);
+}
+
+/** The first bucket (the audit backup), kept for callers that only need one. */
+export function bucketNameFromConfig(configText: string): string | null {
+  return bucketNamesFromConfig(configText)[0] ?? null;
 }
 
 /**
@@ -52,29 +56,35 @@ export async function main(
     console.error(`ensure-audit-backup-bucket: config ${configPath} is unreadable (${error instanceof Error ? error.message : "unknown error"})`);
     return 2;
   }
-  const bucket = bucketNameFromConfig(configText);
-  if (!bucket) {
+  const buckets = bucketNamesFromConfig(configText);
+  if (buckets.length === 0) {
     console.error(`ensure-audit-backup-bucket: no r2 bucket_name found in ${configPath}`);
     return 2;
   }
-  console.log(`=== ensuring R2 bucket ${bucket}`);
-  const first = runner(["r2", "bucket", "create", bucket]);
-  const outcome = creationOutcome(first.output);
-  if (first.code !== 0 && outcome !== "exists") {
-    console.error(`ensure-audit-backup-bucket: bucket create failed:\n${first.output}`);
-    return first.code;
+  for (const bucket of buckets) {
+    console.log(`=== ensuring R2 bucket ${bucket}`);
+    const first = runner(["r2", "bucket", "create", bucket]);
+    const outcome = creationOutcome(first.output);
+    if (first.code !== 0 && outcome !== "exists") {
+      console.error(`ensure-audit-backup-bucket: bucket create failed:\n${first.output}`);
+      return first.code;
+    }
+    console.log(outcome === "exists" ? `bucket ${bucket} already exists` : `bucket ${bucket} created`);
   }
-  console.log(outcome === "exists" ? `bucket ${bucket} already exists` : `bucket ${bucket} created`);
 
-  // Confirm the bucket resolves through the operator's account before deploy.
+  // Confirm every bucket resolves through the operator's account before deploy.
   const list = runner(["r2", "bucket", "list"]);
   if (list.code !== 0) {
     console.error(`ensure-audit-backup-bucket: bucket list failed:\n${list.output}`);
     return list.code;
   }
-  const present = list.output.includes(bucket);
-  console.log(present ? `verified: ${bucket} is visible` : `WARNING: ${bucket} not found in bucket list`);
-  return present ? 0 : 1;
+  let missing = 0;
+  for (const bucket of buckets) {
+    const present = list.output.includes(bucket);
+    if (!present) missing += 1;
+    console.log(present ? `verified: ${bucket} is visible` : `WARNING: ${bucket} not found in bucket list`);
+  }
+  return missing === 0 ? 0 : 1;
 }
 
 // Invoked directly: `bun run scripts/ensure-audit-backup-bucket.ts`.
