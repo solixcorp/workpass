@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { LogOutIcon, MessageSquareIcon, PencilIcon, ShieldCheckIcon } from 'lucide-react'
+import { KeyRoundIcon, LogOutIcon, MessageSquareIcon, PencilIcon, ShieldCheckIcon } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -15,6 +15,8 @@ import { Spinner } from '@/components/ui/spinner'
 import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { myProfileQuery, type MyProfile } from '@/lib/me'
+import { sessionQuery } from '@/lib/queries'
+import { ChangePasswordDialog } from './change-password-dialog'
 import { ConnectedApps } from './connected-apps'
 import { VerifyPhoneDialog } from './verify-phone-dialog'
 
@@ -45,6 +47,8 @@ export function MyAccountPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [verifying, setVerifying] = useState(false)
 
@@ -88,7 +92,17 @@ export function MyAccountPage() {
       <h1 className="text-xl font-semibold">내 정보</h1>
 
       <Card title="개인 정보">
-        <Row label="이름">{me.name}</Row>
+        <Row
+          label="이름"
+          action={
+            <Button variant="outline" size="sm" onClick={() => setRenaming(true)}>
+              <PencilIcon data-icon="inline-start" />
+              수정
+            </Button>
+          }
+        >
+          {me.name}
+        </Row>
         <Row label="이메일">{me.email}</Row>
         <Row label="로그인 이름">{me.login}</Row>
         <Row
@@ -130,6 +144,17 @@ export function MyAccountPage() {
 
       <Card title="보안 방법">
         <Row
+          label="비밀번호"
+          action={
+            <Button variant="outline" size="sm" onClick={() => setChangingPassword(true)}>
+              <KeyRoundIcon data-icon="inline-start" />
+              바꾸기
+            </Button>
+          }
+        >
+          바꾸면 다른 기기에서는 로그아웃됩니다.
+        </Row>
+        <Row
           label="2차 인증"
           action={
             <Button asChild variant="outline" size="sm">
@@ -163,6 +188,8 @@ export function MyAccountPage() {
 
       {me.phoneNumber ? <VerifyPhoneDialog key={`verify-${verifying}`} open={verifying} phone={me.phoneNumber} onClose={() => setVerifying(false)} /> : null}
       <PhoneDialog key={String(editing)} open={editing} onOpenChange={setEditing} me={me} />
+      <ChangePasswordDialog key={`pw-${changingPassword}`} open={changingPassword} onOpenChange={setChangingPassword} email={me.email} />
+      <NameDialog key={`name-${renaming}`} open={renaming} onOpenChange={setRenaming} me={me} />
       <AlertDialog open={confirm} onOpenChange={(open) => !endAll.isPending && setConfirm(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -185,6 +212,68 @@ export function MyAccountPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+function NameDialog({ open, onOpenChange, me }: { open: boolean; onOpenChange: (open: boolean) => void; me: MyProfile }) {
+  const queryClient = useQueryClient()
+  const [name, setName] = useState(me.name)
+  const [failure, setFailure] = useState<string | null>(null)
+
+  const save = useMutation({
+    mutationFn: () => apiFetch('/api/me/profile', { method: 'PUT', body: JSON.stringify({ name: name.trim() }) }),
+    onSuccess: async () => {
+      toast.success('이름을 저장했습니다.')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: myProfileQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey }),
+      ])
+      onOpenChange(false)
+    },
+    onError: (error) => setFailure(error instanceof ApiError && /[가-힣]/.test(error.message) ? error.message : '저장하지 못했습니다.'),
+  })
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    setFailure(null)
+    if (!name.trim()) {
+      setFailure('이름을 입력하세요.')
+      return
+    }
+    save.mutate()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !save.isPending && onOpenChange(next)}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>이름 수정</DialogTitle>
+            <DialogDescription>다른 사람에게 보이는 이름입니다. 로그인에 쓰는 이메일은 관리자만 바꿀 수 있습니다.</DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field data-invalid={failure ? true : undefined}>
+              <FieldLabel htmlFor="my-name">이름</FieldLabel>
+              <Input id="my-name" autoComplete="name" maxLength={128} value={name} onChange={(event) => setName(event.target.value)} />
+            </Field>
+          </FieldGroup>
+          {failure ? (
+            <Alert variant="destructive">
+              <AlertDescription>{failure}</AlertDescription>
+            </Alert>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={save.isPending} onClick={() => onOpenChange(false)}>
+              취소
+            </Button>
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? <Spinner data-icon="inline-start" /> : null}
+              저장
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

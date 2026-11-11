@@ -10,13 +10,13 @@ import {
 // Must match the server suite in src/auth/opaque.ts.
 const config = getOpaqueConfig(OpaqueID.OPAQUE_P256)
 
-function toWire(bytes: number[]): string {
+export function toWire(bytes: number[]): string {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-function fromWire(wire: string): number[] {
+export function fromWire(wire: string): number[] {
   const binary = atob(wire.replace(/-/g, '+').replace(/_/g, '/'))
   return Array.from(binary, (char) => char.charCodeAt(0))
 }

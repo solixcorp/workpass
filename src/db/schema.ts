@@ -27,6 +27,18 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       expires_at TEXT NOT NULL
     )`,
   ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS opaque_password_change_transcripts (
+      id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, session_digest TEXT NOT NULL,
+      expected TEXT NOT NULL, record_snapshot TEXT NOT NULL, expires_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS opaque_password_confirmations (
+      user_id TEXT NOT NULL, session_digest TEXT NOT NULL, record_snapshot TEXT NOT NULL,
+      expires_at TEXT NOT NULL, claim TEXT, PRIMARY KEY (user_id, session_digest)
+    )`,
+  ).run();
   // Fingerprint event ids travel through the two-phase login on the
   // transcript row (added in place for existing databases).
   try {
@@ -267,6 +279,8 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
      ON scim_operations (target_id, user_id)
      WHERE status IN ('pending', 'in_progress', 'outcome_unknown')`,
   ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS scim_operations_status_created_idx ON scim_operations (status, created_at)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS scim_operations_target_created_idx ON scim_operations (target_id, created_at)").run();
   // Additive migration for operator reconciliation of abandoned operations.
   const scimColumns = await env.DB.prepare("PRAGMA table_info(scim_operations)").all<{ name: string }>();
   for (const [name, definition] of [["resolved_by", "TEXT"], ["resolved_at", "TEXT"], ["resolution_note", "TEXT"], ["abandoned", "INTEGER NOT NULL DEFAULT 0"]]) {

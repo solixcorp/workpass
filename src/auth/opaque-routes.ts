@@ -230,7 +230,15 @@ opaqueRoutes.post("/api/opaque/register/finish", async (context) => {
   } catch {
     return opaqueBadRequest(context, "The OPAQUE registration could not be processed");
   }
-  await storeCredentialRecord(context.env, session.user.id, opaqueIdentityFor(session.user.email), recordBytes);
+  // A session alone is sufficient for first enrollment, never replacement.
+  // INSERT (rather than a preceding existence check) closes concurrent races.
+  const sealed = await sealString(context.env, JSON.stringify(Array.from(recordBytes)), `opaque_record:${session.user.id}`);
+  const now = new Date().toISOString();
+  const inserted = await context.env.DB.prepare(
+    `INSERT INTO opaque_credential_records (user_id, record, credential_identifier, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id) DO NOTHING`,
+  ).bind(session.user.id, sealed, opaqueIdentityFor(session.user.email), now, now).run();
+  if (inserted.meta.changes !== 1) return opaqueBadRequest(context, "Existing credentials require password confirmation", 403);
   return auditStandaloneOperation(context.env, "opaque.register.finish", "/api/opaque/register/finish", async () => ({
     response: Response.json({ registered: true }, { status: 201 }),
     actorUserId: session.user.id,

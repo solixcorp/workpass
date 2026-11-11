@@ -24,6 +24,7 @@ import { swaUserRoutes } from "./swa/routes";
 import { mfaRoutes } from "./mfa/duo-routes";
 import { mfaEnrollRoutes } from "./mfa/enroll-routes";
 import { opaqueRoutes } from "./auth/opaque-routes";
+import { passwordChangeRoutes } from "./auth/password-change-routes";
 import { idxRoutes } from "./auth/idx-routes";
 import { workpassRoutes } from "./auth/workpass-routes";
 import { activationRoutes } from "./auth/activation-routes";
@@ -109,6 +110,7 @@ app.get("/", (context) =>
 // authenticate themselves (src/oauth/*-routes.ts).
 app.route("/", deviceFlowRoutes);
 app.route("/", cibaRoutes);
+app.route("/", passwordChangeRoutes);
 app.route("/", authRoutes);
 app.route("/", samlProtocolRoutes);
 app.route("/", wsfedProtocolRoutes);
