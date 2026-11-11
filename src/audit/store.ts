@@ -64,7 +64,9 @@ export async function insertAuditEvent(
   const occurredAt = new Date().toISOString();
   const request = auditRequestContext.getStore();
   const clientIp = event.client_ip === undefined ? request?.ip ?? null : event.client_ip;
-  const eventContext = request?.geo ? { ...event.event_context, geo: request.geo } : event.event_context ?? undefined;
+  const eventContext = request?.geo || request?.device
+    ? { ...event.event_context, ...(request.geo ? { geo: request.geo } : {}), ...(request.device ? { device: request.device } : {}) }
+    : event.event_context ?? undefined;
   const contentHash = await auditContentHash({ ...event, occurred_at: occurredAt, client_ip: clientIp, event_context: eventContext }, 2);
   // Single statement: the log position is assigned inside SQL so concurrent
   // inserts cannot claim the same position.

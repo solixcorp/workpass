@@ -7,6 +7,7 @@
 import { Hono } from "hono";
 import { createAuth } from "../auth/config";
 import { auditStandaloneOperation } from "../audit/store";
+import { auditClientGeo } from "../audit/request-context";
 import type { Env } from "../env";
 import { describeDevice } from "./device";
 import { categoryOfKind, notifyAdmins, notifyUser } from "./notifications";
@@ -222,6 +223,13 @@ const SECURITY_EVENTS = [
   "authentication.passkey.registration%", "authentication.session.location_violation", "mfa.%", "opaque.register.finish",
 ];
 
+function activityContext(raw: string | null): Record<string, unknown> {
+  try {
+    const value: unknown = raw ? JSON.parse(raw) : null;
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  } catch { return {}; }
+}
+
 meRoutes.get("/api/me/activity", async (context) => {
   const me = await requireMe(context);
   if (me instanceof Response) return me;
@@ -248,16 +256,30 @@ meRoutes.get("/api/me/activity", async (context) => {
     }
   }
 
-  const likes = SECURITY_EVENTS.map(() => "event_type LIKE ?").join(" OR ");
+  const likes = SECURITY_EVENTS.map(() => "e.event_type LIKE ?").join(" OR ");
   const events = await rows(db.prepare(
-    `SELECT id, occurred_at AS at, event_type AS type, outcome, actor_user_id AS actorId, target_user_id AS targetId
-     FROM audit_events WHERE (actor_user_id = ? OR target_user_id = ?) AND occurred_at >= ? AND outcome != 'started' AND (${likes})
-     ORDER BY occurred_at DESC LIMIT 30`,
-  ).bind(me.userId, me.userId, since, ...SECURITY_EVENTS).all<{ id: string; at: string; type: string; outcome: string; actorId: string | null; targetId: string | null }>());
+    `SELECT e.id, e.occurred_at AS at, e.event_type AS type, e.outcome, e.actor_user_id AS actorId,
+            u.name AS actorName, e.client_ip AS ip, e.event_context AS eventContext
+     FROM audit_events e LEFT JOIN "user" u ON u.id = e.actor_user_id
+     WHERE (e.actor_user_id = ? OR e.target_user_id = ?) AND e.occurred_at >= ? AND e.outcome != 'started' AND (${likes})
+     ORDER BY e.occurred_at DESC LIMIT 50`,
+  ).bind(me.userId, me.userId, since, ...SECURITY_EVENTS).all<{ id: string; at: string; type: string; outcome: string; actorId: string | null; actorName: string | null; ip: string | null; eventContext: string | null }>());
 
   return context.json({
     logins: [...groups.values()].slice(0, 20),
-    events: events.map((event) => ({ id: event.id, at: event.at, type: event.type, outcome: event.outcome, byAdministrator: event.actorId !== null && event.actorId !== me.userId })),
+    events: events.map((event) => {
+      const actor = event.actorId === null ? "system" : event.actorId === me.userId ? "self" : "administrator";
+      const geo = auditClientGeo(event.eventContext);
+      const details = activityContext(event.eventContext);
+      return {
+        id: event.id, at: event.at, type: event.type, outcome: event.outcome, byAdministrator: actor === "administrator",
+        actor, actorName: actor === "administrator" ? event.actorName : null,
+        ip: actor === "administrator" ? null : event.ip,
+        place: actor === "administrator" || !geo ? null : [geo.city, geo.region, geo.country].filter(Boolean).join(", ") || null,
+        device: actor === "administrator" || typeof details.device !== "string" ? null : details.device,
+        detail: event.type.startsWith("mfa.") && typeof details.method === "string" && ["totp", "hotp", "duo", "otp"].includes(details.method) ? details.method : null,
+      };
+    }),
   });
 });
 

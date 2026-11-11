@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { describeDevice } from "../users/device";
 
 export interface AuditGeo { country: string | null; region: string | null; city: string | null; asn: string | null; timezone: string | null }
-export const auditRequestContext = new AsyncLocalStorage<{ ip: string | null; geo: AuditGeo | null }>();
+export const auditRequestContext = new AsyncLocalStorage<{ ip: string | null; geo: AuditGeo | null; device?: string | null }>();
 
 export function auditContextForRequest(request: Request) {
   const cf = (request as Request & { cf?: Record<string, unknown> }).cf;
@@ -10,6 +11,7 @@ export function auditContextForRequest(request: Request) {
   return {
     ip: request.headers.get("cf-connecting-ip") ?? request.headers.get("x-real-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     geo: geo && Object.values(geo).some(Boolean) ? geo : null,
+    device: request.headers.get("user-agent") ? describeDevice(request.headers.get("user-agent")).label : null,
   };
 }
 
