@@ -1,15 +1,18 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2Icon, MinusCircleIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { useState, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ApiError, apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import { UserMfaDialog } from '../user-mfa-dialog'
 import { Failed, Loading, Nothing, Panel, useUserData } from './shared'
 
 type Devices = {
   devices: Array<{ label: string; lastAt: string; location: string | null; ip: string | null; count: number }>
-  sessions: Array<{ id: string; ip: string | null; device: string; createdAt: string; expiresAt: string }>
+  sessions: Array<{ id: string; ip: string | null; device: string; createdAt: string; expiresAt: string; current?: boolean }>
   trusted: Array<{ id: string; label: string; createdAt: string; lastSeenAt: string; expiresAt: string; revokedAt: string | null }>
   logins: Array<{ id: string; at: string; ip: string | null; device: string; method: string | null; location: string | null; reported: boolean }>
   reports: Array<{ id: string; loginId: string | null; createdAt: string; status: string }>
@@ -22,7 +25,16 @@ function Block({ children }: { children: ReactNode }) {
 }
 
 export function DevicesTab({ id }: { id: string }) {
+  const queryClient = useQueryClient()
   const query = useUserData<Devices>(id, 'devices')
+  const revoke = useMutation({
+    mutationFn: (sessionId: string) => apiFetch(`/api/admin/users/${id}/sessions/${sessionId}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      toast.success('세션을 종료했습니다.')
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users', 'detail', id] })
+    },
+    onError: (error) => toast.error(error instanceof ApiError && /[가-힣]/.test(error.message) ? error.message : '세션을 종료하지 못했습니다.'),
+  })
   if (query.isPending) return <Loading />
   if (query.error) return <Failed what="기기" />
   const { devices, sessions, trusted, logins, reports } = query.data
@@ -58,7 +70,7 @@ export function DevicesTab({ id }: { id: string }) {
         )}
       </Panel>
 
-      <Panel title="열려 있는 세션">
+      <Panel title="열려 있는 세션" description="하나씩 끝낼 수 있습니다. 끝낸 기기는 다시 로그인해야 합니다.">
         {sessions.length === 0 ? (
           <Nothing>열려 있는 세션이 없습니다.</Nothing>
         ) : (
@@ -70,15 +82,24 @@ export function DevicesTab({ id }: { id: string }) {
                   <TableHead>IP</TableHead>
                   <TableHead>시작</TableHead>
                   <TableHead>만료</TableHead>
+                  <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sessions.map((session) => (
                   <TableRow key={session.id}>
-                    <TableCell className="font-medium">{session.device}</TableCell>
+                    <TableCell className="font-medium">
+                      {session.device}
+                      {session.current ? <Badge variant="outline" className="ml-2">지금 쓰는 세션</Badge> : null}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{session.ip ?? '알 수 없음'}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(session.createdAt)}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(session.expiresAt)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" disabled={session.current || revoke.isPending} onClick={() => revoke.mutate(session.id)}>
+                        종료
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

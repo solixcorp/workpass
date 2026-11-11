@@ -9,7 +9,7 @@ import { createAuth } from "../auth/config";
 import { auditStandaloneOperation } from "../audit/store";
 import type { Env } from "../env";
 import { describeDevice } from "./device";
-import { notifyAdmins, notifyUser } from "./notifications";
+import { categoryOfKind, notifyAdmins, notifyUser } from "./notifications";
 import { sendPhoneCode, verifyPhoneCode } from "./phone-verification";
 import { smsAvailable } from "../sms/provider";
 import { validateProfile } from "./profile";
@@ -37,11 +37,75 @@ const rows = async <T>(promise: Promise<{ results: T[] }>): Promise<T[]> => prom
 meRoutes.get("/api/me/notifications", async (context) => {
   const me = await requireMe(context);
   if (me instanceof Response) return me;
-  const notifications = await rows(context.env.DB.prepare(
+  const pageParam = context.req.query("page");
+  if (pageParam === undefined) {
+    const notifications = await rows(context.env.DB.prepare(
     `SELECT id, kind, title, body, link, created_at AS createdAt, read_at AS readAt
      FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
   ).bind(me.userId).all<{ id: string; kind: string; title: string; body: string; link: string | null; createdAt: string; readAt: string | null }>());
-  return context.json({ notifications, unread: notifications.filter((n) => !n.readAt).length });
+    return context.json({ notifications: notifications.map((n) => ({ ...n, category: categoryOfKind(n.kind) })), unread: notifications.filter((n) => !n.readAt).length });
+  }
+  const page = Number(pageParam);
+  const limit = Number(context.req.query("limit") ?? "25");
+  const category = context.req.query("category");
+  if (!/^\d+$/.test(pageParam) || !Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || (category !== undefined && !["security", "apps", "requests"].includes(category)) || !Number.isSafeInteger((page - 1) * limit)) {
+    return context.json({ error: "올바르지 않은 요청입니다." }, 400);
+  }
+  const filter = category === "apps" ? " AND kind = 'app_assigned'" : category === "requests" ? " AND kind IN ('access_request', 'app_request')" : category === "security" ? " AND kind NOT IN ('app_assigned', 'access_request', 'app_request')" : "";
+  const where = `user_id = ?${context.req.query("unread") === "1" ? " AND read_at IS NULL" : ""}${filter}`;
+  const db = context.env.DB;
+  const [notifications, total, unread] = await Promise.all([
+    rows(db.prepare(`SELECT id, kind, title, body, link, created_at AS createdAt, read_at AS readAt FROM user_notifications WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(me.userId, limit, (page - 1) * limit).all<{ id: string; kind: string; title: string; body: string; link: string | null; createdAt: string; readAt: string | null }>()),
+    db.prepare(`SELECT COUNT(*) AS n FROM user_notifications WHERE ${where}`).bind(me.userId).first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) AS n FROM user_notifications WHERE user_id = ? AND read_at IS NULL").bind(me.userId).first<{ n: number }>(),
+  ]);
+  return context.json({ notifications: notifications.map((n) => ({ ...n, category: categoryOfKind(n.kind) })), unread: unread?.n ?? 0, total: total?.n ?? 0, page, limit });
+});
+
+meRoutes.delete("/api/me/notifications/:id", async (context) => {
+  const me = await requireMe(context);
+  if (me instanceof Response) return me;
+  const result = await context.env.DB.prepare("DELETE FROM user_notifications WHERE user_id = ? AND id = ?").bind(me.userId, context.req.param("id")).run();
+  if (!result.meta.changes) return context.json({ error: "알림을 찾을 수 없습니다." }, 404);
+  return context.json({ deleted: true });
+});
+
+meRoutes.delete("/api/me/notifications", async (context) => {
+  const me = await requireMe(context);
+  if (me instanceof Response) return me;
+  if (context.req.query("read") !== "1") return context.json({ error: "읽은 알림만 삭제할 수 있습니다." }, 400);
+  const result = await context.env.DB.prepare("DELETE FROM user_notifications WHERE user_id = ? AND read_at IS NOT NULL").bind(me.userId).run();
+  return context.json({ deleted: result.meta.changes });
+});
+
+const categories = [
+  { id: "security", label: "보안", description: "계정과 보안 활동 알림", locked: true },
+  { id: "apps", label: "앱", description: "새로 사용할 수 있는 앱 알림", locked: false },
+  { id: "requests", label: "접근 요청", description: "앱과 접근 요청 알림", locked: false },
+] as const;
+
+meRoutes.get("/api/me/notification-preferences", async (context) => {
+  const me = await requireMe(context);
+  if (me instanceof Response) return me;
+  const prefs = await context.env.DB.prepare("SELECT category, enabled FROM notification_preferences WHERE user_id = ?").bind(me.userId).all<{ category: string; enabled: number }>();
+  return context.json({ categories: categories.map((c) => ({ ...c, enabled: c.locked || prefs.results.find((p) => p.category === c.id)?.enabled !== 0 })) });
+});
+
+meRoutes.put("/api/me/notification-preferences", async (context) => {
+  const me = await requireMe(context);
+  if (me instanceof Response) return me;
+  const body = await context.req.json().catch(() => null) as { categories?: unknown } | null;
+  const value = body?.categories;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return context.json({ error: "올바르지 않은 요청입니다." }, 400);
+  const entries = Object.entries(value);
+  if (entries.some(([key]) => key === "security")) return context.json({ error: "보안 알림은 끌 수 없습니다." }, 400);
+  if (entries.some(([key, enabled]) => !["apps", "requests"].includes(key) || typeof enabled !== "boolean")) return context.json({ error: "올바르지 않은 요청입니다." }, 400);
+  const now = new Date().toISOString();
+  if (entries.length) await context.env.DB.batch(entries.map(([key, enabled]) => context.env.DB.prepare(
+    `INSERT INTO notification_preferences (user_id, category, enabled, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, category) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+  ).bind(me.userId, key, enabled ? 1 : 0, now)));
+  return context.json({ saved: true });
 });
 
 /** Mark some notifications (or all) as read. */

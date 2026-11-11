@@ -2,6 +2,15 @@
 
 import type { Env } from "../env";
 
+export type NotificationCategory = "security" | "apps" | "requests";
+
+/** Unknown kinds are treated as security so a new notice cannot silently be disabled. */
+export function categoryOfKind(kind: string): NotificationCategory {
+  if (kind === "app_assigned") return "apps";
+  if (kind === "access_request" || kind === "app_request") return "requests";
+  return "security";
+}
+
 export interface Notice {
   kind: string;
   title: string;
@@ -13,8 +22,12 @@ export async function notifyUsers(env: Env, userIds: string[], notice: Notice): 
   const unique = [...new Set(userIds)].slice(0, 1000);
   if (unique.length === 0) return;
   try {
+    const category = categoryOfKind(notice.kind);
+    const disabled = category === "security" ? new Set<string>() : new Set((await env.DB.prepare(
+      "SELECT user_id FROM notification_preferences WHERE category = ? AND enabled = 0 AND user_id IN (SELECT value FROM json_each(?))",
+    ).bind(category, JSON.stringify(unique)).all<{ user_id: string }>()).results.map((row) => row.user_id));
     const now = new Date().toISOString();
-    const statements = unique.map((userId) =>
+    const statements = unique.filter((userId) => !disabled.has(userId)).map((userId) =>
       env.DB.prepare(
         "INSERT INTO user_notifications (id, user_id, kind, title, body, link, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       ).bind(crypto.randomUUID(), userId, notice.kind.slice(0, 64), notice.title.slice(0, 200), notice.body.slice(0, 1000), notice.link ?? null, now),

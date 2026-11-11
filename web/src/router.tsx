@@ -24,6 +24,7 @@ import { DeliveryPage } from '@/features/delivery/delivery-page'
 import { LocationPage } from '@/features/location/location-page'
 import { LocationsPage } from '@/features/location/locations-page'
 import { ReportsPage } from '@/features/admin/reports-page'
+import { NotificationsPage } from '@/features/notifications/notifications-page'
 import { ActivityPage } from '@/features/me/activity-page'
 import { MyAccountPage } from '@/features/me/my-account-page'
 import { UserDetailPage } from '@/features/admin/user-detail-page'
@@ -184,6 +185,12 @@ const cibaRoute = createRoute({
   component: CibaPage,
 })
 
+const notificationsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/notifications',
+  component: NotificationsPage,
+})
+
 const myAccountRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: '/me',
@@ -320,6 +327,7 @@ const routeTree = rootRoute.addChildren([
     homeRoute,
     securityRoute,
     myAccountRoute,
+    notificationsRoute,
     deviceRoute,
     cibaRoute,
     activityRoute,

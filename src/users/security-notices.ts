@@ -21,6 +21,7 @@ const notices: Record<string, Notice> = {
   "identity.user.enable.success_or_failure": account("계정이 활성화되었습니다"),
   "identity.user.role_change.success_or_failure": account("계정 역할이 변경되었습니다"),
   "identity.user.sessions_revoke.success_or_failure": account("모든 세션이 해제되었습니다"),
+  "identity.user.session_revoke.success_or_failure": account("세션이 해제되었습니다"),
   "identity.user.trusted_devices.revoke": account("신뢰 기기가 해제되었습니다"),
   "identity.user.lockdown": account("계정이 잠겼습니다"),
   "identity.user.lockdown_lifted": account("계정 잠금이 해제되었습니다"),

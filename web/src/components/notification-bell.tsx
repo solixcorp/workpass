@@ -38,6 +38,11 @@ export function NotificationBell() {
             <SheetDescription>{unread ? `읽지 않은 알림 ${unread}개` : '새 알림이 없습니다.'}</SheetDescription>
           </SheetHeader>
           <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4">
+            <div>
+              <Button variant="link" size="sm" className="px-0" onClick={() => { setOpen(false); void navigate({ to: '/notifications' }) }}>
+                모두 보기·알림 설정
+              </Button>
+            </div>
             {unread > 0 ? (
               <div>
                 <Button variant="outline" size="sm" disabled={markRead.isPending} onClick={() => markRead.mutate(undefined)}>

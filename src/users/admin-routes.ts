@@ -5,6 +5,7 @@
  */
 
 import { Hono } from "hono";
+import { createAuth } from "../auth/config";
 import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
@@ -106,6 +107,7 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
   if (admin instanceof Response) return admin;
   const id = context.req.param("id");
   const db = context.env.DB;
+  const currentSession = id === admin.userId ? await createAuth(context.env).api.getSession({ headers: context.req.raw.headers }) : null;
   const sessions = await rows(db.prepare(
     `SELECT id, "ipAddress" AS ip, "userAgent" AS userAgent, "createdAt" AS createdAt, "expiresAt" AS expiresAt
      FROM "session" WHERE "userId" = ? ORDER BY "createdAt" DESC LIMIT 50`,
@@ -133,7 +135,7 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
   }
   return context.json({
     devices: [...devices.values()],
-    sessions: sessions.map((s) => ({ id: s.id, ip: s.ip, device: describeDevice(s.userAgent).label, createdAt: s.createdAt, expiresAt: s.expiresAt })),
+    sessions: sessions.map((s) => ({ id: s.id, ip: s.ip, device: describeDevice(s.userAgent).label, createdAt: s.createdAt, expiresAt: s.expiresAt, current: s.id === currentSession?.session.id })),
     trusted,
     logins: logins.map((l) => ({
       id: l.id, at: l.at, ip: l.ip, device: describeDevice(l.userAgent).label, method: l.method,
@@ -141,6 +143,27 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
       reported: reports.some((r) => r.loginId === l.id),
     })),
     reports,
+  });
+});
+
+userDetailRoutes.delete("/users/:id/sessions/:sessionId", async (context) => {
+  const admin = await requireAdministrator(context);
+  if (admin instanceof Response) return admin;
+  const userId = context.req.param("id");
+  const sessionId = context.req.param("sessionId");
+  const current = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
+  return auditStandaloneOperation(context.env, "identity.user.session_revoke.success_or_failure", context.req.path, async () => {
+    const audit = { actorUserId: admin.userId, targetUserId: userId };
+    const db = context.env.DB;
+    const session = await db.prepare('SELECT token FROM "session" WHERE id = ? AND "userId" = ?').bind(sessionId, userId).first<{ token: string }>();
+    if (!session) return { response: Response.json({ error: "세션을 찾을 수 없습니다." }, { status: 404 }), ...audit };
+    if (admin.userId === userId && current?.session.id === sessionId) return { response: Response.json({ error: "지금 쓰는 세션은 종료할 수 없습니다. 로그아웃을 이용하세요." }, { status: 409 }), ...audit };
+    const results = await db.batch([
+      ...["session_mfa_proofs", "session_step_up_requirements", "session_network_bindings", "account_session_contexts"].map((table) => db.prepare(`DELETE FROM ${table} WHERE session_token = ? AND user_id = ?`).bind(session.token, userId)),
+      db.prepare('DELETE FROM "session" WHERE id = ? AND "userId" = ? AND token = ?').bind(sessionId, userId, session.token),
+    ]);
+    if (!results[results.length - 1]?.meta.changes) return { response: Response.json({ error: "세션을 찾을 수 없습니다." }, { status: 404 }), ...audit };
+    return { response: Response.json({ revoked: true }), ...audit };
   });
 });
 

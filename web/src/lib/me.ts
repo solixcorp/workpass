@@ -42,3 +42,24 @@ export const myActivityQuery = queryOptions({
   queryKey: ['me', 'activity'],
   queryFn: () => apiFetch<MyActivity>('/api/me/activity'),
 })
+
+export type NotificationCategory = 'security' | 'apps' | 'requests'
+
+export type PagedNotification = Notification & { category: NotificationCategory }
+
+export type NotificationPage = {
+  notifications: PagedNotification[]
+  unread: number
+  total: number
+  page: number
+  limit: number
+}
+
+export type NotificationPreferences = {
+  categories: Array<{ id: NotificationCategory; label: string; description: string; enabled: boolean; locked: boolean }>
+}
+
+export const notificationPreferencesQuery = queryOptions({
+  queryKey: ['me', 'notification-preferences'],
+  queryFn: () => apiFetch<NotificationPreferences>('/api/me/notification-preferences'),
+})
