@@ -1,3 +1,4 @@
+import { shareLocation } from '@/lib/location'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearch } from '@tanstack/react-router'
 import {
@@ -191,8 +192,14 @@ export function LoginPage() {
     )
     setPending(false)
     if (result?.error) {
+      const refusal = result.error as { code?: unknown; message?: unknown }
+      const byPlace = refusal.code === 'location_denied' || String(refusal.message ?? '').includes('location')
       setError(
-        result.error.status === 429 ? idx.ui.messages.rate_limited : idx.ui.messages.passkey_failed,
+        result.error.status === 429
+          ? idx.ui.messages.rate_limited
+          : byPlace
+            ? idx.ui.messages.location_denied
+            : idx.ui.messages.passkey_failed,
       )
       return
     }
@@ -242,6 +249,20 @@ export function LoginPage() {
       return
     }
 
+    if (action === 'share-location') {
+      setError(null)
+      setPending(true)
+      const outcome = await shareLocation()
+      setPending(false)
+      if (outcome === 'ok') {
+        await start().catch(() => setFatal(true))
+        return
+      }
+      const key = { outside: 'location_outside', inaccurate: 'location_inaccurate', blocked: 'location_blocked', rate_limited: 'rate_limited', unavailable: 'unavailable' } as const
+      setError(idx.ui.messages[key[outcome]])
+      return
+    }
+
     if (action === 'opaque-password') {
       const secret = values.passcode ?? ''
       if (!secret) return
@@ -252,7 +273,7 @@ export function LoginPage() {
       const result: OpaqueSignInResult = await opaqueSignIn(identifier, secret, eventId)
       setPending(false)
       if (result.status !== 'ok') {
-        setError(idx.ui.messages[result.status === 'invalid_credentials' ? 'invalid_credentials' : result.status])
+        setError(idx.ui.messages[result.status])
         return
       }
       if (result.stepUp) {
@@ -274,6 +295,10 @@ export function LoginPage() {
     if (!idx) return
     if (alternative.action === 'passkey') {
       await signInWithPasskey()
+    } else if (alternative.action === 'skip-location') {
+      // An exempt account can sign in from anywhere; the server decides at the end.
+      const next = await run(() => idxIntrospect(oq, { skipLocation: true }))
+      if (next) await fold(() => setIdx(next))
     } else if (alternative.action === 'switch-method') {
       const next = await run(() => idxChallenge(idx.stateHandle))
       if (next) await fold(() => setIdx(next))

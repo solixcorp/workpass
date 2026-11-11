@@ -948,4 +948,46 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS suspicious_reports_status_idx ON suspicious_reports (status, created_at)",
   ).run();
+  // Named places a sign-in may be limited to (a centre and a radius), the single
+  // policy row that says how they are used, and short-lived proofs that this
+  // browser reported a position inside one of them.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS location_places (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      radius_m INTEGER NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS location_policy (
+      id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+      mode TEXT NOT NULL CHECK (mode IN ('off', 'observe', 'enforce')),
+      signal TEXT NOT NULL CHECK (signal IN ('network', 'browser', 'network_or_browser')),
+      network_margin_km INTEGER NOT NULL,
+      max_accuracy_m INTEGER NOT NULL,
+      exempt_groups TEXT NOT NULL DEFAULT '[]',
+      updated_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS location_proofs (
+      token_hash TEXT PRIMARY KEY NOT NULL,
+      place_id TEXT NOT NULL,
+      distance_m INTEGER NOT NULL,
+      accuracy_m INTEGER NOT NULL,
+      client_ip TEXT,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS location_proofs_ip_idx ON location_proofs (client_ip, created_at)",
+  ).run();
 }

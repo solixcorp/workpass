@@ -39,6 +39,7 @@ export type OpaqueSignInResult =
   | { status: 'invalid_credentials' }
   | { status: 'rate_limited' }
   | { status: 'denied' }
+  | { status: 'location_denied' }
   | { status: 'unavailable' }
 
 async function postJson(path: string, body: unknown): Promise<Response> {
@@ -94,7 +95,11 @@ export async function opaqueSignIn(
   if (!finishResponse) return { status: 'unavailable' }
   if (finishResponse.status === 401) return { status: 'invalid_credentials' }
   if (finishResponse.status === 429) return { status: 'rate_limited' }
-  if (finishResponse.status === 403) return { status: 'denied' }
+  if (finishResponse.status === 403) {
+    // The place is only named once the password proved right.
+    const refusal = (await finishResponse.json().catch(() => ({}))) as { code?: string }
+    return { status: refusal.code === 'location_denied' ? 'location_denied' : 'denied' }
+  }
   if (!finishResponse.ok) return { status: 'unavailable' }
 
   const body = (await finishResponse.json().catch(() => ({}))) as {

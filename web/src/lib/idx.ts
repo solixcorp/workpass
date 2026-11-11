@@ -25,7 +25,7 @@ export type IdxUiOption = {
 export type IdxUiAlternative = {
   label: string
   icon?: IdxIcon
-  action: 'passkey' | 'switch-method' | 'cancel'
+  action: 'passkey' | 'switch-method' | 'cancel' | 'skip-location'
   placement: 'before' | 'after'
   variant: 'outline' | 'link'
 }
@@ -38,6 +38,10 @@ export type IdxUiMessages = {
   unavailable: string
   forbidden_app: string
   incomplete: string
+  location_denied: string
+  location_outside: string
+  location_inaccurate: string
+  location_blocked: string
 }
 
 export type IdxUi = {
@@ -47,7 +51,7 @@ export type IdxUi = {
   fields: IdxUiField[]
   options: IdxUiOption[]
   submit?: { label: string }
-  action: 'identify' | 'select-authenticator' | 'opaque-password' | 'passkey'
+  action: 'identify' | 'select-authenticator' | 'opaque-password' | 'passkey' | 'share-location'
   alternatives: IdxUiAlternative[]
   separator?: string
   messages: IdxUiMessages
@@ -92,8 +96,8 @@ function post(path: string, body: unknown): Promise<IdxEnvelope> {
 }
 
 /** Begin (or restart) a transaction for a signed authorization request. */
-export async function idxIntrospect(oauthQuery?: string): Promise<IdxState> {
-  return toState(await post('/idp/idx/introspect', oauthQuery ? { oauthQuery } : {}))
+export async function idxIntrospect(oauthQuery?: string, options?: { skipLocation?: boolean }): Promise<IdxState> {
+  return toState(await post('/idp/idx/introspect', { ...(oauthQuery ? { oauthQuery } : {}), ...(options?.skipLocation ? { skipLocation: true } : {}) }))
 }
 
 /** Submit the email. Unknown addresses get a plausible answer, never an error. */

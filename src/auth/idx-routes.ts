@@ -24,6 +24,7 @@
  * The password step itself is OPAQUE (/api/opaque/*); it never travels here.
  */
 
+import { evaluateLocation, loadLocationPolicy } from "../security/location-policy";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "../env";
@@ -71,6 +72,10 @@ const OUTCOME_MESSAGES = {
   unavailable: "지금은 로그인할 수 없습니다. 잠시 후 다시 시도하세요.",
   forbidden_app: "이 앱에 접근할 권한이 없습니다.",
   incomplete: "로그인을 완료하지 못했습니다. 다시 시도하세요.",
+  location_denied: "허용된 장소 밖에서는 로그인할 수 없습니다. 지정된 장소 근처에서 다시 시도하세요.",
+  location_outside: "지금 위치는 허용된 장소 근처가 아닙니다.",
+  location_inaccurate: "위치가 충분히 정확하지 않습니다. 위치 서비스를 켜고 다시 시도하세요.",
+  location_blocked: "브라우저가 위치 공유를 허용하지 않았습니다. 주소창의 위치 권한을 허용한 뒤 다시 시도하세요.",
 } as const;
 
 const POLICY_METHOD_TO_KEY: Record<string, AuthenticatorKey> = {
@@ -223,7 +228,7 @@ async function authorizationRequest(env: Env, oauthQuery: unknown): Promise<Reco
  * protocol step the primary button performs; the client only implements the
  * protocols themselves (OPAQUE, WebAuthn) and posts to the hrefs given here.
  */
-type UiAction = "identify" | "select-authenticator" | "opaque-password" | "passkey";
+type UiAction = "identify" | "select-authenticator" | "opaque-password" | "passkey" | "share-location";
 
 interface RemediationUi {
   title: string;
@@ -236,7 +241,7 @@ interface RemediationUi {
   alternatives: Array<{
     label: string;
     icon?: "passkey";
-    action: "passkey" | "switch-method" | "cancel";
+    action: "passkey" | "switch-method" | "cancel" | "skip-location";
     placement: "before" | "after";
     variant: "outline" | "link";
   }>;
@@ -315,6 +320,33 @@ async function identifyResponse(env: Env, handle: string, expiresAt: string, req
             ? [{ label: "패스키로 로그인", icon: "passkey", action: "passkey", placement: "before", variant: "outline" }]
             : [],
           separator: passkeyAllowed ? "또는" : undefined,
+        }),
+      }],
+    },
+  };
+}
+
+/** Asks the browser to share where it is, when the organization limits sign-in to certain places. */
+async function locationResponse(env: Env, handle: string, expiresAt: string, request?: Record<string, string> | null) {
+  const origin = new URL(env.AUTH_BASE_URL).origin;
+  return {
+    ...(await baseEnvelope(env, handle, expiresAt, request)),
+    remediation: {
+      type: "array",
+      value: [{
+        rel: ["create-form"],
+        name: "verify-location",
+        href: `${origin}/api/location/proof`,
+        method: "POST",
+        produces: ION,
+        value: [stateHandleField(handle)],
+        accepts: ACCEPTS,
+        ui: ui({
+          title: "위치를 확인하세요",
+          description: "이 조직은 지정된 장소 근처에서만 로그인할 수 있습니다. 브라우저에서 내 위치를 공유해 주세요. 위치는 저장하지 않고, 허용된 장소 안인지만 확인합니다.",
+          action: "share-location",
+          submit: { label: "내 위치 공유" },
+          alternatives: [{ label: "지금은 건너뛰기", action: "skip-location", placement: "after", variant: "link" }],
         }),
       }],
     },
@@ -499,6 +531,14 @@ idxRoutes.post("/idp/idx/introspect", async (context) => {
   const body = await jsonBody(context);
   const request = await authorizationRequest(context.env, body.oauthQuery);
   const { handle, expiresAt } = await sealState(context.env, {});
+  // The same for everyone (nothing here depends on an account), so it reveals nothing about one.
+  if (body.skipLocation !== true) {
+    const policy = await loadLocationPolicy(context.env);
+    if (policy.mode === "enforce" && policy.signal !== "network" &&
+      !(await evaluateLocation(context.env, { request: context.req.raw, userId: null })).pass) {
+      return context.json(await locationResponse(context.env, handle, expiresAt, request));
+    }
+  }
   return context.json(await identifyResponse(context.env, handle, expiresAt, request));
 });
 

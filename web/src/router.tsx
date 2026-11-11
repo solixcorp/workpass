@@ -19,6 +19,8 @@ import { IntegrationWizardPage } from '@/features/admin/integration/integration-
 import { CibaPage } from '@/features/approvals/ciba-page'
 import { ConsentPage } from '@/features/approvals/consent-page'
 import { DevicePage } from '@/features/approvals/device-page'
+import { LocationPage } from '@/features/location/location-page'
+import { LocationsPage } from '@/features/location/locations-page'
 import { ReportsPage } from '@/features/admin/reports-page'
 import { ActivityPage } from '@/features/me/activity-page'
 import { MyAccountPage } from '@/features/me/my-account-page'
@@ -109,6 +111,14 @@ const consentRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/consent',
   component: ConsentPage,
+})
+
+const locationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/location',
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } =>
+    typeof search.redirect === 'string' && search.redirect.length <= 8192 ? { redirect: search.redirect } : {},
+  component: LocationPage,
 })
 
 const activateRoute = createRoute({
@@ -217,6 +227,12 @@ const adminReportsRoute = createRoute({
   component: ReportsPage,
 })
 
+const adminLocationsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/locations',
+  component: LocationsPage,
+})
+
 const adminGroupsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/groups',
@@ -285,6 +301,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   activateRoute,
   consentRoute,
+  locationRoute,
   authenticatedRoute.addChildren([
     homeRoute,
     securityRoute,
@@ -299,6 +316,7 @@ const routeTree = rootRoute.addChildren([
       adminUsersRoute,
       adminUserRoute,
       adminReportsRoute,
+      adminLocationsRoute,
       adminGroupsRoute,
       adminAccountsRoute,
       adminApplicationsRoute,

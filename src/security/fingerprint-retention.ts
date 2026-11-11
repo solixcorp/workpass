@@ -17,6 +17,7 @@ export async function cleanupFingerprintData(env: Env, now = new Date()): Promis
        'fingerprint_lookup_limits',
        'app_grant_events',
        'login_history',
+       'location_proofs',
        'user_notifications'
      )`,
   ).all<{ name: string }>();
@@ -53,6 +54,11 @@ export async function cleanupFingerprintData(env: Env, now = new Date()): Promis
   if (tables.has("login_history")) {
     statements.push(env.DB.prepare("DELETE FROM login_history WHERE occurred_at < ?")
       .bind(new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString()));
+  }
+  // A location proof lives minutes; a day of history is plenty for the rate limit.
+  if (tables.has("location_proofs")) {
+    statements.push(env.DB.prepare("DELETE FROM location_proofs WHERE expires_at < ?")
+      .bind(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()));
   }
   if (tables.has("user_notifications")) {
     statements.push(env.DB.prepare("DELETE FROM user_notifications WHERE read_at IS NOT NULL AND read_at < ?").bind(decisionsBefore));

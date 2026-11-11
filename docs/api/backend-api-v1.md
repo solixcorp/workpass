@@ -232,6 +232,10 @@ All are `no-store`; writes need the configured origin.
 - `GET /api/admin/overview`: counts (users, groups, apps), service status (database, mail, SMS, device risk), things to do (open reports, pending access requests, users without a password), the latest organization changes, and security signals for 30 days (failed sign-ins, device-risk step-ups and denials, location violations, lockdowns, and the share of active users with a second factor or passkey).
 - `GET /api/admin/suspicious-reports?status=open|closed`, `POST /api/admin/suspicious-reports/:id/close` (tells the reporter).
 
+### Sign-in places
+
+Limits sign-in to people near named places; see [sign-in places](../security/login-locations.md). Administrator: `GET /api/admin/location`, `PUT /api/admin/location/policy` (`mode`, `signal`, `networkMarginKm`, `maxAccuracyM`, `exemptGroups`; refuses to enforce when the saving administrator would be locked out), `POST|PUT|DELETE /api/admin/location/places[/:id]` (name, latitude, longitude, `radiusM` 50 to 500000, `enabled`). Public: `GET /api/location/status`, `POST /api/location/proof`. A refused password or passkey sign-in answers `403 { code: "location_denied" }`; a refused app sign-in start redirects to `/location` or the access-denied page.
+
 ### First administrator
 
 `POST /api/admin/bootstrap` also returns `activation: { url, expiresAt }`, a one-time link to `/activate` (valid for the activation TTL). Plaintext sign-in is disabled by default, so this link is the only way for the first administrator to set a password (OPAQUE registration). The `password` in the request body is a placeholder required by the account creation call.

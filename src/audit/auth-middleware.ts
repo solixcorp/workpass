@@ -11,6 +11,7 @@ import { revokeTrustedDevices } from "../security/trusted-device-store";
 import { enforceOidcPolicy } from "../access/oidc-gate";
 import { recordOAuthGrant } from "../security/app-grants";
 import { recordLogin } from "../users/login-history";
+import { locationGate } from "../security/location-gate";
 import { recordSessionMfaProof } from "../mfa/second-factor";
 import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
 import { enforceMfaPolicy } from "../mfa/policy";
@@ -93,6 +94,8 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
 
   if (isInteractiveAuthorization(path)) {
+    const located = await enforceLocationAtAuthorize(request, env, auth, path);
+    if (located) return located;
     const riskResponse = await handleFingerprintRiskAuthorization({ request, env, auth });
     if (riskResponse) return riskResponse;
   }
@@ -188,7 +191,17 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
       ) {
         actorUserId = responseUserId;
         targetUserId = null;
-        if (path === "/api/auth/passkey/verify-authentication") await recordLogin(env, request, responseUserId, "passkey");
+        if (path === "/api/auth/passkey/verify-authentication") {
+          // The passkey signed in; a place the policy does not allow takes the session back.
+          const place = await locationGate(env, { request, userId: responseUserId, path });
+          if (!place.allowed) {
+            const issued = await findNewSessionFromResponse(env, response).catch(() => null);
+            if (issued) await env.DB.prepare('DELETE FROM "session" WHERE token = ?').bind(issued.token).run().catch(() => null);
+            await updateAuditEvent(env, eventId, { actor_user_id: responseUserId, target_user_id: null, outcome: "failure" }).catch(() => null);
+            return Response.json({ error: "Sign-in is not allowed from this location", code: "location_denied" }, { status: 403 });
+          }
+          await recordLogin(env, request, responseUserId, "passkey");
+        }
       }
     } catch {
       // Some successful endpoints have no JSON body.
@@ -364,4 +377,22 @@ async function denyPublicRegistration(
   }
 
   return Response.json({ error: "Not Found" }, { status: 404 });
+}
+
+/**
+ * Starting an app sign-in from a place the policy does not allow. A browser
+ * that could still prove its position is sent to the page that asks for it
+ * and then back here; anything else ends at the access-denied page.
+ */
+async function enforceLocationAtAuthorize(request: Request, env: Env, auth: AuthInstance, path: string): Promise<Response | null> {
+  const session = await auth.api.getSession({ headers: request.headers }).catch(() => null);
+  if (!session) return null;
+  const verdict = await locationGate(env, { request, userId: session.user.id, path });
+  if (verdict.allowed) return null;
+  const origin = new URL(env.AUTH_BASE_URL).origin;
+  const url = new URL(request.url);
+  if (verdict.needsBrowser) {
+    return Response.redirect(`${origin}/location?${new URLSearchParams({ redirect: `${url.pathname}${url.search}` })}`, 302);
+  }
+  return Response.redirect(`${origin}/api/auth/error?error=access_denied`, 302);
 }
