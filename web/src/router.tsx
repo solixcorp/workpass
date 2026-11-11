@@ -25,6 +25,12 @@ import { PortalHomePage } from '@/features/portal/home-page'
 import { RequestsPage } from '@/features/requests/requests-page'
 import { SecurityPage } from '@/features/security/security-page'
 import { isAdministrator } from '@/lib/auth-client'
+import {
+  AUTHORIZE_PATH,
+  authorizeSearchFromSignedQuery,
+  recallSignedQuery,
+  rememberSignedQuery,
+} from '@/lib/authorize-url'
 import { sessionQuery } from '@/lib/queries'
 
 export const queryClient = new QueryClient({
@@ -225,6 +231,29 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({
   routeTree,
+  rewrite: {
+    // What the address bar shows while the sign-in screen is open.
+    output: ({ url }) => {
+      if (url.pathname !== '/login') return undefined
+      const oq = url.searchParams.get('oq')
+      const search = oq ? authorizeSearchFromSignedQuery(oq) : null
+      if (!oq || !search) return undefined
+      rememberSignedQuery(search, oq)
+      url.pathname = AUTHORIZE_PATH
+      url.search = search
+      return url
+    },
+    // The router reads its own address back. Give it the signed request that
+    // address stands for; a hard reload never gets here, it goes to the server
+    // and comes back with a fresh one.
+    input: ({ url }) => {
+      if (url.pathname !== AUTHORIZE_PATH) return undefined
+      const oq = recallSignedQuery(url.search)
+      url.pathname = '/login'
+      url.search = oq ? `?oq=${encodeURIComponent(oq)}` : ''
+      return url
+    },
+  },
   context: { queryClient },
   defaultPreload: 'intent',
   defaultPendingMs: 120,
