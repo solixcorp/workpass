@@ -84,7 +84,9 @@ rejected, session-bound subjects only, banned accounts rejected, audit-then-issu
 
 Notes: temporary credentials expire in 10 minutes; nonces are consumed atomically (replay
 protection); `POST /api/oauth1/token/revoke` revokes an access token;
-`revokeOAuth1UserTokens` exists for offboarding code paths.
+the auth audit middleware calls `revokeOAuth1UserTokens` after an administrator bans a user,
+removing that user's access and approved temporary tokens. Administrator deletion is currently
+disabled and does not call it.
 
 ### 4.3 SSF receiver (inbound security event tokens)
 

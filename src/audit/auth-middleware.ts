@@ -18,6 +18,7 @@ import { recordSessionMfaProof } from "../mfa/second-factor";
 import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
 import { enforceMfaPolicy } from "../mfa/policy";
 import { appSessionSnapshot, logoutUserFromApps } from "../oauth/app-logout";
+import { revokeOAuth1UserTokens } from "../oauth1/store";
 
 const auditEventTypes: Record<string, string> = {
   "POST /api/auth/sign-up/email": "identity.user.public_registration.denied",
@@ -144,10 +145,11 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
 
   let targetUserId: string | null = null;
+  let adminBody: { userId?: unknown; role?: unknown } | null = null;
   if (request.method === "POST" && path.startsWith("/api/auth/admin/")) {
     try {
-      const body = (await request.clone().json()) as { userId?: unknown };
-      targetUserId = typeof body.userId === "string" ? body.userId : null;
+      adminBody = (await request.clone().json()) as { userId?: unknown; role?: unknown } | null;
+      targetUserId = typeof adminBody?.userId === "string" ? adminBody.userId : null;
     } catch {
       // Bodies can contain credentials; only retain the target identifier.
     }
@@ -159,6 +161,45 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
     actorUserId = session?.user.id ?? null;
   } catch {
     // Continue so the auth endpoint returns its normal authentication error.
+  }
+
+  // These checks must run before Better Auth mutates anything. In particular,
+  // never perform offboarding work merely because a caller supplied a userId:
+  // authenticate and authorize the caller first.
+  if (request.method === "POST" && ["/api/auth/admin/remove-user", "/api/auth/admin/ban-user", "/api/auth/admin/set-role"].includes(path)) {
+    if (request.headers.get("origin") !== new URL(env.AUTH_BASE_URL).origin) {
+      return Response.json({ error: "잘못된 요청 출처입니다." }, { status: 403 });
+    }
+    const actor = await auth.api.getSession({ headers: request.headers }).catch(() => null);
+    const actorRole = (actor?.user as { role?: unknown } | undefined)?.role;
+    if (!actor) return Response.json({ error: "인증이 필요합니다." }, { status: 401 });
+    if (typeof actorRole !== "string" || !actorRole.split(",").map((role) => role.trim()).includes("admin")) {
+      return Response.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+    }
+    if (targetUserId && path === "/api/auth/admin/remove-user" && targetUserId === actor.user.id) {
+      return Response.json({ error: "자기 자신을 삭제할 수 없습니다." }, { status: 409 });
+    }
+    const role = adminBody?.role;
+    const newRoles = typeof role === "string" ? role.split(",") : Array.isArray(role) ? role : null;
+    const removesAdmin = path !== "/api/auth/admin/set-role" || (newRoles !== null && !newRoles.some((r) => typeof r === "string" && r.trim() === "admin"));
+    if (targetUserId && removesAdmin) {
+      const target = await env.DB.prepare('SELECT role, banned FROM "user" WHERE id = ?').bind(targetUserId)
+        .first<{ role: string | null; banned: number | null }>();
+      if (target && !target.banned && target.role?.split(",").map((r) => r.trim()).includes("admin")) {
+        const admins = await env.DB.prepare(`SELECT role FROM "user" WHERE COALESCE(banned, 0) = 0`).all<{ role: string | null }>();
+        if (admins.results.filter((row) => row.role?.split(",").map((r) => r.trim()).includes("admin")).length <= 1) {
+          const action = path.endsWith("remove-user") ? "삭제" : path.endsWith("ban-user") ? "차단" : "권한을 변경";
+          return Response.json({ error: `마지막 관리자는 ${action}할 수 없습니다.` }, { status: 409 });
+        }
+      }
+    }
+    // SCIM deactivation presently requires a live user and mapping, and the
+    // Better Auth delete runs outside any D1 cleanup transaction. Until that
+    // lifecycle can be made atomic, refuse deletion instead of orphaning
+    // credentials or silently leaving remote accounts active.
+    if (path === "/api/auth/admin/remove-user") {
+      return Response.json({ error: "사용자 삭제를 일시적으로 사용할 수 없습니다." }, { status: 503 });
+    }
   }
 
   const revokeUserId = path === "/api/auth/revoke-sessions" ? actorUserId : path === "/api/auth/admin/revoke-user-sessions" ? targetUserId : null;
@@ -203,6 +244,13 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
   if (response.ok && targetUserId && (path === "/api/auth/admin/ban-user" || path === "/api/auth/admin/revoke-user-sessions")) {
     await logoutUserFromApps(env, targetUserId, { reason: path, snapshot: appLogout });
+  }
+  if (response.ok && targetUserId && path === "/api/auth/admin/ban-user") {
+    try {
+      await revokeOAuth1UserTokens(env, targetUserId);
+    } catch {
+      return Response.json({ error: "OAuth 1 토큰을 폐기하지 못했습니다.", eventId }, { status: 503 });
+    }
   }
   if (response.ok && revokeSession) await logoutUserFromApps(env, revokeSession.user.id, { reason: "self_all_sessions", snapshot: selfLogout });
   let sessionCount: number | undefined;
