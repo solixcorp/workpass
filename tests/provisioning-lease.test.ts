@@ -51,13 +51,45 @@ describe("provisioning sync lease", () => {
     expect(await db.prepare("SELECT event_type FROM audit_events WHERE event_type = 'app.provisioning.sync_lease_taken_over'").first()).not.toBeNull();
   });
   test("two simultaneous stale takeovers have one winner", async () => {
-    await setLock(new Date(Date.now() - 360_000).toISOString());
+    const staleAt = new Date(Date.now() - 360_000).toISOString();
+    await setLock(staleAt);
     const original = globalThis.fetch;
+    const prepare = db.prepare;
+    let releaseAttempts!: () => void;
+    let releaseResults!: () => void;
+    const attemptsReady = new Promise<void>((resolve) => { releaseAttempts = resolve; });
+    const resultsReady = new Promise<void>((resolve) => { releaseResults = resolve; });
+    const snapshots: unknown[][] = [];
+    let completed = 0;
+    // Both compare-and-set operations must observe the stale row, and neither
+    // request may release its lease until both updates have completed.
+    db.prepare = ((sql: string) => {
+      const statement = prepare.call(db, sql);
+      if (!sql.includes("SET sync_lock = 1, sync_lock_owner = ?")) return statement;
+      const bind = statement.bind.bind(statement);
+      statement.bind = (...values: unknown[]) => {
+        const bound = bind(...values);
+        const run = bound.run.bind(bound);
+        bound.run = async () => {
+          snapshots.push(values);
+          if (snapshots.length === 2) releaseAttempts();
+          await attemptsReady;
+          try { return await run(); }
+          finally {
+            if (++completed === 2) releaseResults();
+            await resultsReady;
+          }
+        };
+        return bound;
+      };
+      return statement;
+    }) as typeof db.prepare;
     try {
       globalThis.fetch = (async () => new Response(null, { status: 204 })) as typeof fetch;
       const responses = await Promise.all([call(`${path}/sync`, "POST"), call(`${path}/sync`, "POST")]);
       expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
-    } finally { globalThis.fetch = original; }
+      expect(snapshots.map((values) => values.slice(3, 6))).toEqual([[1, "old", staleAt], [1, "old", staleAt]]);
+    } finally { releaseAttempts(); releaseResults(); db.prepare = prepare; globalThis.fetch = original; }
   });
   test("failure during a batch releases the lease", async () => {
     sqlite.exec("CREATE TRIGGER lease_fail BEFORE UPDATE OF sync_lock_at ON app_provisioning_targets WHEN OLD.sync_lock = 1 AND NEW.sync_lock = 1 BEGIN SELECT RAISE(ABORT, 'injected heartbeat failure'); END");
