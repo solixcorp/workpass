@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
@@ -254,9 +255,16 @@ function BindingList() {
                         disabled={toggle.isPending}
                         onCheckedChange={(enabled) => toggle.mutate({ binding, enabled })}
                       />
-                      <Button variant="ghost" size="icon-sm" aria-label="연결 해제" onClick={() => remove.mutate(binding.id)}>
-                        <Trash2Icon />
-                      </Button>
+                      <ConfirmAction
+                        title="이 정책 연결을 해제할까요?"
+                        description="연결을 해제하면 이 정책이 더 이상 적용되지 않습니다. 다시 켜려면 새로 연결해야 합니다."
+                        confirmLabel="해제"
+                        onConfirm={() => remove.mutate(binding.id)}
+                      >
+                        <Button variant="ghost" size="icon-sm" aria-label="연결 해제">
+                          <Trash2Icon />
+                        </Button>
+                      </ConfirmAction>
                     </div>
                   </TableCell>
                 </TableRow>

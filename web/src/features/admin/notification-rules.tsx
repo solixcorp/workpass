@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MailIcon, PlusIcon, Trash2Icon, WebhookIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -95,9 +96,17 @@ export function NotificationRules() {
                 </ItemDescription>
               </ItemContent>
               <ItemActions>
-                <Button variant="ghost" size="icon-sm" aria-label={`${rule.name} 삭제`} disabled={remove.isPending} onClick={() => remove.mutate(rule.id)}>
-                  <Trash2Icon />
-                </Button>
+                <ConfirmAction
+                  title="이 알림 규칙을 삭제할까요?"
+                  description="삭제하면 이 규칙으로 가던 알림이 더 이상 가지 않습니다."
+                  details={[{ label: '규칙', value: rule.name }]}
+                  confirmLabel="삭제"
+                  onConfirm={() => remove.mutate(rule.id)}
+                >
+                  <Button variant="ghost" size="icon-sm" aria-label={`${rule.name} 삭제`} disabled={remove.isPending}>
+                    <Trash2Icon />
+                  </Button>
+                </ConfirmAction>
               </ItemActions>
             </Item>
           ))}

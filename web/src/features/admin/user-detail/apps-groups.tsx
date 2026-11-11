@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { PlusIcon, XIcon } from 'lucide-react'
@@ -179,9 +180,17 @@ export function GroupsTab({ id }: { id: string }) {
                   <TableCell className="font-medium">{group.name}</TableCell>
                   <TableCell className="text-muted-foreground">{group.description || '—'}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon-sm" aria-label={`${group.name}에서 빼기`} disabled={remove.isPending} onClick={() => remove.mutate(group.id)}>
-                      <XIcon />
-                    </Button>
+                    <ConfirmAction
+                      title={`${group.name} 그룹에서 뺄까요?`}
+                      description="이 그룹으로 받던 앱 접근과 권한이 바로 사라집니다. 앱에 이미 연결된 로그인 상태는 앱이 확인할 때까지 남을 수 있습니다."
+                      details={[{ label: '그룹', value: group.name }]}
+                      confirmLabel="빼기"
+                      onConfirm={() => remove.mutate(group.id)}
+                    >
+                      <Button variant="ghost" size="icon-sm" aria-label={`${group.name}에서 빼기`} disabled={remove.isPending}>
+                        <XIcon />
+                      </Button>
+                    </ConfirmAction>
                   </TableCell>
                 </TableRow>
               ))}

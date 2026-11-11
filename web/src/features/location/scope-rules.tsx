@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
@@ -93,9 +94,17 @@ export function ScopeRules({ view }: { view: LocationView }) {
                       <Button variant="ghost" size="icon-sm" aria-label={`${rule.groupName} 수정`} onClick={() => setEditing({ kind: 'group', id: rule.groupId, label: rule.groupName, placeIds: rule.placeIds })}>
                         <PencilIcon />
                       </Button>
-                      <Button variant="ghost" size="icon-sm" aria-label={`${rule.groupName} 규칙 삭제`} disabled={remove.isPending} onClick={() => remove.mutate({ kind: 'group', id: rule.groupId, label: rule.groupName, placeIds: [] })}>
-                        <Trash2Icon />
-                      </Button>
+                      <ConfirmAction
+                        title="이 그룹의 장소 규칙을 삭제할까요?"
+                        description="삭제하면 이 그룹은 조직 전체 장소 정책만 따릅니다."
+                        details={[{ label: '그룹', value: rule.groupName }]}
+                        confirmLabel="삭제"
+                        onConfirm={() => remove.mutate({ kind: 'group', id: rule.groupId, label: rule.groupName, placeIds: [] })}
+                      >
+                        <Button variant="ghost" size="icon-sm" aria-label={`${rule.groupName} 규칙 삭제`} disabled={remove.isPending}>
+                          <Trash2Icon />
+                        </Button>
+                      </ConfirmAction>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -141,9 +150,17 @@ export function ScopeRules({ view }: { view: LocationView }) {
                       <Button variant="ghost" size="icon-sm" aria-label={`${rule.applicationName ?? rule.subject} 수정`} onClick={() => setEditing({ kind: 'app', id: rule.subject, label: rule.applicationName ?? rule.subject, placeIds: rule.placeIds, mode: rule.mode })}>
                         <PencilIcon />
                       </Button>
-                      <Button variant="ghost" size="icon-sm" aria-label={`${rule.applicationName ?? rule.subject} 규칙 삭제`} disabled={remove.isPending} onClick={() => remove.mutate({ kind: 'app', id: rule.subject, label: '', placeIds: [], mode: 'observe' })}>
-                        <Trash2Icon />
-                      </Button>
+                      <ConfirmAction
+                        title="이 앱의 장소 규칙을 삭제할까요?"
+                        description="삭제하면 이 앱만의 장소 규칙이 없어지고, 조직 전체 장소 정책만 적용됩니다."
+                        details={[{ label: '앱', value: rule.applicationName ?? rule.subject }]}
+                        confirmLabel="삭제"
+                        onConfirm={() => remove.mutate({ kind: 'app', id: rule.subject, label: '', placeIds: [], mode: 'observe' })}
+                      >
+                        <Button variant="ghost" size="icon-sm" aria-label={`${rule.applicationName ?? rule.subject} 규칙 삭제`} disabled={remove.isPending}>
+                          <Trash2Icon />
+                        </Button>
+                      </ConfirmAction>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2Icon, MinusCircleIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -96,9 +97,17 @@ export function DevicesTab({ id }: { id: string }) {
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(session.createdAt)}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(session.expiresAt)}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="outline" size="sm" disabled={session.current || revoke.isPending} onClick={() => revoke.mutate(session.id)}>
-                        종료
-                      </Button>
+                      <ConfirmAction
+                        title="이 사용자의 세션을 종료할까요?"
+                        description="그 기기는 바로 로그아웃됩니다. 이 사용자의 앱 로그인 상태와 토큰은 그대로 남을 수 있으니, 계정이 도용된 것 같다면 모든 세션 종료나 계정 잠금을 쓰세요. 아래 세션이 맞는지 확인하세요."
+                        details={[{ label: 'IP', value: session.ip ?? '알 수 없음' }, { label: '시작', value: formatDateTime(session.createdAt) }, { label: '만료', value: formatDateTime(session.expiresAt) }]}
+                        confirmLabel="종료"
+                        onConfirm={() => revoke.mutate(session.id)}
+                      >
+                        <Button variant="outline" size="sm" disabled={session.current || revoke.isPending}>
+                          종료
+                        </Button>
+                      </ConfirmAction>
                     </TableCell>
                   </TableRow>
                 ))}

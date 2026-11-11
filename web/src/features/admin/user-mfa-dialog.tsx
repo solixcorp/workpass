@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2Icon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -165,15 +166,22 @@ export function UserMfaDialog({ user, onClose }: { user: MfaUser | null; onClose
                           <ItemDescription>{formatDateTime(token.createdAt)}</ItemDescription>
                         </ItemContent>
                         <ItemActions>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={`${token.label} 삭제`}
-                            disabled={remove.isPending}
-                            onClick={() => remove.mutate(token.id)}
+                          <ConfirmAction
+                            title="이 사용자의 보안 토큰을 삭제할까요?"
+                            description="삭제하면 이 토큰으로는 추가 인증을 할 수 없고 되돌릴 수 없습니다. 사용자가 다른 방법으로 인증할 수 있는지 확인하세요."
+                            details={[{ label: '토큰', value: token.label }]}
+                            confirmLabel="삭제"
+                            onConfirm={() => remove.mutate(token.id)}
                           >
-                            <Trash2Icon />
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`${token.label} 삭제`}
+                              disabled={remove.isPending}
+                            >
+                              <Trash2Icon />
+                            </Button>
+                          </ConfirmAction>
                         </ItemActions>
                       </Item>
                     ))}

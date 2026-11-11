@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CopyIcon, PlusIcon, TagsIcon, Trash2Icon, UserMinusIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -373,15 +374,22 @@ function ManageDialog({ accountId, onClose }: { accountId: string | null; onClos
                             </SelectGroup>
                           </SelectContent>
                         </Select>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`${person?.email ?? member.userId} 내보내기`}
-                          disabled={drop.isPending}
-                          onClick={() => drop.mutate(member.userId)}
+                        <ConfirmAction
+                          title="이 멤버를 계정에서 내보낼까요?"
+                          description="내보내면 이 계정의 자원에 바로 접근할 수 없게 됩니다. 다시 넣으려면 초대해야 합니다."
+                          details={[{ label: '멤버', value: person?.email ?? member.userId }]}
+                          confirmLabel="내보내기"
+                          onConfirm={() => drop.mutate(member.userId)}
                         >
-                          <UserMinusIcon />
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`${person?.email ?? member.userId} 내보내기`}
+                            disabled={drop.isPending}
+                          >
+                            <UserMinusIcon />
+                          </Button>
+                        </ConfirmAction>
                       </ItemActions>
                     </Item>
                   )

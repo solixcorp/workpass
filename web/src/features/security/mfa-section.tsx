@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -171,6 +172,7 @@ function HotpTokenRow({
   const [verifyOpen, setVerifyOpen] = useState(false)
   const [code, setCode] = useState('')
   const [verifyError, setVerifyError] = useState<string | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const verify = useMutation({
     mutationFn: () => apiFetch('/api/mfa/hotp/verify', { method: 'POST', body: JSON.stringify({ tokenId: id, code }) }),
     onSuccess: () => {
@@ -190,6 +192,7 @@ function HotpTokenRow({
     },
     onError: (cause: unknown) =>
       toast.error(cause instanceof ApiError ? cause.message : '토큰을 삭제하지 못했습니다.'),
+    onSettled: () => setConfirmRemove(false),
   })
   return (
     <Item variant="muted" size="sm">
@@ -199,10 +202,20 @@ function HotpTokenRow({
       </ItemContent>
       <ItemActions>
         {!verified ? <Button variant="outline" size="sm" onClick={() => setVerifyOpen(true)}>인증 계속</Button> : null}
-        <Button variant="ghost" size="icon-sm" aria-label={`${label} ${removeLabel}`} disabled={remove.isPending} onClick={() => remove.mutate()}>
+        <Button variant="ghost" size="icon-sm" aria-label={`${label} ${removeLabel}`} disabled={remove.isPending} onClick={() => setConfirmRemove(true)}>
           <Trash2Icon />
         </Button>
       </ItemActions>
+      <ConfirmDialog
+        open={confirmRemove}
+        title="이 보안 토큰을 삭제할까요?"
+        description="삭제하면 이 토큰의 코드로는 더 이상 추가 인증을 할 수 없고, 되돌릴 수 없습니다. 이름과 등록일이 맞는지 확인하세요."
+        details={[{ label: '이름', value: label }, { label: '등록일', value: formatDateTime(createdAt) }, { label: '상태', value: verified ? '인증됨' : '확인 대기' }]}
+        confirmLabel="삭제"
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+        onCancel={() => setConfirmRemove(false)}
+      />
       <Dialog open={verifyOpen} onOpenChange={(next) => !next && !verify.isPending && setVerifyOpen(false)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>보안 토큰 확인</DialogTitle><DialogDescription>토큰의 새 코드를 입력하세요.</DialogDescription></DialogHeader>

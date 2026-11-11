@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -122,15 +123,22 @@ function RulesSection() {
                 </ItemDescription>
               </ItemContent>
               <ItemActions>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`${rule.name} 삭제`}
-                  disabled={remove.isPending}
-                  onClick={() => remove.mutate(rule.id)}
+                <ConfirmAction
+                  title="이 규칙을 삭제할까요?"
+                  description="이 규칙에 연결된 앱은 접근 요청을 받을 수 없게 됩니다. 이미 대기 중인 요청은 남을 수 있습니다."
+                  details={[{ label: '규칙', value: rule.name }]}
+                  confirmLabel="삭제"
+                  onConfirm={() => remove.mutate(rule.id)}
                 >
-                  <Trash2Icon />
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${rule.name} 삭제`}
+                    disabled={remove.isPending}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </ConfirmAction>
               </ItemActions>
             </Item>
           ))}
@@ -338,9 +346,17 @@ function BindingsSection() {
                   <TableCell>{formatDuration(binding.maxGrantedExpirySeconds)}</TableCell>
                   <TableCell>{formatDuration(binding.pendingExpirySeconds)}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon-sm" aria-label={`${binding.subject} 연결 해제`} onClick={() => remove.mutate(binding.id)}>
-                      <Trash2Icon />
-                    </Button>
+                    <ConfirmAction
+                      title="이 연결을 해제할까요?"
+                      description="이 앱은 더 이상 이 규칙으로 접근 요청을 받지 않습니다."
+                      details={[{ label: '앱', value: binding.subject }, { label: '규칙', value: ruleName(binding.ruleId) }]}
+                      confirmLabel="해제"
+                      onConfirm={() => remove.mutate(binding.id)}
+                    >
+                      <Button variant="ghost" size="icon-sm" aria-label={`${binding.subject} 연결 해제`}>
+                        <Trash2Icon />
+                      </Button>
+                    </ConfirmAction>
                   </TableCell>
                 </TableRow>
               ))}
@@ -518,9 +534,16 @@ function RequestsSection() {
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(request.createdAt)}</TableCell>
                   <TableCell>
                     {request.status === 'approved' ? (
-                      <Button variant="outline" size="sm" disabled={revoke.isPending} onClick={() => revoke.mutate(request.id)}>
-                        회수
-                      </Button>
+                      <ConfirmAction
+                        title="승인한 접근을 회수할까요?"
+                        description="이 사용자는 바로 해당 앱 접근을 잃습니다. 이미 앱에서 열어 둔 세션은 앱이 확인할 때까지 남을 수 있습니다."
+                        confirmLabel="회수"
+                        onConfirm={() => revoke.mutate(request.id)}
+                      >
+                        <Button variant="outline" size="sm" disabled={revoke.isPending}>
+                          회수
+                        </Button>
+                      </ConfirmAction>
                     ) : null}
                   </TableCell>
                 </TableRow>

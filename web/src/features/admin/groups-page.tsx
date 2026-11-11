@@ -1,3 +1,4 @@
+import { ConfirmAction } from '@/components/confirm-dialog'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PlusIcon, TagsIcon, Trash2Icon, UserMinusIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -328,15 +329,22 @@ function MembersDialog({ groupId, onClose }: { groupId: string | null; onClose: 
                           <ItemDescription>{user?.email ?? formatDateTime(member.grantedAt)}</ItemDescription>
                         </ItemContent>
                         <ItemActions>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={`${user?.email ?? member.userId} 내보내기`}
-                            disabled={drop.isPending}
-                            onClick={() => drop.mutate(member.userId)}
+                          <ConfirmAction
+                            title="이 멤버를 그룹에서 뺄까요?"
+                            description="이 그룹으로 받던 앱 접근과 권한이 바로 사라집니다."
+                            details={[{ label: '멤버', value: user?.email ?? member.userId }]}
+                            confirmLabel="빼기"
+                            onConfirm={() => drop.mutate(member.userId)}
                           >
-                            <UserMinusIcon />
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`${user?.email ?? member.userId} 내보내기`}
+                              disabled={drop.isPending}
+                            >
+                              <UserMinusIcon />
+                            </Button>
+                          </ConfirmAction>
                         </ItemActions>
                       </Item>
                     )
