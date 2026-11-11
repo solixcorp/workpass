@@ -674,6 +674,14 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS session_step_up_requirements_user_idx ON session_step_up_requirements (user_id, challenge_expires_at)",
   ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS step_up_passkey_challenges (
+      session_token TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      challenge TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
   // Access requests (docs/design/access-requests.md): just-in-time application
   // access with reviewer approval and time-limited temporal grants.
   await env.DB.prepare(

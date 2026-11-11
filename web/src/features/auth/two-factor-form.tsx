@@ -1,3 +1,4 @@
+import { startAuthentication } from '@simplewebauthn/browser'
 import { useState, type FormEvent } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,18 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import type { StepUpUi } from '@/lib/step-up'
+
+/** The person closed the browser's passkey prompt, or it timed out. The library wraps the browser's error. */
+function isPasskeyDeclined(cause: unknown): boolean {
+  if (!(cause instanceof Error)) return false
+  const code = (cause as { code?: unknown }).code
+  const original = (cause as { cause?: unknown }).cause
+  return (
+    cause.name === 'NotAllowedError' ||
+    code === 'ERROR_CEREMONY_ABORTED' ||
+    (original instanceof Error && original.name === 'NotAllowedError')
+  )
+}
 
 /**
  * Second-factor form. Every label, hint and message comes from `ui`, the
@@ -60,6 +73,28 @@ export function TwoFactorForm({
       await onVerified()
     } catch (cause) {
       setError(failure(cause instanceof ApiError ? cause.status : undefined))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  /** The browser asks for the passkey; only the signed assertion goes to the server. */
+  async function checkPasskey() {
+    setError(null)
+    setPending(true)
+    try {
+      const optionsJSON = await apiFetch<Parameters<typeof startAuthentication>[0]['optionsJSON']>('/api/security/step-up/passkey/options', { method: 'POST', body: '{}' })
+      const assertion = await startAuthentication({ optionsJSON })
+      await apiFetch('/api/security/step-up/passkey/verify', { method: 'POST', body: JSON.stringify(assertion) })
+      await onVerified()
+    } catch (cause) {
+      if (cause instanceof ApiError) {
+        setError(cause.status === 429 ? ui.messages.rate_limited : cause.status === 409 && /[가-힣]/.test(cause.message) ? cause.message : '패스키를 확인하지 못했습니다.')
+      } else if (isPasskeyDeclined(cause)) {
+        setError('패스키 확인이 취소되었거나 시간이 지났습니다. 다시 시도하세요.')
+      } else {
+        setError('패스키를 확인하지 못했습니다.')
+      }
     } finally {
       setPending(false)
     }
@@ -126,7 +161,15 @@ export function TwoFactorForm({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
-        {method.input === 'push' && method.send ? (
+        {method.input === 'passkey' ? (
+          <Field>
+            <FieldDescription>{method.send?.hint ?? method.description ?? ''}</FieldDescription>
+            <Button type="button" onClick={checkPasskey} disabled={pending}>
+              {pending ? <Spinner data-icon="inline-start" /> : null}
+              {method.send?.label ?? method.label}
+            </Button>
+          </Field>
+        ) : method.input === 'push' && method.send ? (
           <Field>
             <FieldDescription>{method.send.hint}</FieldDescription>
             <Button type="button" onClick={sendPush} disabled={pending}>

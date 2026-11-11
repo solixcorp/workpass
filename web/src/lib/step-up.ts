@@ -1,8 +1,9 @@
 export type StepUpMethodUi = {
-  key: 'totp' | 'otp' | 'backup_code' | 'hotp' | 'duo_push'
+  key: 'totp' | 'otp' | 'backup_code' | 'hotp' | 'duo_push' | 'passkey'
   label: string
+  description?: string
   fieldLabel: string
-  input: 'otp6' | 'text' | 'push'
+  input: 'otp6' | 'text' | 'push' | 'passkey'
   send?: { label: string; hint: string }
 }
 

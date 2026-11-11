@@ -184,10 +184,11 @@ export async function cleanupStepUpChallenges(env: Env, now: Date): Promise<void
       .bind(expiredBefore),
     env.DB.prepare("DELETE FROM session_step_up_requirements WHERE satisfied_at IS NOT NULL AND satisfied_at < ?")
       .bind(staleSatisfied),
+    env.DB.prepare("DELETE FROM step_up_passkey_challenges WHERE expires_at <= ?").bind(expiredBefore),
   ]);
 }
 
-/** Which second-factor methods this account can actually complete. */
+/** Risk challenges exclude passkeys: the sign-in being assessed may itself be a passkey. */
 export async function usableSecondFactors(env: Env, userId: string): Promise<string[]> {
   const { mfaPolicy } = await import("../mfa/policy");
   const policy = mfaPolicy(env);
@@ -239,10 +240,15 @@ export async function appMfaChallenge(env: Env, userId: string, requiredMethods:
   // The current sender always chooses SMS when a verified phone is present.
   if (user?.email && !(user.phone && user.verified)) usable.add("email");
   if (user?.phone && user.verified) usable.add("sms");
-  const methods = requiredMethods.filter((method) => method !== "passkey" && enabled.has(method) && usable.has(method));
+  if (requiredMethods.includes("passkey") && enabled.has("passkey")) {
+    const passkey = await env.DB.prepare('SELECT id FROM "passkey" WHERE "userId" = ? LIMIT 1')
+      .bind(userId).first<{ id: string }>().catch(() => null);
+    if (passkey) usable.add("passkey");
+  }
+  const methods = requiredMethods.filter((method) => enabled.has(method) && usable.has(method));
   if (methods.length === 0) {
     const error = requiredMethods.includes("passkey") && enabled.has("passkey")
-      ? "패스키로 다시 로그인하세요."
+      ? "이 앱은 패스키가 필요합니다. 보안 설정에서 패스키를 등록하세요."
       : "이 앱에 필요한 인증 수단을 사용할 수 없습니다. 관리자에게 문의하세요.";
     return Response.json({ error, requiredMethods }, { status: 403 });
   }

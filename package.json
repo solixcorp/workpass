@@ -27,6 +27,7 @@
     "@cloudflare/opaque-ts": "^0.7.5",
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "0.4.4",
+    "@simplewebauthn/server": "13.3.2",
     "better-auth": "1.7.18",
     "hono": "4.11.5"
   },

@@ -56,6 +56,12 @@ const ICONS: Record<IdxIcon, ReactNode> = {
   passkey: <KeyRoundIcon />,
 }
 
+/** The second-factor screen an app's access policy asks for, when the server sent one. */
+function appChallenge(body: unknown): StepUpUi | null {
+  const ui = (body as { ui?: StepUpUi } | null)?.ui
+  return ui && Array.isArray(ui.methods) && ui.methods.length > 0 ? ui : null
+}
+
 export function LoginPage() {
   const queryClient = useQueryClient()
   const { oq } = useSearch({ from: '/login' })
@@ -138,6 +144,12 @@ export function LoginPage() {
     } catch (failure) {
       continued.current = false
       setFinishing(false)
+      // The app asks for a second factor this session has not shown yet: offer exactly those.
+      const challenge = failure instanceof ApiError && failure.status === 403 ? appChallenge(failure.body) : null
+      if (challenge) {
+        await fold(() => setStepUp(challenge))
+        return
+      }
       setStepUp(null)
       await start().catch(() => setFatal(true))
       setError(

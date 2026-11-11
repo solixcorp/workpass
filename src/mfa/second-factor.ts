@@ -53,7 +53,8 @@ export async function recordSessionMfaProof(env: Env, sessionToken: string, user
     // (verification may rotate the session, leaving the flagged token behind).
     try {
       const { satisfyPendingStepUpChallenges } = await import("../security/step-up");
-      await satisfyPendingStepUpChallenges(env, userId);
+      // A passkey proof answers an app policy, never the separate risk gate.
+      if (method !== "passkey") await satisfyPendingStepUpChallenges(env, userId);
     } catch {
       // Record-keeping only; the proof itself remains the durable evidence.
     }

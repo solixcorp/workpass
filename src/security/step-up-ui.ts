@@ -5,11 +5,12 @@
  */
 
 export interface StepUpMethodUi {
-  key: "totp" | "otp" | "backup_code" | "hotp" | "duo_push";
+  key: "totp" | "otp" | "backup_code" | "hotp" | "duo_push" | "passkey";
   label: string;
   fieldLabel: string;
   /** otp6: six one-time digits; text: free-form code; push: approve on a device. */
-  input: "otp6" | "text" | "push";
+  input: "otp6" | "text" | "push" | "passkey";
+  description?: string;
   /** Present when the code must be requested before it can be entered. */
   send?: { label: string; hint: string };
 }
@@ -47,6 +48,7 @@ const METHOD_UI: Record<StepUpMethodUi["key"], StepUpMethodUi> = {
   },
   backup_code: { key: "backup_code", label: "백업 코드", fieldLabel: "백업 코드", input: "text" },
   hotp: { key: "hotp", label: "보안 토큰", fieldLabel: "토큰의 6자리 코드", input: "otp6" },
+  passkey: { key: "passkey", label: "패스키", description: "등록한 패스키로 확인합니다.", fieldLabel: "", input: "passkey" },
   duo_push: {
     key: "duo_push",
     label: "Duo 푸시",
