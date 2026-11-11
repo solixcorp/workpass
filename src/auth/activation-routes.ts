@@ -17,6 +17,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "../env";
+import { notifySecurityEvent } from "../users/security-notices";
 import { opaqueConfig, opaqueIdentityFor, opaqueServer, base64Decode, base64Encode } from "./opaque";
 import { clientIp, rateBucket, storeCredentialRecord, wireToBase64 } from "./opaque-routes";
 import { requireAdministrator } from "../security/authorization";
@@ -172,6 +173,7 @@ activationRoutes.post("/api/activation/register/finish", async (context) => {
     request_path: "/api/activation/register/finish",
     client_ip: clientIp(context),
   }).catch(() => console.error("Activation audit event could not be recorded"));
+  await notifySecurityEvent(context.env, "identity.user.password_change.success_or_failure", link.userId);
   return context.json({ activated: true });
 });
 

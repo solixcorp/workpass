@@ -11,7 +11,9 @@ import { revokeTrustedDevices } from "../security/trusted-device-store";
 import { enforceOidcPolicy } from "../access/oidc-gate";
 import { recordOAuthGrant } from "../security/app-grants";
 import { recordLogin } from "../users/login-history";
-import { locationGate } from "../security/location-gate";
+import { enforceLocationAfterPasskeyLogin, locationGate } from "../security/location-gate";
+import { notifySecurity } from "../users/notifications";
+import { mfaEnrolledNotice, mfaRemovedNotice } from "../users/security-notices";
 import { recordSessionMfaProof } from "../mfa/second-factor";
 import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
 import { enforceMfaPolicy } from "../mfa/policy";
@@ -117,6 +119,10 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
 
   if (!eventType) {
     const answer = await auth.handler(request);
+    if (answer.ok && request.method === "POST" && ["/api/auth/two-factor/disable", "/api/auth/passkey/delete-passkey"].includes(path)) {
+      const session = await auth.api.getSession({ headers: request.headers }).catch(() => null);
+      if (session) await notifySecurity(env, session.user.id, mfaRemovedNotice);
+    }
     if (grantCopy && path === "/api/auth/oauth2/continue") {
       const continuing = await auth.api.getSession({ headers: request.headers }).catch(() => null);
       await recordOAuthGrant(env, grantCopy, answer, continuing?.user.id ?? null);
@@ -201,12 +207,10 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
         targetUserId = null;
         if (path === "/api/auth/passkey/verify-authentication") {
           // The passkey signed in; a place the policy does not allow takes the session back.
-          const place = await locationGate(env, { request, userId: responseUserId, path });
-          if (!place.allowed) {
-            const issued = await findNewSessionFromResponse(env, response).catch(() => null);
-            if (issued) await env.DB.prepare('DELETE FROM "session" WHERE token = ?').bind(issued.token).run().catch(() => null);
+          const denied = await enforceLocationAfterPasskeyLogin(env, request, response, responseUserId, path);
+          if (denied) {
             await updateAuditEvent(env, eventId, { actor_user_id: responseUserId, target_user_id: null, outcome: "failure" }).catch(() => null);
-            return Response.json({ error: "Sign-in is not allowed from this location", code: "location_denied" }, { status: 403 });
+            return denied;
           }
           await recordLogin(env, request, responseUserId, "passkey");
         }
@@ -243,6 +247,12 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
  * recorded.
  */
 export async function handleTwoFactorVerification(request: Request, env: Env, auth: AuthInstance): Promise<Response> {
+  let enrolling: Awaited<ReturnType<typeof auth.api.getSession>> | null = null;
+  if (new URL(request.url).pathname === "/api/auth/two-factor/verify-totp") {
+    try { enrolling = await auth.api.getSession({ headers: request.headers }); } catch { /* Best effort. */ }
+  }
+  const wasEnabled = enrolling ? await env.DB.prepare('SELECT "twoFactorEnabled" AS enabled FROM "user" WHERE id = ?')
+    .bind(enrolling.user.id).first<{ enabled: number | boolean | null }>().catch(() => null) : null;
   let response: Response;
   try {
     response = await auth.handler(request);
@@ -280,6 +290,11 @@ export async function handleTwoFactorVerification(request: Request, env: Env, au
   }
   if (!token || !userId || !(await recordSessionMfaProof(env, token, userId))) {
     return Response.json({ error: "The verification could not be recorded" }, { status: 503 });
+  }
+  if (enrolling && enrolling.user.id === userId && wasEnabled && !wasEnabled.enabled) {
+    const current = await env.DB.prepare('SELECT "twoFactorEnabled" AS enabled FROM "user" WHERE id = ?')
+      .bind(userId).first<{ enabled: number | boolean | null }>().catch(() => null);
+    if (current?.enabled) await notifySecurity(env, userId, mfaEnrolledNotice);
   }
   return response;
 }

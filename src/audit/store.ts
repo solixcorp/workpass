@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { notifySecurityEvent } from "../users/security-notices";
 
 export type AuditOutcome = "started" | "success" | "failure";
 
@@ -97,6 +98,7 @@ export async function insertAuditEvent(
   } catch {
     // Queue-less behavior is the documented failsafe.
   }
+  if (event.outcome === "success") await notifySecurityEvent(env, event.event_type, event.target_user_id ?? event.actor_user_id);
 }
 
 export async function updateAuditEvent(
@@ -127,6 +129,7 @@ export async function updateAuditEvent(
   if (result.meta.changes !== 1) {
     throw new Error("Audit event is missing or already finalized");
   }
+  if (update.outcome === "success") await notifySecurityEvent(env, row.event_type, update.target_user_id ?? update.actor_user_id);
 }
 
 export interface AuditChainVerification {

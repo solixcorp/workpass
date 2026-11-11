@@ -28,6 +28,22 @@ export async function notifyUsers(env: Env, userIds: string[], notice: Notice): 
 
 export const notifyUser = (env: Env, userId: string, notice: Notice) => notifyUsers(env, [userId], notice);
 
+/** Security notices are deduplicated atomically, without affecting the action. */
+export async function notifySecurity(env: Env, userId: string, notice: Notice): Promise<void> {
+  try {
+    const now = new Date();
+    await env.DB.prepare(
+      `INSERT INTO user_notifications (id, user_id, kind, title, body, link, created_at)
+       SELECT ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (
+         SELECT 1 FROM user_notifications WHERE user_id = ? AND kind = ? AND title = ? AND created_at >= ?
+       )`,
+    ).bind(crypto.randomUUID(), userId, notice.kind, notice.title, notice.body, notice.link ?? null, now.toISOString(),
+      userId, notice.kind, notice.title, new Date(now.getTime() - 60_000).toISOString()).run();
+  } catch {
+    // Notifications are best effort.
+  }
+}
+
 export async function adminIds(env: Env): Promise<string[]> {
   try {
     const rows = await env.DB.prepare(`SELECT id, role FROM "user" WHERE role IS NOT NULL AND (banned IS NULL OR banned = 0)`)

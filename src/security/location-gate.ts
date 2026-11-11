@@ -1,6 +1,8 @@
 import { insertAuditEvent } from "../audit/store";
 import type { Env } from "../env";
 import { evaluateLocation, type LocationVerdict } from "./location-policy";
+import { notifySecurity } from "../users/notifications";
+import { findNewSessionFromResponse } from "./risk-auth-middleware";
 
 /**
  * Check a sign-in against the place policy and leave an audit event when it
@@ -34,4 +36,18 @@ export async function locationGate(
     // The decision stands; the audit gap shows in the logs.
   }
   return verdict;
+}
+
+export async function notifyLocationDenied(env: Env, userId: string): Promise<void> {
+  await notifySecurity(env, userId, { kind: "security_location", title: "허용되지 않은 위치에서 로그인이 시도되었습니다", body: "로그인 활동을 확인하세요.", link: "/activity" });
+}
+
+/** The passkey proof succeeded; revoke its newly issued session if location denies it. */
+export async function enforceLocationAfterPasskeyLogin(env: Env, request: Request, response: Response, userId: string, path: string): Promise<Response | null> {
+  const place = await locationGate(env, { request, userId, path });
+  if (place.allowed) return null;
+  const issued = await findNewSessionFromResponse(env, response).catch(() => null);
+  if (issued) await env.DB.prepare('DELETE FROM "session" WHERE token = ?').bind(issued.token).run().catch(() => null);
+  await notifyLocationDenied(env, userId);
+  return Response.json({ error: "Sign-in is not allowed from this location", code: "location_denied" }, { status: 403 });
 }

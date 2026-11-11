@@ -25,7 +25,7 @@ import {
 import { sealString, unsealString } from "../crypto/sealed";
 import { insertAuditEvent } from "../audit/store";
 import { recordLogin } from "../users/login-history";
-import { locationGate } from "../security/location-gate";
+import { locationGate, notifyLocationDenied } from "../security/location-gate";
 import { auditStandaloneOperation } from "../audit/store";
 import { evaluateOpaqueLoginGate } from "./opaque-login";
 import { getStepUpChallenge, openStepUpChallenge, usableSecondFactors } from "../security/step-up";
@@ -386,6 +386,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
   // Where the sign-in comes from: after the proof succeeded, so the reason may be named.
   const place = await locationGate(context.env, { request: context.req.raw, userId: transcriptRow.user_id, path: "/api/opaque/auth/finish" });
   if (!place.allowed) {
+    await notifyLocationDenied(context.env, transcriptRow.user_id);
     return context.json({ error: "Sign-in is not allowed from this location", code: "location_denied" }, 403);
   }
 

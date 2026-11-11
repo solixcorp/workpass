@@ -1,4 +1,6 @@
 import type { Env } from "../env";
+import { describeDevice } from "./device";
+import { notifySecurity } from "./notifications";
 
 interface Located {
   headers: { get(name: string): string | null };
@@ -10,6 +12,20 @@ export async function recordLogin(env: Env, request: Located, userId: string, me
   try {
     const cf = (request.cf ?? {}) as { country?: string; region?: string; city?: string };
     const id = crypto.randomUUID();
+    try {
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const previous = await env.DB.prepare(
+        `SELECT user_agent, country, occurred_at FROM login_history WHERE user_id = ? AND
+         (occurred_at >= ? OR occurred_at = (SELECT MIN(occurred_at) FROM login_history WHERE user_id = ?))`,
+      ).bind(userId, cutoff, userId).all<{ user_agent: string | null; country: string | null; occurred_at: string }>();
+      const label = describeDevice(request.headers.get("user-agent")).label;
+      const known = previous.results.some((row) => row.occurred_at >= cutoff && row.country === (cf.country ?? null) && describeDevice(row.user_agent).label === label);
+      if (previous.results.length && !known) {
+        await notifySecurity(env, userId, { kind: "security_new_device", title: "새 기기에서 로그인했습니다", body: `${label} · ${cf.country ?? "위치 알 수 없음"}`, link: "/activity" });
+      }
+    } catch {
+      // A history lookup must not prevent recording the sign-in.
+    }
     await env.DB.prepare(
       `INSERT INTO login_history (id, user_id, occurred_at, ip, user_agent, country, region, city, method)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
