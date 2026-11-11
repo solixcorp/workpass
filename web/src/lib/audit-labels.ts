@@ -72,7 +72,35 @@ const EXACT: Record<string, string> = {
   'account.switched': '계정 전환',
   'saml.service_provider.create': 'SAML 서비스 제공자 생성',
   'wsfed.relying_party.create': 'WS-Fed 신뢰 당사자 생성',
+  'identity.user.self_profile_update': '내 정보 수정',
+  'security.suspicious_report': '의심스러운 활동 신고',
+  'security.suspicious_report_close': '의심스러운 활동 신고 처리',
+  'app.access_request_message': '앱 접근 요청 메시지',
+  'access_request.created': '접근 요청 생성',
+  'access_request.approved': '접근 요청 승인',
+  'access_request.denied': '접근 요청 거절',
+  'access_request.revoked': '접근 요청 권한 회수',
+  'access_request.cancelled': '접근 요청 취소',
+  'authentication.device_flow.approved': '기기 로그인 승인',
+  'authentication.device_flow.denied': '기기 로그인 거절',
+  'authentication.device_flow.verify_failed': '기기 코드 확인 실패',
+  'authentication.ciba.approved': '로그인 승인 요청 승인',
+  'authentication.ciba.denied': '로그인 승인 요청 거절',
 }
+
+/** The families the log can be narrowed to; `prefix` is what the server matches. */
+export const EVENT_FAMILIES: Array<{ value: string; label: string; prefix: string }> = [
+  { value: 'authentication', label: '로그인·인증', prefix: 'authentication.' },
+  { value: 'oauth', label: '앱 로그인(OAuth)', prefix: 'oauth.' },
+  { value: 'identity', label: '사용자 계정', prefix: 'identity.' },
+  { value: 'mfa', label: '2차 인증', prefix: 'mfa.' },
+  { value: 'app', label: '앱', prefix: 'app.' },
+  { value: 'directory', label: '그룹', prefix: 'directory.' },
+  { value: 'policy', label: '정책', prefix: 'policy.' },
+  { value: 'access_request', label: '접근 요청', prefix: 'access_request.' },
+  { value: 'security', label: '보안', prefix: 'security.' },
+  { value: 'admin', label: '설정·운영', prefix: 'admin.' },
+]
 
 export function eventLabel(type: string): string {
   return EXACT[type] ?? type

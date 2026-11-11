@@ -101,6 +101,30 @@ describe("user detail", () => {
     expect(logs.events.every((e: any) => e.actor_user_id === adminId || e.target_user_id === adminId)).toBe(true);
   });
 
+  test("the log is read by page with a total, by family of event and by text, with names", async () => {
+    const first = await json(await call("/api/admin/audit-events?page=1&limit=2"));
+    expect(first.events).toHaveLength(2);
+    expect(first.total).toBeGreaterThan(2);
+    expect(first.page).toBe(1);
+    const second = await json(await call("/api/admin/audit-events?page=2&limit=2"));
+    expect(second.events.map((e: any) => e.id)).not.toContain(first.events[0].id);
+    expect(second.events[0].id).not.toBe(first.events[1].id);
+
+    const family = await json(await call("/api/admin/audit-events?page=1&limit=50&eventPrefix=identity."));
+    expect(family.events.length).toBeGreaterThan(0);
+    expect(family.events.every((e: any) => e.event_type.startsWith("identity."))).toBe(true);
+    expect(family.total).toBeLessThan(first.total);
+
+    const text = await json(await call("/api/admin/audit-events?page=1&q=profile"));
+    expect(text.events.length).toBeGreaterThan(0);
+    expect(text.events.every((e: any) => `${e.event_type}${e.request_path}`.includes("profile"))).toBe(true);
+    const named = family.events.find((e: any) => e.actor_user_id === adminId);
+    expect(named.actor).toMatchObject({ email: "admin@detail.test" });
+
+    expect((await call("/api/admin/audit-events?page=0")).status).toBe(400);
+    expect((await call("/api/admin/audit-events?eventPrefix=a%25b")).status).toBe(400);
+  });
+
   test("only administrators can read it", async () => {
     jar.clear();
     expect((await call(`/api/admin/users/${adminId}/detail`)).status).toBe(401);

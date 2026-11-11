@@ -1,12 +1,7 @@
-import { useInfiniteQuery } from '@tanstack/react-query'
 import { ShieldCheckIcon, UserIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { apiFetch } from '@/lib/api'
-import { eventLabel } from '@/lib/audit-labels'
-import { formatDateTime } from '@/lib/format'
-import { Failed, Loading, Nothing, Panel } from './shared'
+import { AuditView } from '@/features/audit/audit-view'
+import { Panel } from './shared'
 
 export function RolesTab({ roles }: { roles: string[] }) {
   const isAdmin = roles.includes('admin')
@@ -39,73 +34,10 @@ export function RolesTab({ roles }: { roles: string[] }) {
   )
 }
 
-type AuditEvent = {
-  id: string
-  occurred_at: string
-  actor_user_id: string | null
-  target_user_id: string | null
-  event_type: string
-  outcome: 'started' | 'success' | 'failure'
-  client_ip: string | null
-}
-
-const OUTCOMES = { success: '성공', failure: '실패', started: '시작' } as const
-
 export function LogsTab({ id }: { id: string }) {
-  const query = useInfiniteQuery({
-    queryKey: ['admin', 'users', 'detail', id, 'logs'],
-    initialPageParam: '',
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ userId: id, limit: '25' })
-      if (pageParam) params.set('cursor', pageParam)
-      return apiFetch<{ events: AuditEvent[]; nextCursor: string | null }>(`/api/admin/audit-events?${params}`)
-    },
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-  })
-  if (query.isPending) return <Loading />
-  if (query.error) return <Failed what="시스템 로그" />
-  const events = query.data.pages.flatMap((page) => page.events)
   return (
-    <Panel title="시스템 로그" description="이 사용자가 한 일과 이 사용자에게 일어난 일입니다.">
-      {events.length === 0 ? (
-        <Nothing>기록이 없습니다.</Nothing>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>시각</TableHead>
-                <TableHead>내용</TableHead>
-                <TableHead>구분</TableHead>
-                <TableHead>결과</TableHead>
-                <TableHead>IP</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {events.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(event.occurred_at)}</TableCell>
-                  <TableCell className="font-medium">{eventLabel(event.event_type)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{event.target_user_id === id && event.actor_user_id !== id ? '이 사용자에게' : '이 사용자가'}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={event.outcome === 'failure' ? 'destructive' : 'secondary'}>{OUTCOMES[event.outcome]}</Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{event.client_ip ?? '—'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-      {query.hasNextPage ? (
-        <div>
-          <Button variant="outline" size="sm" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>
-            더 보기
-          </Button>
-        </div>
-      ) : null}
+    <Panel title="시스템 로그" description="이 사용자가 한 일과 이 사용자에게 일어난 일입니다. 줄을 누르면 자세한 내용이 열립니다.">
+      <AuditView userId={id} keyPrefix="admin-user-logs" />
     </Panel>
   )
 }

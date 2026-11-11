@@ -123,6 +123,21 @@ auditRoutes.get("/audit-events", async (context) => {
     values.push(involved, involved);
   }
 
+  // A family of events by prefix (for example `authentication.`), and a plain
+  // text match over the type, the path and the address.
+  const prefix = query.get("eventPrefix");
+  if (prefix) {
+    if (!/^[a-z0-9_.]{1,64}$/.test(prefix)) return context.json({ error: "eventPrefix is not valid" }, 400);
+    clauses.push("event_type LIKE ?");
+    values.push(`${prefix}%`);
+  }
+  const text = query.get("q");
+  if (text) {
+    const like = `%${text.slice(0, 100).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    clauses.push("(event_type LIKE ? ESCAPE '\\' OR request_path LIKE ? ESCAPE '\\' OR client_ip LIKE ? ESCAPE '\\')");
+    values.push(like, like, like);
+  }
+
   const search = query.get("search");
   if (search !== null) {
     try { akqlParse(search); } catch (error) {
@@ -130,8 +145,18 @@ auditRoutes.get("/audit-events", async (context) => {
     }
   }
 
+  // Page-numbered reading (`page`, 1-based) with a total; the cursor stays for
+  // callers that walk the log in order.
+  const rawPage = query.get("page");
+  if (rawPage !== null && (!/^[0-9]+$/.test(rawPage) || Number(rawPage) < 1 || Number(rawPage) * limit > 100_000)) {
+    return context.json({ error: "page must be a positive integer within the first 100000 events" }, 400);
+  }
+  const page = rawPage === null ? null : Number(rawPage);
+  const filterWhere = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const filterValues = [...values];
+
   const cursor = query.get("cursor");
-  if (cursor) {
+  if (cursor && page === null) {
     const cursorEvent = await context.env.DB.prepare(
       "SELECT occurred_at, id FROM audit_events WHERE id = ?",
     )
@@ -143,12 +168,14 @@ auditRoutes.get("/audit-events", async (context) => {
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const total = page === null ? null : (await context.env.DB.prepare(`SELECT COUNT(*) AS n FROM audit_events ${filterWhere}`)
+    .bind(...filterValues).first<{ n: number }>())?.n ?? 0;
   const rows = await context.env.DB.prepare(
     `SELECT id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path,
             client_ip, event_context
-     FROM audit_events ${where} ORDER BY occurred_at DESC, id DESC LIMIT ?`,
+     FROM audit_events ${where} ORDER BY occurred_at DESC, id DESC LIMIT ?${page === null ? "" : " OFFSET ?"}`,
   )
-    .bind(...values, limit + 1)
+    .bind(...values, limit + 1, ...(page === null ? [] : [(page - 1) * limit]))
     .all<AuditEvent>();
 
   const hasMore = rows.results.length > limit;
@@ -165,14 +192,25 @@ auditRoutes.get("/audit-events", async (context) => {
     events = events.filter((_, index) => akqlMatch(search, projections[index] as Record<string, unknown>));
   }
   const lastEvent = events.at(-1);
+  // Who the people in this page are, so the screen can say names instead of ids.
+  const ids = [...new Set(events.flatMap((row) => [row.actor_user_id, row.target_user_id]).filter((id): id is string => Boolean(id)))];
+  const people = new Map<string, { name: string; email: string }>();
+  if (ids.length > 0) {
+    const found = await context.env.DB.prepare(`SELECT id, name, email FROM "user" WHERE id IN (${ids.map(() => "?").join(",")})`)
+      .bind(...ids).all<{ id: string; name: string; email: string }>().catch(() => ({ results: [] as Array<{ id: string; name: string; email: string }> }));
+    for (const person of found.results) people.set(person.id, { name: person.name, email: person.email });
+  }
   return context.json({
     events: events.map((row) => ({
+      actor: row.actor_user_id ? people.get(row.actor_user_id) ?? null : null,
+      target: row.target_user_id ? people.get(row.target_user_id) ?? null : null,
       id: row.id, occurred_at: row.occurred_at, actor_user_id: row.actor_user_id,
       target_user_id: row.target_user_id, event_type: row.event_type,
       outcome: row.outcome, request_path: row.request_path,
       client_ip: row.client_ip ?? null, event_context: row.event_context ?? null,
     })),
     limit,
+    ...(page === null ? {} : { page, total }),
     nextCursor: hasMore && lastEvent ? lastEvent.id : null,
   });
 });
