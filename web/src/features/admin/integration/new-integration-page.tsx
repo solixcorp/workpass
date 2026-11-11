@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { ArrowLeftIcon } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { ArrowLeftIcon, ImageIcon, UploadIcon } from 'lucide-react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -16,9 +16,12 @@ import {
 import { FieldDescription } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { Field, FieldContent, FieldLabel } from '@/components/ui/field'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError, apiFetch } from '@/lib/api'
 import {
+  CLIENT_TYPES,
   CLIENT_TYPE_LABELS,
   groupsQuery,
   parseClientType,
@@ -85,10 +88,25 @@ export function NewIntegrationPage() {
   return <Form key={`${method}-${type}`} method={method} type={type} />
 }
 
-function Form({ method, type }: { method: Method; type: Exclude<ClientType, 'service'> }) {
+/** The settings form. In the wizard the capability cards above it decide the method; the form adds the app type, description and logo. */
+export function Form({
+  method,
+  type: initialType,
+  wizard = false,
+  header,
+}: {
+  method: Method
+  type: Exclude<ClientType, 'service'>
+  wizard?: boolean
+  header?: ReactNode
+}) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [type, setType] = useState(initialType)
   const clientType: ClientType = method === 'api' ? 'service' : type
+  const logoInput = useRef<HTMLInputElement>(null)
+  const [logo, setLogo] = useState<File | null>(null)
+  const [description, setDescription] = useState('')
   const groups = useQuery(groupsQuery)
 
   const [name, setName] = useState('')
@@ -201,6 +219,7 @@ function Form({ method, type }: { method: Method; type: Exclude<ClientType, 'ser
         body: JSON.stringify({
           slug,
           name: name.trim(),
+          ...(description.trim() ? { description: description.trim() } : {}),
           protocol: method === 'api' ? 'oidc' : method,
           ...(provider.binding ? { binding: provider.binding } : {}),
           ...(launchUrl.trim() && showLaunch ? { launchUrl: launchUrl.trim() } : {}),
@@ -217,6 +236,13 @@ function Form({ method, type }: { method: Method; type: Exclude<ClientType, 'ser
           : explain(error, '앱을 만들지 못했습니다.'),
       )
       return
+    }
+
+    if (logo) {
+      const form = new FormData()
+      form.set('file', logo)
+      const uploaded = await fetch(`/api/admin/applications/${slug}/icon`, { method: 'POST', body: form, credentials: 'same-origin' }).catch(() => null)
+      if (!uploaded?.ok) toast.warning('앱은 만들었지만 로고를 올리지 못했습니다. 상세 화면에서 다시 올려 보세요.')
     }
 
     let enabled = false
@@ -254,8 +280,9 @@ function Form({ method, type }: { method: Method; type: Exclude<ClientType, 'ser
             <ArrowLeftIcon data-icon="inline-start" />앱 목록
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">{title(method, type)}</h1>
+        <h1 className="text-xl font-semibold">{wizard ? '통합 마법사' : title(method, type)}</h1>
       </div>
+      {header}
 
       <form onSubmit={submit} noValidate className="flex flex-col gap-6">
         <Section title="일반 설정">
@@ -279,6 +306,40 @@ function Form({ method, type }: { method: Method; type: Exclude<ClientType, 'ser
               }}
             />
           </SettingRow>
+          <SettingRow title="설명" description="포털 앱 카드에 보입니다. 선택 사항입니다.">
+            <Textarea id="new-app-description" aria-label="설명" rows={2} maxLength={512} value={description} onChange={(event) => setDescription(event.target.value)} />
+          </SettingRow>
+          {method !== 'api' ? (
+            <SettingRow title="로고" description="PNG, JPEG, WebP, GIF, SVG, 1MB 이하입니다. 선택 사항입니다.">
+              <div className="flex items-center gap-3">
+                <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-card">
+                  {logo ? <img src={URL.createObjectURL(logo)} alt="" className="size-full object-contain p-1" /> : <ImageIcon className="text-muted-foreground" />}
+                </div>
+                <input
+                  ref={logoInput}
+                  type="file"
+                  hidden
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  aria-label="로고 파일"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null
+                    event.target.value = ''
+                    if (file && file.size > 1024 * 1024) setFailure('로고는 1MB 이하여야 합니다.')
+                    else setLogo(file)
+                  }}
+                />
+                <Button type="button" variant="outline" size="sm" onClick={() => logoInput.current?.click()}>
+                  <UploadIcon data-icon="inline-start" />
+                  {logo ? '다른 이미지 고르기' : '이미지 고르기'}
+                </Button>
+                {logo ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setLogo(null)}>
+                    지우기
+                  </Button>
+                ) : null}
+              </div>
+            </SettingRow>
+          ) : null}
           {showLaunch ? (
             <SettingRow
               title="실행 주소"
@@ -291,6 +352,27 @@ function Form({ method, type }: { method: Method; type: Exclude<ClientType, 'ser
 
         {usesOidc ? (
           <Section title="클라이언트 설정">
+            {wizard && method === 'oidc' ? (
+              <SettingRow title="앱 유형" description="유형에 맞게 설정 항목이 정해집니다.">
+                <RadioGroup
+                  value={type}
+                  onValueChange={(value) => {
+                    setType(value as typeof type)
+                    setOidc(defaultOidcDraft(value as ClientType))
+                  }}
+                >
+                  {CLIENT_TYPES.map((entry) => (
+                    <Field key={entry.value} orientation="horizontal">
+                      <RadioGroupItem id={`wizard-type-${entry.value}`} value={entry.value} />
+                      <FieldContent>
+                        <FieldLabel htmlFor={`wizard-type-${entry.value}`}>{entry.label}</FieldLabel>
+                        <FieldDescription>{entry.description}</FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  ))}
+                </RadioGroup>
+              </SettingRow>
+            ) : null}
             <OidcFields type={clientType} draft={oidc} onChange={setOidc} />
           </Section>
         ) : null}

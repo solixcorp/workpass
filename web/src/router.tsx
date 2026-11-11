@@ -15,6 +15,7 @@ import { AccountsAdminPage } from '@/features/admin/accounts-admin-page'
 import { AccountsPage } from '@/features/accounts/accounts-page'
 import { ApplicationsPage } from '@/features/admin/applications-page'
 import { ApplicationPage } from '@/features/admin/integration/application-page'
+import { IntegrationWizardPage } from '@/features/admin/integration/integration-wizard-page'
 import { NewIntegrationPage } from '@/features/admin/integration/new-integration-page'
 import { AuditPage } from '@/features/admin/audit-page'
 import { PoliciesPage } from '@/features/admin/policies-page'
@@ -201,6 +202,12 @@ const adminNewApplicationRoute = createRoute({
   component: NewIntegrationPage,
 })
 
+const adminWizardRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/applications/wizard',
+  component: IntegrationWizardPage,
+})
+
 const adminApplicationRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/applications/$slug',
@@ -240,6 +247,7 @@ const routeTree = rootRoute.addChildren([
       adminAccountsRoute,
       adminApplicationsRoute,
       adminNewApplicationRoute,
+      adminWizardRoute,
       adminApplicationRoute,
       adminRequestsRoute,
       adminAuditRoute,
