@@ -53,7 +53,10 @@ export function ActivityPage() {
                   <li key={login.loginId} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
                     {login.os === 'iOS' || login.os === 'Android' ? <SmartphoneIcon className="size-4 shrink-0 text-muted-foreground" /> : <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />}
                     <div className="flex min-w-0 flex-1 basis-56 flex-col gap-0.5">
-                      <span className="text-sm font-medium">{login.device}</span>
+                      <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                        {login.device}
+                        {login.current ? <Badge variant="secondary">이 기기</Badge> : null}
+                      </span>
                       <span className="text-xs text-muted-foreground">{login.location ?? login.ip ?? '알 수 없음'}</span>
                       <span className="text-xs text-muted-foreground">
                         마지막 로그인 {formatDateTime(login.lastAt)} <span className="whitespace-nowrap">· {login.count}회</span>

@@ -7,8 +7,13 @@ interface Located {
   cf?: unknown;
 }
 
+export async function hashSessionToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** Record a successful sign-in with where it came from. Never throws. */
-export async function recordLogin(env: Env, request: Located, userId: string, method: string): Promise<string | null> {
+export async function recordLogin(env: Env, request: Located, userId: string, method: string, sessionToken?: string): Promise<string | null> {
   try {
     const cf = (request.cf ?? {}) as { country?: string; region?: string; city?: string };
     const id = crypto.randomUUID();
@@ -27,13 +32,13 @@ export async function recordLogin(env: Env, request: Located, userId: string, me
       // A history lookup must not prevent recording the sign-in.
     }
     await env.DB.prepare(
-      `INSERT INTO login_history (id, user_id, occurred_at, ip, user_agent, country, region, city, method)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO login_history (id, user_id, occurred_at, ip, user_agent, country, region, city, method, session_token_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id, userId, new Date().toISOString(),
       (request.headers.get("cf-connecting-ip") ?? "").slice(0, 64) || null,
       (request.headers.get("user-agent") ?? "").slice(0, 512) || null,
-      cf.country ?? null, cf.region ?? null, cf.city ?? null, method,
+      cf.country ?? null, cf.region ?? null, cf.city ?? null, method, sessionToken ? await hashSessionToken(sessionToken) : null,
     ).run();
     return id;
   } catch {

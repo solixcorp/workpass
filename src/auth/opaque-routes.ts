@@ -441,7 +441,7 @@ opaqueRoutes.post("/api/opaque/auth/finish", async (context) => {
     request_path: "/api/opaque/auth/finish",
     client_ip: clientIp(context),
   });
-  await recordLogin(context.env, context.req.raw, transcriptRow.user_id, "password");
+  await recordLogin(context.env, context.req.raw, transcriptRow.user_id, "password", session.token);
   const headers = new Headers({
     "Cache-Control": "no-store",
     "Content-Type": "application/json",

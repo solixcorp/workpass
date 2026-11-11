@@ -14,6 +14,7 @@ import { categoryOfKind, notifyAdmins, notifyUser } from "./notifications";
 import { sendPhoneCode, verifyPhoneCode } from "./phone-verification";
 import { smsAvailable } from "../sms/provider";
 import { validateProfile } from "./profile";
+import { hashSessionToken } from "./login-history";
 
 export const meRoutes = new Hono<{ Bindings: Env }>();
 
@@ -22,7 +23,7 @@ meRoutes.use("/api/me/*", async (context, next) => {
   await next();
 });
 
-type Me = { userId: string; name: string; email: string };
+type Me = { userId: string; name: string; email: string; sessionToken: string };
 
 async function requireMe(context: { env: Env; req: { raw: { headers: Headers }; method: string; header: (name: string) => string | undefined } }): Promise<Me | Response> {
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
@@ -30,7 +31,7 @@ async function requireMe(context: { env: Env; req: { raw: { headers: Headers }; 
   if (context.req.method !== "GET" && context.req.header("origin") !== new URL(context.env.AUTH_BASE_URL).origin) {
     return Response.json({ error: "요청을 처리할 수 없습니다." }, { status: 403 });
   }
-  return { userId: session.user.id, name: session.user.name, email: session.user.email };
+  return { userId: session.user.id, name: session.user.name, email: session.user.email, sessionToken: session.session.token };
 }
 
 const rows = async <T>(promise: Promise<{ results: T[] }>): Promise<T[]> => promise.then((r) => r.results).catch(() => []);
@@ -234,15 +235,16 @@ meRoutes.get("/api/me/activity", async (context) => {
   const me = await requireMe(context);
   if (me instanceof Response) return me;
   const db = context.env.DB;
+  const sessionHash = await hashSessionToken(me.sessionToken);
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const logins = await rows(db.prepare(
-    `SELECT id, occurred_at AS at, ip, user_agent AS userAgent, country, region, city, method
+    `SELECT id, occurred_at AS at, ip, user_agent AS userAgent, country, region, city, method, session_token_hash AS sessionTokenHash
      FROM login_history WHERE user_id = ? ORDER BY occurred_at DESC LIMIT 200`,
-  ).bind(me.userId).all<{ id: string; at: string; ip: string | null; userAgent: string | null; country: string | null; region: string | null; city: string | null; method: string | null }>());
+  ).bind(me.userId).all<{ id: string; at: string; ip: string | null; userAgent: string | null; country: string | null; region: string | null; city: string | null; method: string | null; sessionTokenHash: string | null }>());
   const reported = new Set((await rows(db.prepare("SELECT login_id AS loginId FROM suspicious_reports WHERE user_id = ? AND login_id IS NOT NULL").bind(me.userId).all<{ loginId: string }>())).map((r) => r.loginId));
 
   // One row per device and place: when it last signed in, how many times.
-  const groups = new Map<string, { loginId: string; device: string; os: string; lastAt: string; location: string | null; ip: string | null; count: number; reported: boolean }>();
+  const groups = new Map<string, { loginId: string; device: string; os: string; lastAt: string; location: string | null; ip: string | null; count: number; reported: boolean; current: boolean }>();
   for (const login of logins) {
     const device = describeDevice(login.userAgent);
     const place = [login.city, login.region, login.country].filter(Boolean).join(", ") || null;
@@ -251,8 +253,9 @@ meRoutes.get("/api/me/activity", async (context) => {
     if (existing) {
       existing.count += 1;
       existing.reported ||= reported.has(login.id);
+      existing.current ||= login.sessionTokenHash === sessionHash;
     } else {
-      groups.set(key, { loginId: login.id, device: device.label, os: device.os, lastAt: login.at, location: place, ip: login.ip, count: 1, reported: reported.has(login.id) });
+      groups.set(key, { loginId: login.id, device: device.label, os: device.os, lastAt: login.at, location: place, ip: login.ip, count: 1, reported: reported.has(login.id), current: login.sessionTokenHash === sessionHash });
     }
   }
 

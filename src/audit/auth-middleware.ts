@@ -102,12 +102,15 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
       auth,
       eventType ?? "authentication.login.success_or_failure",
     );
-    if (path === "/api/auth/passkey/verify-authentication" && response.ok) {
+    if (response.ok) {
       try {
-        const passkeySession = await findNewSessionFromResponse(env, response);
-        if (passkeySession) await recordSessionMfaProof(env, passkeySession.token, passkeySession.userId, "passkey");
+        const newSession = await findNewSessionFromResponse(env, response);
+        if (newSession) {
+          if (path === "/api/auth/passkey/verify-authentication") await recordSessionMfaProof(env, newSession.token, newSession.userId, "passkey").catch(() => false);
+          await recordLogin(env, request, newSession.userId, path === "/api/auth/passkey/verify-authentication" ? "passkey" : "password", newSession.token);
+        }
       } catch {
-        // Without a durable proof, method-specific gates fail closed.
+        // History is best-effort; without a durable proof, method-specific gates fail closed.
       }
     }
     return response;
@@ -274,10 +277,9 @@ export async function handleTwoFactorVerification(request: Request, env: Env, au
     const body = await request.clone().json().catch(() => null) as { code?: unknown } | null;
     if (typeof body?.code === "string") otpCode = body.code;
   }
-  let enrolling: Awaited<ReturnType<typeof auth.api.getSession>> | null = null;
-  if (new URL(request.url).pathname === "/api/auth/two-factor/verify-totp") {
-    try { enrolling = await auth.api.getSession({ headers: request.headers }); } catch { /* Best effort. */ }
-  }
+  let priorSession: Awaited<ReturnType<typeof auth.api.getSession>> | null = null;
+  try { priorSession = await auth.api.getSession({ headers: request.headers }); } catch { /* Best effort. */ }
+  const enrolling = verifyPath === "/api/auth/two-factor/verify-totp" ? priorSession : null;
   const wasEnabled = enrolling ? await env.DB.prepare('SELECT "twoFactorEnabled" AS enabled FROM "user" WHERE id = ?')
     .bind(enrolling.user.id).first<{ enabled: number | boolean | null }>().catch(() => null) : null;
   let response: Response;
@@ -290,10 +292,12 @@ export async function handleTwoFactorVerification(request: Request, env: Env, au
 
   let token: string | null = null;
   let userId: string | null = null;
+  let issuedSession = false;
   try {
     const fromCookie = await findNewSessionFromResponse(env, response);
     token = fromCookie?.token ?? null;
     userId = fromCookie?.userId ?? null;
+    issuedSession = !!fromCookie;
   } catch {
     // Falls through to the body token below.
   }
@@ -320,6 +324,7 @@ export async function handleTwoFactorVerification(request: Request, env: Env, au
   if (!token || !userId || !(await recordSessionMfaProof(env, token, userId, method))) {
     return Response.json({ error: "The verification could not be recorded" }, { status: 503 });
   }
+  if (issuedSession && !priorSession) await recordLogin(env, request, userId, "password", token);
   if (enrolling && enrolling.user.id === userId && wasEnabled && !wasEnabled.enabled) {
     const current = await env.DB.prepare('SELECT "twoFactorEnabled" AS enabled FROM "user" WHERE id = ?')
       .bind(userId).first<{ enabled: number | boolean | null }>().catch(() => null);

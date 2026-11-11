@@ -991,9 +991,14 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       country TEXT,
       region TEXT,
       city TEXT,
-      method TEXT
+      method TEXT,
+      session_token_hash TEXT
     )`,
   ).run();
+  const loginHistoryColumns = await env.DB.prepare("PRAGMA table_info(login_history)").all<{ name: string }>();
+  if (!loginHistoryColumns.results.some((column) => column.name === "session_token_hash")) {
+    await env.DB.prepare("ALTER TABLE login_history ADD COLUMN session_token_hash TEXT").run();
+  }
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS login_history_user_idx ON login_history (user_id, occurred_at)",
   ).run();
