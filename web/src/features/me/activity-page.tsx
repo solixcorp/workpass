@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError, apiFetch } from '@/lib/api'
 import { eventLabel } from '@/lib/audit-labels'
@@ -49,43 +48,27 @@ export function ActivityPage() {
             {activity.data.logins.length === 0 ? (
               <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">로그인 기록이 없습니다. 이 기능이 켜진 뒤의 로그인부터 기록됩니다.</p>
             ) : (
-              <div className="overflow-x-auto rounded-xl border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>기기</TableHead>
-                      <TableHead>마지막 로그인</TableHead>
-                      <TableHead>위치</TableHead>
-                      <TableHead>횟수</TableHead>
-                      <TableHead className="w-40" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {activity.data.logins.map((login) => (
-                      <TableRow key={login.loginId}>
-                        <TableCell>
-                          <span className="flex items-center gap-2 font-medium">
-                            {login.os === 'iOS' || login.os === 'Android' ? <SmartphoneIcon className="size-4 text-muted-foreground" /> : <MonitorIcon className="size-4 text-muted-foreground" />}
-                            {login.device}
-                          </span>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(login.lastAt)}</TableCell>
-                        <TableCell className="text-muted-foreground">{login.location ?? login.ip ?? '알 수 없음'}</TableCell>
-                        <TableCell>{login.count}</TableCell>
-                        <TableCell className="text-right">
-                          {login.reported ? (
-                            <Badge variant="outline">신고함</Badge>
-                          ) : (
-                            <Button variant="outline" size="sm" onClick={() => setReporting(login)}>
-                              관리자에게 보고
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <ul className="flex flex-col divide-y rounded-xl border">
+                {activity.data.logins.map((login) => (
+                  <li key={login.loginId} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                    {login.os === 'iOS' || login.os === 'Android' ? <SmartphoneIcon className="size-4 shrink-0 text-muted-foreground" /> : <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />}
+                    <div className="flex min-w-0 flex-1 basis-56 flex-col gap-0.5">
+                      <span className="text-sm font-medium">{login.device}</span>
+                      <span className="text-xs text-muted-foreground">{login.location ?? login.ip ?? '알 수 없음'}</span>
+                      <span className="text-xs text-muted-foreground">
+                        마지막 로그인 {formatDateTime(login.lastAt)} <span className="whitespace-nowrap">· {login.count}회</span>
+                      </span>
+                    </div>
+                    {login.reported ? (
+                      <Badge variant="outline">신고함</Badge>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => setReporting(login)}>
+                        관리자에게 보고
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
 
