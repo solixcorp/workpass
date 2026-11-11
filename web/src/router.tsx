@@ -14,6 +14,8 @@ import { AccessRequestsAdminPage } from '@/features/admin/access-requests-page'
 import { AccountsAdminPage } from '@/features/admin/accounts-admin-page'
 import { AccountsPage } from '@/features/accounts/accounts-page'
 import { ApplicationsPage } from '@/features/admin/applications-page'
+import { ApplicationPage } from '@/features/admin/integration/application-page'
+import { NewIntegrationPage } from '@/features/admin/integration/new-integration-page'
 import { AuditPage } from '@/features/admin/audit-page'
 import { PoliciesPage } from '@/features/admin/policies-page'
 import { SettingsPage } from '@/features/admin/settings-page'
@@ -189,6 +191,22 @@ const adminApplicationsRoute = createRoute({
   component: ApplicationsPage,
 })
 
+const adminNewApplicationRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/applications/new',
+  validateSearch: (search: Record<string, unknown>): { method?: string; type?: string } => ({
+    ...(typeof search.method === 'string' ? { method: search.method } : {}),
+    ...(typeof search.type === 'string' ? { type: search.type } : {}),
+  }),
+  component: NewIntegrationPage,
+})
+
+const adminApplicationRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '/applications/$slug',
+  component: ApplicationPage,
+})
+
 const adminPoliciesRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/policies',
@@ -221,6 +239,8 @@ const routeTree = rootRoute.addChildren([
       adminGroupsRoute,
       adminAccountsRoute,
       adminApplicationsRoute,
+      adminNewApplicationRoute,
+      adminApplicationRoute,
       adminRequestsRoute,
       adminAuditRoute,
       adminPoliciesRoute,

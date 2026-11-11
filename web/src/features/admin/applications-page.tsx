@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PencilIcon, PlusIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { Link } from '@tanstack/react-router'
+import { PencilIcon, PlusIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -15,28 +16,11 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -45,10 +29,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { ApiError, apiFetch } from '@/lib/api'
+import { formatDateTime } from '@/lib/format'
+import { PROTOCOL_LABELS } from '@/lib/integrations'
 import { AppPolicyDialog, type PolicyApp } from './app-policy-dialog'
 import { ApplicationEditDialog } from './application-edit-dialog'
-import { apiFetch } from '@/lib/api'
-import { formatDateTime } from '@/lib/format'
+import { NewIntegrationDialog } from './integration/new-integration-dialog'
 
 type AdminApplication = {
   slug: string
@@ -66,13 +52,7 @@ type AdminApplication = {
   createdAt: string
 }
 
-const PROTOCOL_LABELS: Record<AdminApplication['protocol'], string> = {
-  bookmark: '북마크',
-  oidc: 'OIDC',
-  saml: 'SAML',
-  wsfed: 'WS-Fed',
-  swa: 'SWA',
-}
+type StatusFilter = 'all' | 'active' | 'inactive'
 
 const applicationsKey = ['admin', 'applications'] as const
 
@@ -82,6 +62,8 @@ export function ApplicationsPage() {
   const [pendingDelete, setPendingDelete] = useState<AdminApplication | null>(null)
   const [policyApp, setPolicyApp] = useState<PolicyApp | null>(null)
   const [editing, setEditing] = useState<AdminApplication | null>(null)
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState<StatusFilter>('all')
 
   const { data, isPending, error } = useQuery({
     queryKey: applicationsKey,
@@ -93,7 +75,8 @@ export function ApplicationsPage() {
     mutationFn: ({ slug, enabled }: { slug: string; enabled: boolean }) =>
       apiFetch(`/api/admin/applications/${slug}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: applicationsKey }),
-    onError: () => toast.error('상태를 바꾸지 못했습니다.'),
+    onError: (cause: unknown) =>
+      toast.error(cause instanceof ApiError && /[가-힣]/.test(cause.message) ? cause.message : '상태를 바꾸지 못했습니다.'),
   })
 
   const remove = useMutation({
@@ -105,13 +88,49 @@ export function ApplicationsPage() {
     onError: () => toast.error('앱을 삭제하지 못했습니다.'),
   })
 
+  const counts = useMemo(() => {
+    const all = data ?? []
+    return { all: all.length, active: all.filter((app) => app.enabled).length, inactive: all.filter((app) => !app.enabled).length }
+  }, [data])
+
+  const shown = useMemo(() => {
+    const term = query.trim().toLowerCase()
+    return (data ?? []).filter((app) => {
+      if (status === 'active' && !app.enabled) return false
+      if (status === 'inactive' && app.enabled) return false
+      if (!term) return true
+      return [app.name, app.slug, app.binding ?? ''].some((value) => value.toLowerCase().includes(term))
+    })
+  }, [data, query, status])
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">앱</h1>
         <Button onClick={() => setCreateOpen(true)}>
-          <PlusIcon data-icon="inline-start" />앱 추가
+          <PlusIcon data-icon="inline-start" />앱 연동 만들기
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <InputGroup className="max-w-sm">
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label="앱 검색"
+            placeholder="이름, 식별자, 클라이언트 ID로 검색"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </InputGroup>
+        <Tabs value={status} onValueChange={(value) => setStatus(value as StatusFilter)}>
+          <TabsList>
+            <TabsTrigger value="all">전체 {counts.all}</TabsTrigger>
+            <TabsTrigger value="active">활성 {counts.active}</TabsTrigger>
+            <TabsTrigger value="inactive">비활성 {counts.inactive}</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {error ? (
@@ -124,11 +143,13 @@ export function ApplicationsPage() {
             <Skeleton key={index} className="h-12 rounded-md" />
           ))}
         </div>
-      ) : data.length === 0 ? (
+      ) : shown.length === 0 ? (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>등록된 앱이 없습니다</EmptyTitle>
-            <EmptyDescription>앱을 추가하면 사용자 포털에 표시됩니다.</EmptyDescription>
+            <EmptyTitle>{data.length === 0 ? '등록된 앱이 없습니다' : '조건에 맞는 앱이 없습니다'}</EmptyTitle>
+            <EmptyDescription>
+              {data.length === 0 ? '앱 연동을 만들면 사용자 포털에 표시됩니다.' : '검색어나 상태를 바꿔 보세요.'}
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
@@ -144,21 +165,33 @@ export function ApplicationsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((application) => (
+              {shown.map((application) => (
                 <TableRow key={application.slug}>
                   <TableCell>
                     <div className="flex min-w-0 items-center gap-3">
-                      {application.iconKey || application.iconUrl ? (
-                        <img
-                          src={application.iconKey ? `/application/${application.slug}/icon` : (application.iconUrl ?? '')}
-                          alt=""
-                          className="size-8 shrink-0 rounded-md object-contain"
-                        />
-                      ) : null}
+                      <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-card">
+                        {application.iconKey || application.iconUrl ? (
+                          <img
+                            src={application.iconKey ? `/application/${application.slug}/icon` : (application.iconUrl ?? '')}
+                            alt=""
+                            className="size-full object-contain p-1"
+                          />
+                        ) : (
+                          <span className="text-sm font-medium text-muted-foreground">{application.name.slice(0, 1)}</span>
+                        )}
+                      </div>
                       <div className="flex min-w-0 flex-col">
-                        <span className="truncate font-medium">{application.name}</span>
+                        <Link
+                          to="/admin/applications/$slug"
+                          params={{ slug: application.slug }}
+                          className="truncate font-medium underline-offset-4 hover:underline"
+                        >
+                          {application.name}
+                        </Link>
                         <span className="truncate font-mono text-xs text-muted-foreground">
-                          {application.slug}
+                          {application.protocol === 'oidc' && application.binding
+                            ? `Client ID: ${application.binding}`
+                            : application.slug}
                         </span>
                       </div>
                     </div>
@@ -166,9 +199,7 @@ export function ApplicationsPage() {
                   <TableCell>
                     <Badge variant="outline">{PROTOCOL_LABELS[application.protocol]}</Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {application.categoryGroup ?? '—'}
-                  </TableCell>
+                  <TableCell className="text-muted-foreground">{application.categoryGroup ?? '—'}</TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {formatDateTime(application.createdAt)}
                   </TableCell>
@@ -217,7 +248,7 @@ export function ApplicationsPage() {
         </div>
       )}
 
-      <CreateApplicationDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <NewIntegrationDialog open={createOpen} onOpenChange={setCreateOpen} />
       <AppPolicyDialog app={policyApp} onClose={() => setPolicyApp(null)} />
       <ApplicationEditDialog app={editing} onClose={() => setEditing(null)} />
 
@@ -226,7 +257,7 @@ export function ApplicationsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>{pendingDelete?.name} 앱을 삭제할까요?</AlertDialogTitle>
             <AlertDialogDescription>
-              포털에서 사라지고 되돌릴 수 없습니다. 연결된 로그인 설정은 그대로 남습니다.
+              포털에서 사라지고, 이 앱의 로그인 연동(클라이언트, 서비스 제공자 등)도 함께 지워집니다. 되돌릴 수 없습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -243,136 +274,5 @@ export function ApplicationsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
-}
-
-function CreateApplicationDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const queryClient = useQueryClient()
-  const [slug, setSlug] = useState('')
-  const [name, setName] = useState('')
-  const [protocol, setProtocol] = useState<AdminApplication['protocol']>('bookmark')
-  const [launchUrl, setLaunchUrl] = useState('')
-  const [categoryGroup, setCategoryGroup] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  const create = useMutation({
-    mutationFn: () =>
-      apiFetch('/api/admin/applications', {
-        method: 'POST',
-        body: JSON.stringify({
-          slug,
-          name,
-          protocol,
-          launchUrl: launchUrl.trim() || null,
-          categoryGroup: categoryGroup.trim() || null,
-        }),
-      }),
-    onSuccess: async () => {
-      toast.success('앱을 추가했습니다. 사용하려면 켜 주세요.')
-      await queryClient.invalidateQueries({ queryKey: applicationsKey })
-      setSlug('')
-      setName('')
-      setLaunchUrl('')
-      setCategoryGroup('')
-      setError(null)
-      onOpenChange(false)
-    },
-    onError: (failure: Error) => setError(failure.message),
-  })
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setError(null)
-    create.mutate()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-          <DialogHeader>
-            <DialogTitle>앱 추가</DialogTitle>
-            <DialogDescription>새 앱은 꺼진 상태로 만들어집니다.</DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            {error ? (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
-            <Field>
-              <FieldLabel htmlFor="app-name">이름</FieldLabel>
-              <Input id="app-name" required value={name} onChange={(event) => setName(event.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="app-slug">식별자</FieldLabel>
-              <Input
-                id="app-slug"
-                required
-                autoCapitalize="off"
-                placeholder="slack"
-                value={slug}
-                onChange={(event) => setSlug(event.target.value)}
-              />
-              <FieldDescription>영문 소문자, 숫자, 하이픈만 쓸 수 있습니다.</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="app-protocol">방식</FieldLabel>
-              <Select
-                value={protocol}
-                onValueChange={(value) => setProtocol(value as AdminApplication['protocol'])}
-              >
-                <SelectTrigger id="app-protocol" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {(Object.keys(PROTOCOL_LABELS) as Array<AdminApplication['protocol']>).map((key) => (
-                      <SelectItem key={key} value={key}>
-                        {PROTOCOL_LABELS[key]}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="app-url">실행 주소</FieldLabel>
-              <Input
-                id="app-url"
-                type="url"
-                placeholder="https://"
-                value={launchUrl}
-                onChange={(event) => setLaunchUrl(event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="app-group">그룹</FieldLabel>
-              <Input
-                id="app-group"
-                placeholder="업무 도구"
-                value={categoryGroup}
-                onChange={(event) => setCategoryGroup(event.target.value)}
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              취소
-            </Button>
-            <Button type="submit" disabled={create.isPending || !slug || !name}>
-              {create.isPending ? <Spinner data-icon="inline-start" /> : null}
-              추가
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   )
 }
