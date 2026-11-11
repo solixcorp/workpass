@@ -253,7 +253,11 @@ export function AppPolicyDialog({ app, onClose }: { app: PolicyApp | null; onClo
                           disabled={!method.enabledGlobally}
                           checked={(draft.mfaMethods ?? []).includes(method.id)}
                           onCheckedChange={(on) =>
-                            update({ mfaMethods: on === true ? [...(draft.mfaMethods ?? []), method.id] : (draft.mfaMethods ?? []).filter((id) => id !== method.id) })
+                            setDraft((current) => {
+                              if (!current) return current
+                              const rest = (current.mfaMethods ?? []).filter((id) => id !== method.id)
+                              return { ...current, mfaMethods: on === true ? [...rest, method.id] : rest }
+                            })
                           }
                         />
                         <FieldLabel htmlFor={`mfa-method-${method.id}`}>
