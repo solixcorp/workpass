@@ -55,8 +55,11 @@ import { meRoutes } from "./users/me-routes";
 import { appSessionsRoutes } from "./users/app-sessions-routes";
 import { locationPublicRoutes } from "./security/location-routes";
 const app = new Hono<{ Bindings: Env }>();
+import { auditContextForRequest, auditRequestContext } from "./audit/request-context";
 
 // Global security headers applied to every response. Per-route CSP (set in
+app.use("*", (context, next) => auditRequestContext.run(auditContextForRequest(context.req.raw), next));
+
 // individual handlers) is preserved; these are the common baseline that does
 // not depend on the rendered content.
 app.use("*", async (context, next) => {

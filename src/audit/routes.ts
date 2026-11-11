@@ -5,6 +5,8 @@ import { verifyAuditEventChain, type AuditEvent } from "./store";
 import { akqlParse } from "../policies/akql";
 import { akqlMatch } from "../policies/akql";
 import { eventContextFromRow, eventMatcherEvaluate, validateEventMatcherConfig } from "../policies/event-matcher";
+import { auditQueryExamples, auditQueryFields, AuditQueryError, compileAuditQuery } from "./query";
+import { auditClientGeo } from "./request-context";
 
 export const auditRoutes = new Hono<{ Bindings: Env }>();
 
@@ -54,18 +56,24 @@ auditRoutes.get("/audit-events/verify", async (context) => {
   return context.json({ verification });
 });
 
+auditRoutes.get("/audit-events/fields", async (context) => {
+  const adminSession = await requireAdministrator(context);
+  if (adminSession instanceof Response) return adminSession;
+  return context.json({ fields: auditQueryFields, examples: auditQueryExamples });
+});
+
 auditRoutes.get("/audit-events/:eventId", async (context) => {
   const adminSession = await requireAdministrator(context);
   if (adminSession instanceof Response) return adminSession;
 
   const event = await context.env.DB.prepare(
-    `SELECT id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path
+    `SELECT id, occurred_at, actor_user_id, target_user_id, event_type, outcome, request_path, client_ip, event_context
      FROM audit_events WHERE id = ?`,
   )
     .bind(context.req.param("eventId"))
     .first<AuditEvent>();
   if (!event) return context.json({ error: "Audit event not found" }, 404);
-  return context.json({ event });
+  return context.json({ event: { ...event, client_geo: auditClientGeo(event.event_context) } });
 });
 
 auditRoutes.get("/audit-events", async (context) => {
@@ -96,6 +104,21 @@ auditRoutes.get("/audit-events", async (context) => {
 
   const clauses: string[] = [];
   const values: (string | number)[] = [];
+  const advanced = query.get("query");
+  if (advanced !== null) {
+    try {
+      const compiled = compileAuditQuery(advanced);
+      clauses.push(compiled.sql);
+      values.push(...compiled.params);
+    } catch (error) {
+      if (error instanceof AuditQueryError) return context.json({ error: error.message, position: error.position, detail: error.detail }, 400);
+      throw error;
+    }
+  }
+  const ip = query.get("ip");
+  if (ip) { clauses.push("client_ip = ?"); values.push(ip); }
+  const country = query.get("country");
+  if (country) { clauses.push("CASE WHEN json_valid(event_context) THEN json_extract(event_context, '$.geo.country') END = ?"); values.push(country); }
   const exactFilters = [
     ["actorUserId", "actor_user_id"],
     ["targetUserId", "target_user_id"],
@@ -207,7 +230,7 @@ auditRoutes.get("/audit-events", async (context) => {
       id: row.id, occurred_at: row.occurred_at, actor_user_id: row.actor_user_id,
       target_user_id: row.target_user_id, event_type: row.event_type,
       outcome: row.outcome, request_path: row.request_path,
-      client_ip: row.client_ip ?? null, event_context: row.event_context ?? null,
+      client_ip: row.client_ip ?? null, client_geo: auditClientGeo(row.event_context), event_context: row.event_context ?? null,
     })),
     limit,
     ...(page === null ? {} : { page, total }),

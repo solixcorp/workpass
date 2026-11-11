@@ -1,5 +1,6 @@
 import type { Env } from "../env";
 import { notifySecurityEvent } from "../users/security-notices";
+import { auditRequestContext } from "./request-context";
 
 export type AuditOutcome = "started" | "success" | "failure";
 
@@ -61,8 +62,10 @@ export async function insertAuditEvent(
     Partial<Pick<AuditEvent, "client_ip" | "event_context">>,
 ): Promise<void> {
   const occurredAt = new Date().toISOString();
-  const eventContext = event.event_context ?? undefined;
-  const contentHash = await auditContentHash({ ...event, occurred_at: occurredAt }, 2);
+  const request = auditRequestContext.getStore();
+  const clientIp = event.client_ip === undefined ? request?.ip ?? null : event.client_ip;
+  const eventContext = request?.geo ? { ...event.event_context, geo: request.geo } : event.event_context ?? undefined;
+  const contentHash = await auditContentHash({ ...event, occurred_at: occurredAt, client_ip: clientIp, event_context: eventContext }, 2);
   // Single statement: the log position is assigned inside SQL so concurrent
   // inserts cannot claim the same position.
   await env.DB.prepare(
@@ -79,7 +82,7 @@ export async function insertAuditEvent(
       event.event_type,
       event.outcome,
       event.request_path,
-      event.client_ip ?? null,
+      clientIp,
       eventContext === undefined ? null : JSON.stringify(eventContext),
       contentHash,
     )
@@ -91,7 +94,7 @@ export async function insertAuditEvent(
     await enqueueEventNotifications(env, {
       ...event,
       occurred_at: occurredAt,
-      client_ip: event.client_ip ?? null,
+      client_ip: clientIp,
       event_context: eventContext ?? null,
       hash_version: 2,
     } as AuditEvent & { hash_version: number });

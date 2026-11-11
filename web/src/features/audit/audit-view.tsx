@@ -1,20 +1,21 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { SearchIcon, XIcon } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { XIcon } from 'lucide-react'
+import { useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Paginator } from '@/components/paginator'
-import { apiFetch } from '@/lib/api'
+import { ApiError, apiFetch } from '@/lib/api'
 import { EVENT_FAMILIES, eventLabel } from '@/lib/audit-labels'
 import { formatDateTime } from '@/lib/format'
 import { AuditDetail } from './audit-detail'
-import type { AuditEvent, AuditPage } from './types'
+import { PersonPicker, type PickedPerson } from './person-picker'
+import { QueryBar } from './query-bar'
+import { placeOf, type AuditEvent, type AuditPage } from './types'
 
 const RANGES = [
   { value: 'all', label: '전체 기간', ms: 0 },
@@ -27,8 +28,12 @@ const RANGES = [
 const OUTCOMES = { success: '성공', failure: '실패', started: '시작' } as const
 const OUTCOME_VARIANTS = { success: 'secondary', failure: 'destructive', started: 'outline' } as const
 
-type Filters = { family: string; outcome: string; range: string; text: string }
-const NO_FILTERS: Filters = { family: 'all', outcome: 'all', range: 'all', text: '' }
+type Role = 'any' | 'actor' | 'target'
+type Filters = { family: string; outcome: string; range: string; text: string; person: PickedPerson | null; role: Role }
+const NO_FILTERS: Filters = { family: 'all', outcome: 'all', range: 'all', text: '', person: null, role: 'any' }
+
+/** A search that uses the query language (fields and operators) rather than plain words. */
+const LOOKS_LIKE_QUERY = /[=~<>!]|\b(and|or|not|in|startswith|endswith)\b/i
 
 function Pick({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: React.ReactNode }) {
   return (
@@ -49,7 +54,6 @@ function Pick({ label, value, onChange, children }: { label: string; value: stri
  */
 export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: string }) {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
-  const [draft, setDraft] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
   const [open, setOpen] = useState<AuditEvent | null>(null)
@@ -64,9 +68,11 @@ export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: s
       if (filters.outcome !== 'all') params.set('outcome', filters.outcome)
       const range = RANGES.find((entry) => entry.value === filters.range)
       if (range && range.ms) params.set('from', new Date(Date.now() - range.ms).toISOString())
-      if (filters.text) params.set('q', filters.text)
+      if (filters.text) params.set(LOOKS_LIKE_QUERY.test(filters.text) ? 'query' : 'q', filters.text)
+      if (filters.person && !userId) params.set(filters.role === 'actor' ? 'actorUserId' : filters.role === 'target' ? 'targetUserId' : 'userId', filters.person.id)
       return apiFetch<AuditPage>(`/api/admin/audit-events?${params}`)
     },
+    retry: (count, error) => !(error instanceof ApiError && error.status === 400) && count < 2,
     placeholderData: keepPreviousData,
   })
 
@@ -74,11 +80,11 @@ export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: s
     setFilters({ ...filters, ...next })
     setPage(1)
   }
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    change({ text: draft.trim() })
-  }
   const filtered = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS)
+  const queryError =
+    query.error instanceof ApiError && query.error.status === 400
+      ? { message: query.error.message, position: typeof (query.error.body as { position?: unknown } | null)?.position === 'number' ? ((query.error.body as { position: number }).position) : null }
+      : null
   const events = query.data?.events ?? []
   const total = query.data?.total ?? 0
 
@@ -106,20 +112,23 @@ export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: s
             </SelectItem>
           ))}
         </Pick>
-        <form onSubmit={submit} className="flex items-center gap-2">
-          <Input aria-label="이벤트·경로·IP 검색" placeholder="이벤트, 경로, IP 검색" className="w-56" value={draft} onChange={(event) => setDraft(event.target.value)} />
-          <Button type="submit" variant="outline" size="icon" aria-label="검색">
-            <SearchIcon />
-          </Button>
-        </form>
+        {!userId ? (
+          <div className="flex items-center gap-2">
+            <PersonPicker value={filters.person} onChange={(person) => change({ person })} placeholder="사용자로 거르기" />
+            {filters.person ? (
+              <Pick label="사용자 역할" value={filters.role} onChange={(value) => change({ role: value as Role })}>
+                <SelectItem value="any">행위자 또는 대상</SelectItem>
+                <SelectItem value="actor">행위자일 때</SelectItem>
+                <SelectItem value="target">대상일 때</SelectItem>
+              </Pick>
+            ) : null}
+          </div>
+        ) : null}
         {filtered ? (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              setDraft('')
-              change(NO_FILTERS)
-            }}
+            onClick={() => change(NO_FILTERS)}
           >
             <XIcon data-icon="inline-start" />
             필터 지우기
@@ -127,11 +136,13 @@ export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: s
         ) : null}
       </div>
 
-      {query.error ? (
+      <QueryBar applied={filters.text} error={queryError} onApply={(text) => change({ text })} />
+
+      {query.error && !queryError ? (
         <Alert variant="destructive">
           <AlertDescription>감사 로그를 불러오지 못했습니다.</AlertDescription>
         </Alert>
-      ) : query.isPending ? (
+      ) : queryError && !query.data ? null : query.isPending ? (
         <div className="flex flex-col gap-2">
           {Array.from({ length: 8 }, (_, index) => (
             <Skeleton key={index} className="h-11 rounded-md" />
@@ -154,7 +165,7 @@ export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: s
                   <TableHead>이벤트</TableHead>
                   {userId ? <TableHead>구분</TableHead> : <><TableHead>행위자</TableHead><TableHead>대상</TableHead></>}
                   <TableHead>결과</TableHead>
-                  <TableHead>IP</TableHead>
+                  <TableHead>IP · 위치</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -178,13 +189,18 @@ export function AuditView({ userId, keyPrefix }: { userId?: string; keyPrefix: s
                     ) : (
                       <>
                         <TableCell className="text-sm">{event.actor?.name ?? <span className="text-muted-foreground">{event.actor_user_id ? '삭제된 사용자' : '—'}</span>}</TableCell>
-                        <TableCell className="text-sm">{event.target?.name ?? <span className="text-muted-foreground">{event.target_user_id ?? '—'}</span>}</TableCell>
+                        <TableCell className="text-sm">{event.target?.name ?? <span className="font-mono text-xs text-muted-foreground" title={event.target_user_id ?? undefined}>{event.target_user_id ? (event.target_user_id.length > 14 ? `${event.target_user_id.slice(0, 8)}…` : event.target_user_id) : '—'}</span>}</TableCell>
                       </>
                     )}
                     <TableCell>
                       <Badge variant={OUTCOME_VARIANTS[event.outcome]}>{OUTCOMES[event.outcome]}</Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{event.client_ip ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      <div className="flex flex-col">
+                        <span className="font-mono">{event.client_ip ?? '—'}</span>
+                        {placeOf(event.client_geo) ? <span>{placeOf(event.client_geo)}</span> : null}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

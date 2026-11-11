@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { eventLabel } from '@/lib/audit-labels'
 import { formatDateTime } from '@/lib/format'
-import type { AuditEvent, Person } from './types'
+import { placeOf, type AuditEvent, type Person } from './types'
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -65,6 +65,16 @@ export function AuditDetail({ event, onClose }: { event: AuditEvent | null; onCl
                 {event.target_user_id || event.actor_user_id ? <PersonRow id={event.target_user_id} person={event.target} /> : <span className="text-muted-foreground">없음</span>}
               </Row>
               <Row label="IP">{event.client_ip ?? '기록 없음'}</Row>
+              <Row label="위치">
+                {placeOf(event.client_geo) ? (
+                  <span className="flex flex-col gap-0.5">
+                    <span>{placeOf(event.client_geo)}</span>
+                    {event.client_geo?.asn ? <span className="text-xs text-muted-foreground">네트워크 AS{event.client_geo.asn.replace(/^AS/i, '')}</span> : null}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">기록 없음 (위치 기록을 켜기 전의 이벤트이거나 서버가 위치를 알려 주지 않았습니다)</span>
+                )}
+              </Row>
               <Row label="요청 경로">
                 <span className="font-mono text-xs">{event.request_path}</span>
               </Row>
