@@ -5,6 +5,7 @@
  * the console can show and change one app in one place.
  */
 
+import { appAudience, notifyUsers } from "../users/notifications";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
@@ -213,6 +214,7 @@ integrationRoutes.put("/applications/:slug/assignment", async (context) => {
       .bind(...groups).all<{ id: string }>();
     if (found.results.length !== groups.length) return context.json({ error: "없는 그룹이 있습니다." }, 400);
   }
+  const before = new Set(await appAudience(context.env, app.slug));
   return auditStandaloneOperation(context.env, "app.assignment.update", context.req.path, async () => {
     // The dashboard card and the protocol's own gate read different subjects;
     // both follow the same groups so an assignment cannot be bypassed by a direct link.
@@ -229,6 +231,10 @@ integrationRoutes.put("/applications/:slug/assignment", async (context) => {
         groups,
         requiredAccount: existing?.requiredAccount ?? null,
       }, admin.userId);
+    }
+    if (app.enabled) {
+      const gained = (await appAudience(context.env, app.slug)).filter((id) => !before.has(id));
+      await notifyUsers(context.env, gained, { kind: "app_assigned", title: "새 앱이 할당되었습니다", body: `${app.name}을(를) 이제 열 수 있습니다.`, link: "/" });
     }
     return { response: Response.json({ mode, groups }), actorUserId: admin.userId, targetUserId: app.slug };
   });

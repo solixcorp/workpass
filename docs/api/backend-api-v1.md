@@ -209,6 +209,21 @@ All reads are `no-store` and administrator-only.
 
 Sign-ins are recorded in `login_history` (180 days) with IP, user agent and, when Cloudflare provides it, country, region and city.
 
+### Self service (signed-in user)
+
+All are `no-store`; writes need the configured origin.
+
+- `GET /api/me/notifications` returns the newest 50 notifications and the unread count; `POST /api/me/notifications/read` marks `{ ids }` (or all) read. Notifications are made when an app the person can open is switched on or newly assigned to their group, when an access request is decided, and for reviewers when one is created. Read notifications are deleted after 90 days.
+- `GET|PUT /api/me/profile`: name and phone number (E.164). Changing the number clears its verified flag; there is no phone verification flow yet, so a number is never used to send codes. Administrator-kept fields (title, department, organization, manager) are returned read-only.
+- `GET /api/me/activity`: sign-ins grouped by device and place (newest 200 records) and the account's security events of the last 30 days (password, passkey, second factor, session, lockdown and recovery events).
+- `POST /api/me/suspicious-reports` `{ loginId?, summary? }` reports a sign-in the person does not recognise; one open report per sign-in. It notifies every administrator.
+- `POST /api/me/app-requests` `{ slug, message }` sends a message to the administrators asking for an app. It does not create an access request.
+
+### Overview and reports (administrator)
+
+- `GET /api/admin/overview`: counts (users, groups, apps), service status (database, mail, SMS, device risk), things to do (open reports, pending access requests, users without a password), the latest organization changes, and security signals for 30 days (failed sign-ins, device-risk step-ups and denials, location violations, lockdowns, and the share of active users with a second factor or passkey).
+- `GET /api/admin/suspicious-reports?status=open|closed`, `POST /api/admin/suspicious-reports/:id/close` (tells the reporter).
+
 ### First administrator
 
 `POST /api/admin/bootstrap` also returns `activation: { url, expiresAt }`, a one-time link to `/activate` (valid for the activation TTL). Plaintext sign-in is disabled by default, so this link is the only way for the first administrator to set a password (OPAQUE registration). The `password` in the request body is a placeholder required by the account creation call.

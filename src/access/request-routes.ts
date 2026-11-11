@@ -7,6 +7,7 @@
  * as other session-authenticated mutating surfaces.
  */
 
+import { appNameForSubject, notifyUser, notifyUsers } from "../users/notifications";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
@@ -231,6 +232,10 @@ accessRequestUserRoutes.post(USER_PREFIX, async (context) => {
       reviewers,
     });
   }
+  if (bindingRule) {
+    const reviewers = await resolveRuleReviewers(context.env, bindingRule.ruleId, bindingRule.minReviewers, bindingRule.notifyMode);
+    await notifyUsers(context.env, reviewers, { kind: "access_request", title: "새 접근 요청", body: `${await appNameForSubject(context.env, request.subject)} 접근을 요청했습니다.`, link: "/access-requests" });
+  }
   return context.json({ request }, { status: 201 });
 });
 
@@ -282,6 +287,12 @@ accessRequestUserRoutes.post(`${USER_PREFIX}/:id/review`, async (context) => {
   }
   if (!outcome) return context.json({ error: GENERIC_REJECTION }, 404);
   if (outcome.newStatus !== null) {
+    await notifyUser(context.env, outcome.request.userId, {
+      kind: "access_request",
+      title: decision === "approved" ? "접근 요청이 승인되었습니다" : "접근 요청이 거절되었습니다",
+      body: `${await appNameForSubject(context.env, outcome.request.subject)}${outcome.request.decisionNote ? ` · ${outcome.request.decisionNote}` : ""}`,
+      link: "/access-requests",
+    });
     // Best-effort; the audit event is written by the engine.
     await notifyAccessRequestEvent(context.env, {
       type: decision === "approved" ? "access_request.approved" : "access_request.denied",

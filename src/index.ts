@@ -51,6 +51,7 @@ import { backupAuditEvents } from "./audit/backup";
 import { dispatchPendingEventNotifications } from "./policies/notifications";
 import { applySettings } from "./settings/store";
 
+import { meRoutes } from "./users/me-routes";
 const app = new Hono<{ Bindings: Env }>();
 
 // Global security headers applied to every response. Per-route CSP (set in
@@ -146,6 +147,7 @@ app.route("/", applicationIconRoutes);
 app.route("/", devMockRoutes);
 app.route("/api/admin", accessRequestAdminRoutes);
 app.route("/", accessRequestUserRoutes);
+app.route("/", meRoutes);
 
 async function scheduled(
   controller: ScheduledController,

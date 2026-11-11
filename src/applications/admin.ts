@@ -4,6 +4,7 @@
  * mutation is audited; authorization mirrors the other admin routes.
  */
 
+import { appAudience, notifyUsers } from "../users/notifications";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "../env";
@@ -135,6 +136,9 @@ async function withEnabled(
       return { response: Response.json({ error: providerError }, { status: 409 }), actorUserId: actor.userId, targetUserId: slug };
     }
     const changed = await setApplicationEnabled(context.env, slug, enabled);
+    if (changed && enabled && !application.enabled) {
+      await notifyUsers(context.env, await appAudience(context.env, slug), { kind: "app_assigned", title: "새 앱을 사용할 수 있습니다", body: `${application.name}을(를) 이제 열 수 있습니다.`, link: "/" });
+    }
     return {
       response: changed
         ? Response.json({ application: { ...application, enabled } })
