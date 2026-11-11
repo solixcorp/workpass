@@ -159,10 +159,12 @@ describe("geoip policy", () => {
   test("distance rules use the observation history and require a user", async () => {
     const { env, db } = await envStub();
     await seedUser(db, "u-travel");
+    // Relative to now, so the "an hour ago" premise holds on any day the suite runs.
+    const anHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     await db.prepare(
       `INSERT INTO auth_device_observations (id, user_id, visitor_digest, occurred_at, latitude, longitude, geo_source)
-       VALUES ('obs-1', 'u-travel', 'digest', '2026-11-10T08:00:00Z', 37.5, 127.0, 'event')`,
-    ).run();
+       VALUES ('obs-1', 'u-travel', 'digest', ?, 37.5, 127.0, 'event')`,
+    ).bind(anHourAgo).run();
     const config = validateGeoIpConfig({ checkImpossibleTravel: true, historyLoginCount: 5 });
     // The user was in Seoul an hour ago; a login from 5,000 km away now is
     // impossible travel.
