@@ -9,7 +9,9 @@ import { createAuth } from "../auth/config";
 import { auditStandaloneOperation } from "../audit/store";
 import type { Env } from "../env";
 import { describeDevice } from "./device";
-import { notifyAdmins } from "./notifications";
+import { notifyAdmins, notifyUser } from "./notifications";
+import { sendPhoneCode, verifyPhoneCode } from "./phone-verification";
+import { smsAvailable } from "../sms/provider";
 import { validateProfile } from "./profile";
 
 export const meRoutes = new Hono<{ Bindings: Env }>();
@@ -74,7 +76,7 @@ meRoutes.get("/api/me/profile", async (context) => {
   try { fields = profile ? (JSON.parse(profile.data) as Record<string, string>) : {}; } catch { /* unreadable: show none */ }
   return context.json({
     name: user.name, email: user.email, login: user.username ?? user.email,
-    phoneNumber: user.phoneNumber, phoneVerified: user.phoneVerified === 1, twoFactorEnabled: user.twoFactor === 1,
+    phoneNumber: user.phoneNumber, phoneVerified: user.phoneVerified === 1, smsAvailable: smsAvailable(context.env), twoFactorEnabled: user.twoFactor === 1,
     // What the administrator keeps about this person, read-only here.
     fields: { title: fields.title ?? null, department: fields.department ?? null, organization: fields.organization ?? null, manager: fields.manager ?? null },
   });
@@ -102,6 +104,50 @@ meRoutes.put("/api/me/profile", async (context) => {
       }
     }
     return { response: Response.json({ saved: true }), actorUserId: me.userId, targetUserId: me.userId };
+  });
+});
+
+/** Send a code to the number saved on the account. */
+meRoutes.post("/api/me/phone/send-code", async (context) => {
+  const me = await requireMe(context);
+  if (me instanceof Response) return me;
+  return auditStandaloneOperation(context.env, "identity.user.phone_code_sent", context.req.path, async () => {
+    const outcome = await sendPhoneCode(context.env, me.userId);
+    const audit = { actorUserId: me.userId, targetUserId: me.userId };
+    if (outcome.ok) return { response: Response.json({ sent: true, expiresInSeconds: outcome.expiresInSeconds }), ...audit };
+    const message = {
+      no_number: "먼저 휴대전화 번호를 저장하세요.",
+      already_verified: "이미 확인된 번호입니다.",
+      unavailable: "문자 발송이 설정되어 있지 않습니다. 관리자에게 문의하세요.",
+      too_soon: `잠시 후 다시 요청하세요. (${(outcome as { retryAfterSeconds?: number }).retryAfterSeconds ?? 60}초 뒤)`,
+      too_many: "코드를 너무 많이 요청했습니다. 한 시간 뒤에 다시 시도하세요.",
+      delivery_failed: "문자를 보내지 못했습니다. 번호를 확인하거나 잠시 후 다시 시도하세요.",
+    }[outcome.reason];
+    const status = outcome.reason === "too_soon" || outcome.reason === "too_many" ? 429 : outcome.reason === "delivery_failed" ? 502 : 409;
+    return { response: Response.json({ error: message, reason: outcome.reason, ...(outcome.reason === "too_soon" ? { retryAfterSeconds: outcome.retryAfterSeconds } : {}) }, { status }), ...audit };
+  });
+});
+
+/** Check the code; a right one marks the number verified. */
+meRoutes.post("/api/me/phone/verify", async (context) => {
+  const me = await requireMe(context);
+  if (me instanceof Response) return me;
+  const body = (await context.req.json().catch(() => null)) as { code?: unknown } | null;
+  const code = typeof body?.code === "string" ? body.code.trim() : "";
+  return auditStandaloneOperation(context.env, "identity.user.phone_verify", context.req.path, async () => {
+    const outcome = await verifyPhoneCode(context.env, me.userId, code);
+    const audit = { actorUserId: me.userId, targetUserId: me.userId };
+    if (outcome.ok) {
+      await notifyUser(context.env, me.userId, { kind: "phone_verified", title: "휴대전화 번호를 확인했습니다", body: "이 번호로 2차 인증 코드를 받을 수 있습니다.", link: "/me" });
+      return { response: Response.json({ verified: true }), ...audit };
+    }
+    const message = {
+      no_code: "인증 코드를 먼저 요청하세요.",
+      expired: "코드가 만료되었습니다. 새 코드를 요청하세요.",
+      wrong: "코드가 맞지 않습니다.",
+      too_many_attempts: "시도 횟수를 넘었습니다. 새 코드를 요청하세요.",
+    }[outcome.reason];
+    return { response: Response.json({ error: message, reason: outcome.reason, ...(outcome.reason === "wrong" ? { attemptsLeft: outcome.attemptsLeft } : {}) }, { status: outcome.reason === "too_many_attempts" ? 429 : 400 }), ...audit };
   });
 });
 

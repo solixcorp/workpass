@@ -67,6 +67,14 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   const path = new URL(request.url).pathname;
   const eventType = auditEventTypes[`${request.method} ${path}`];
 
+  // The phone-number plugin signs the caller in once a texted code matches.
+  // That would be a second way in that skips the password and the second
+  // factor, so none of its routes are served; verifying a number is done by
+  // /api/me/phone/* for a signed-in person only.
+  if (path.startsWith("/api/auth/phone-number/") || path === "/api/auth/sign-in/phone-number") {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
   const policyRejection = await enforceOidcPolicy(request, env, auth);
   if (policyRejection) return policyRejection;
 

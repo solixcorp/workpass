@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { LogOutIcon, PencilIcon, ShieldCheckIcon } from 'lucide-react'
+import { LogOutIcon, MessageSquareIcon, PencilIcon, ShieldCheckIcon } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -15,6 +15,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { myProfileQuery, type MyProfile } from '@/lib/me'
+import { VerifyPhoneDialog } from './verify-phone-dialog'
 
 function Row({ label, children, action }: { label: string; children: ReactNode; action?: ReactNode }) {
   return (
@@ -44,6 +45,7 @@ export function MyAccountPage() {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirm, setConfirm] = useState(false)
+  const [verifying, setVerifying] = useState(false)
 
   const endAll = useMutation({
     mutationFn: async () => {
@@ -91,10 +93,18 @@ export function MyAccountPage() {
         <Row
           label="휴대전화"
           action={
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-              <PencilIcon data-icon="inline-start" />
-              {me.phoneNumber ? '수정' : '추가'}
-            </Button>
+            <div className="flex items-center gap-2">
+              {me.phoneNumber && !me.phoneVerified ? (
+                <Button variant="default" size="sm" disabled={!me.smsAvailable} title={me.smsAvailable ? undefined : '문자 발송이 설정되어 있지 않습니다'} onClick={() => setVerifying(true)}>
+                  <MessageSquareIcon data-icon="inline-start" />
+                  번호 확인
+                </Button>
+              ) : null}
+              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                <PencilIcon data-icon="inline-start" />
+                {me.phoneNumber ? '수정' : '추가'}
+              </Button>
+            </div>
           }
         >
           {me.phoneNumber ? (
@@ -114,7 +124,7 @@ export function MyAccountPage() {
             {me.fields.manager ? <Row label="관리자">{me.fields.manager}</Row> : null}
           </>
         ) : null}
-        <p className="pt-3 text-xs text-muted-foreground">직함과 부서 같은 업무 정보는 관리자가 관리합니다. 휴대전화 번호를 확인하는 기능은 아직 없어서, 번호는 인증 코드를 받는 데 쓰이지 않습니다.</p>
+        <p className="pt-3 text-xs text-muted-foreground">직함과 부서 같은 업무 정보는 관리자가 관리합니다. 확인을 마친 번호만 2차 인증 코드를 받는 데 쓰입니다.{me.phoneNumber && !me.phoneVerified && !me.smsAvailable ? ' 지금은 문자 발송이 설정되어 있지 않아 번호를 확인할 수 없습니다.' : ''}</p>
       </Card>
 
       <Card title="보안 방법">
@@ -148,6 +158,7 @@ export function MyAccountPage() {
         </Row>
       </Card>
 
+      {me.phoneNumber ? <VerifyPhoneDialog key={`verify-${verifying}`} open={verifying} phone={me.phoneNumber} onClose={() => setVerifying(false)} /> : null}
       <PhoneDialog key={String(editing)} open={editing} onOpenChange={setEditing} me={me} />
       <AlertDialog open={confirm} onOpenChange={(open) => !endAll.isPending && setConfirm(open)}>
         <AlertDialogContent>

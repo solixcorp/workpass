@@ -23,6 +23,7 @@ export type MyProfile = {
   login: string
   phoneNumber: string | null
   phoneVerified: boolean
+  smsAvailable: boolean
   twoFactorEnabled: boolean
   fields: { title: string | null; department: string | null; organization: string | null; manager: string | null }
 }

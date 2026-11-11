@@ -1002,4 +1002,18 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       updated_at TEXT NOT NULL
     )`,
   ).run();
+  // A code sent to a person's own phone number to prove it is theirs: one open
+  // code per user, kept as a keyed hash.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS phone_verifications (
+      user_id TEXT PRIMARY KEY NOT NULL,
+      phone TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      sent_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      window_start TEXT NOT NULL,
+      sends_in_window INTEGER NOT NULL DEFAULT 1
+    )`,
+  ).run();
 }
