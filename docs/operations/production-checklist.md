@@ -221,8 +221,9 @@ closed otherwise. `OAUTH1_MANAGEMENT_TOKEN` (>= 32 bytes) is required.
   single-use receipts. Signature base normalizes per RFC 5849; protocol
   parameters must arrive in the Authorization header (body protocol params are
   rejected to remove ambiguity).
-- Revocation/offboarding: `POST /api/oauth1/token/revoke`, explicit
-  `revokeOAuth1UserTokens` helper for lifecycle code, disabled consumers.
+- Revocation/offboarding: `POST /api/oauth1/token/revoke`, disabled consumers,
+  and `revokeOAuth1UserTokens` called after an administrator bans a user.
+  Administrator deletion is currently disabled.
 - Audited: consumer register/enable/disable, temporary issue, approve/deny,
   access issue/revoke. Access-token requests are rate-limit candidates for a
   later pass (not yet wired).

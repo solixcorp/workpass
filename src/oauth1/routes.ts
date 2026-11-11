@@ -14,7 +14,7 @@ import { insertAuditEvent } from "../audit/store";
 import { constantTimeTokenMatches } from "../security/tokens";
 import { verifyOAuth1Request } from "./verify";
 import {
-  approveTemporaryToken, createConsumer, ensureOAuth1Tables, issueAccessToken,
+  approveTemporaryToken, consumeTemporaryToken, createConsumer, ensureOAuth1Tables, issueAccessToken,
   issueTemporaryToken, loadTemporaryToken, rejectTemporaryToken, resolveOAuth1AccessToken,
   resolveOAuth1Consumer, revokeOAuth1AccessToken, setConsumerDisabled,
 } from "./store";
@@ -225,7 +225,9 @@ oauth1Routes.post("/api/oauth1/authorize/approve", async (context) => {
     return context.json({ error: "This authorization request is no longer valid" }, 400);
   }
   if (decision === "deny") {
-    await rejectTemporaryToken(context.env, pending.token);
+    if (!await rejectTemporaryToken(context.env, pending.token)) {
+      return context.json({ error: "This authorization request is no longer valid" }, 400);
+    }
     const denied = await redirectTarget(pending.callback, { denied: "1" });
     await audit(context.env, { actor_user_id: session.user.id, target_user_id: session.user.id,
       event_type: "oauth1.authorize.denied", outcome: "success", request_path: "/api/oauth1/authorize/approve" });
@@ -233,11 +235,11 @@ oauth1Routes.post("/api/oauth1/authorize/approve", async (context) => {
     return context.body(verifierPage("Authorization denied", "The application was not given access.", null), 200, { "Content-Type": "text/html; charset=utf-8" });
   }
   if (decision !== "approve") return context.json({ error: "Invalid decision" }, 400);
-  const approved = await approveTemporaryToken(context.env, pending.token, session.user.id).catch(() => false);
+  const approved = await approveTemporaryToken(context.env, pending.token, session.user.id);
   if (!approved) {
     await audit(context.env, { actor_user_id: session.user.id, target_user_id: session.user.id,
       event_type: "oauth1.authorize.approved", outcome: "failure", request_path: "/api/oauth1/authorize/approve" });
-    return context.json({ error: "The approval could not be recorded" }, 503);
+    return context.json({ error: "This authorization request is no longer valid" }, 400);
   }
   const redirect = await redirectTarget(pending.callback, { oauth_token: pending.token, oauth_verifier: pending.verifier });
   await audit(context.env, { actor_user_id: session.user.id, target_user_id: session.user.id,
@@ -287,9 +289,10 @@ oauth1Routes.post("/api/oauth1/token", async (context) => {
   if (!temporary.approved || !temporary.userId) {
     return context.json({ error: "The temporary token has not been approved" }, 401);
   }
+  if (!await consumeTemporaryToken(context.env, temporary.token, verified.consumerKey, temporary.userId, temporary.verifier)) {
+    return context.json({ error: "The temporary token is no longer valid" }, 401);
+  }
   const access = await issueAccessToken(context.env, verified.consumerKey, temporary.userId);
-  // Single use: the receipt row is the exchange ticket.
-  await rejectTemporaryToken(context.env, temporary.token);
   await audit(context.env, { actor_user_id: temporary.userId, target_user_id: temporary.userId,
     event_type: "oauth1.access.issue", outcome: "success", request_path: "/api/oauth1/token" });
   return form({ oauth_token: access.token, oauth_token_secret: access.secret });

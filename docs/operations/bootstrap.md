@@ -79,7 +79,7 @@ rejected, session-bound subjects only, banned accounts rejected, audit-then-issu
    `oauth_callback` https or `oob`) → user opens
    `GET /api/oauth1/authorize?oauth_token=…` → signs in → approves → verifier delivered by
    callback redirect (or shown for `oob`) → `POST /api/oauth1/token` (single-use verifier).
-4. Verify: `tests/oauth1-flow.test.ts` covers the full flow; an operator smoke for OAuth 1.0 is
+4. Verify: `tests/oauth1/oauth1-flow.test.ts` covers the full flow; an operator smoke for OAuth 1.0 is
    not in the runner yet (feature test is the current gate).
 
 Notes: temporary credentials expire in 10 minutes; nonces are consumed atomically (replay

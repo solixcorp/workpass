@@ -161,6 +161,29 @@ describe("OAuth 1.0a server end to end", () => {
     expect(disabledFeature.status).toBe(404);
   });
 
+  test("concurrent exchanges of the same credential issue exactly one access token", async () => {
+    const { issueTemporaryToken, approveTemporaryToken } = await import("../../src/oauth1/store");
+    const temp = await issueTemporaryToken(env, consumerKey, "oob");
+    expect(await approveTemporaryToken(env, temp.token, "concurrent-user")).toBe(true);
+    const credentials = { key: consumerKey, secret: consumerSecret, token: temp.token, tokenSecret: temp.secret };
+    const requests = await Promise.all([1, 2].map(() => signedRequest("POST", "/api/oauth1/token", credentials, { oauth_verifier: temp.verifier })));
+    const results = await Promise.all(requests.map((request) => mod.fetch(request, env, { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext)));
+    expect(results.map((response) => response.status).sort()).toEqual([200, 401]);
+    const count = sqlite.query("SELECT count(*) AS count FROM oauth1_access_tokens WHERE user_id = ?").get("concurrent-user") as { count: number };
+    expect(count.count).toBe(1);
+  });
+
+  test("expired temporary credentials are rejected by the token endpoint", async () => {
+    const { issueTemporaryToken, approveTemporaryToken } = await import("../../src/oauth1/store");
+    const temp = await issueTemporaryToken(env, consumerKey, "oob");
+    expect(await approveTemporaryToken(env, temp.token, "expired-user")).toBe(true);
+    sqlite.query("UPDATE oauth1_temporary_tokens SET expires_at = ? WHERE token = ?")
+      .run(Math.floor(Date.now() / 1000), temp.token);
+    const request = await signedRequest("POST", "/api/oauth1/token", { key: consumerKey, secret: consumerSecret, token: temp.token, tokenSecret: temp.secret }, { oauth_verifier: temp.verifier });
+    const response = await mod.fetch(request, env, { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext);
+    expect(response.status).toBe(401);
+  });
+
   test("audit records exist across the flow", async () => {
     const rows = sqlite.query("SELECT event_type FROM audit_events WHERE request_path LIKE '/api/oauth1%' GROUP BY event_type").all() as { event_type: string }[];
     const types = rows.map((row) => row.event_type);
