@@ -194,7 +194,7 @@ function OidcPanel({ slug, client }: { slug: string; client: OidcClient }) {
             <SettingRow title="받을 수 있는 정보">
               <div className="flex flex-wrap gap-1.5">
                 {client.scopes.map((scope) => (
-                  <Badge key={scope} variant="secondary">
+                  <Badge key={scope} variant="secondary" className="h-auto max-w-full whitespace-normal py-0.5 text-left">
                     {SCOPE_LABELS[scope] ?? scope}
                   </Badge>
                 ))}

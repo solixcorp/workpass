@@ -26,7 +26,7 @@ export function NotificationBell() {
       <Button variant="ghost" size="icon" className="relative" aria-label={unread ? `알림 ${unread}개` : '알림'} onClick={() => setOpen(true)}>
         <BellIcon />
         {unread > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium leading-4 text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-red-700 px-1 text-[10px] font-medium leading-4 text-white">
             {unread > 9 ? '9+' : unread}
           </span>
         ) : null}
