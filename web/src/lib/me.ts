@@ -34,7 +34,7 @@ export const myProfileQuery = queryOptions({
 })
 
 export type MyActivity = {
-  logins: Array<{ loginId: string; device: string; os: string; lastAt: string; location: string | null; ip: string | null; count: number; reported: boolean; current?: boolean }>
+  logins: Array<{ loginId: string; device: string; os: string; lastAt: string; location: string | null; ip: string | null; count: number; reported: boolean; current?: boolean; digestTag?: string | null }>
   events: Array<{
     id: string
     at: string

@@ -104,6 +104,27 @@ describe("self service and overview", () => {
     expect((await json(await call("/api/admin/suspicious-reports"))).reports).toHaveLength(0);
   });
 
+  test("recent activity prefers visitor digests and preserves legacy grouping", async () => {
+    const ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36";
+    const records = [
+      ["digest-a-old", "a1b2c3d4aaaa", "2025-01-01T00:00:00.000Z", "Seoul"],
+      ["digest-a-new", "a1b2c3d4aaaa", "2025-01-02T00:00:00.000Z", "Busan"],
+      ["digest-b", "b1b2c3d4bbbb", "2025-01-03T00:00:00.000Z", "Seoul"],
+      ["legacy-a", null, "2025-01-04T00:00:00.000Z", "Seoul"],
+      ["legacy-b", null, "2025-01-05T00:00:00.000Z", "Seoul"],
+    ] as const;
+    for (const [id, digest, at, city] of records) {
+      await db.prepare("INSERT INTO login_history (id, user_id, occurred_at, ip, user_agent, country, city, method, visitor_digest) VALUES (?, ?, ?, '198.51.100.8', ?, 'KR', ?, 'password', ?)")
+        .bind(id, adminId, at, ua, city, digest).run();
+    }
+    const logins = (await json(await call("/api/me/activity"))).logins as Array<any>;
+    const deviceA = logins.find((login) => login.digestTag === "a1b2c3d4");
+    const deviceB = logins.find((login) => login.digestTag === "b1b2c3d4");
+    expect(deviceA).toMatchObject({ count: 2, location: "Busan, KR", digestTag: "a1b2c3d4" });
+    expect(deviceB).toMatchObject({ count: 1, digestTag: "b1b2c3d4" });
+    expect(logins.find((login) => login.device === "Mac OS X Chrome" && login.digestTag === null)).toMatchObject({ count: 2, location: "Seoul, KR" });
+  });
+
   test("asking for an app needs a message and reaches the administrators", async () => {
     expect((await call("/api/me/app-requests", { method: "POST", body: { slug: "figma", message: " " } })).status).toBe(400);
     expect((await call("/api/me/app-requests", { method: "POST", body: { slug: "missing", message: "please" } })).status).toBe(404);

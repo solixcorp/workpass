@@ -44,6 +44,7 @@ export type OpaqueLoginDecision = {
   allowed: boolean;
   action: "allow" | "step_up" | "deny";
   reasons: string[];
+  visitorDigest?: string | null;
 };
 
 async function recordDecision(
@@ -158,7 +159,7 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
     // complete one. Without any factor this stays fail closed (denied).
     return await stepUpOutcome(env, input.userId, [...risk.reasons, ...reasons]);
   }
-  return { allowed: true, action: risk.action, reasons: [...risk.reasons, ...reasons] };
+  return { allowed: true, action: risk.action, reasons: [...risk.reasons, ...reasons], visitorDigest: risk.visitorDigest };
 }
 
 /**

@@ -98,18 +98,20 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   }
 
   if (request.method === "POST" && isFingerprintRiskLogin(path)) {
+    let visitorDigest: string | null = null;
     const response = await handleFingerprintRiskLogin(
       request,
       env,
       auth,
       eventType ?? "authentication.login.success_or_failure",
+      (digest) => { visitorDigest = digest; },
     );
     if (response.ok) {
       try {
         const newSession = await findNewSessionFromResponse(env, response);
         if (newSession) {
           if (path === "/api/auth/passkey/verify-authentication") await recordSessionMfaProof(env, newSession.token, newSession.userId, "passkey").catch(() => false);
-          await recordLogin(env, request, newSession.userId, path === "/api/auth/passkey/verify-authentication" ? "passkey" : "password", newSession.token);
+          await recordLogin(env, request, newSession.userId, path === "/api/auth/passkey/verify-authentication" ? "passkey" : "password", newSession.token, visitorDigest);
         }
       } catch {
         // History is best-effort; without a durable proof, method-specific gates fail closed.

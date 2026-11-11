@@ -289,6 +289,7 @@ export async function handleFingerprintRiskLogin(
   env: Env,
   auth: AuthInstance,
   eventType: string,
+  onVisitorDigest?: (digest: string | null) => void,
 ): Promise<Response> {
   const mode = fingerprintMode(env);
   const path = new URL(request.url).pathname;
@@ -464,6 +465,7 @@ export async function handleFingerprintRiskLogin(
   if (verifiedEvent && eventClaimed && userId) {
     try {
       const risk = await evaluateFingerprintRisk({ env, userId, event: verifiedEvent });
+      onVisitorDigest?.(risk.visitorDigest);
       const effectiveAction = risk.action;
       let decisionRecorded = true;
       if (mode === "observe" || mode === "enforce") {
