@@ -178,6 +178,17 @@ Initial retention defaults: event replay claims 24 hours, device/network observa
 
 ## Database initialization
 
+### App integrations (administrator)
+
+An app (`/api/admin/applications`) points at a protocol provider through `binding`. The console creates the provider first, then the app, and removes the provider again if the app cannot be created.
+
+- `POST /api/admin/oidc-clients` creates an OAuth 2.0 / OIDC client with a random 24-character `clientId`. Body: `name`, `applicationType` (`web`, `spa`, `native`, `service`), `grants` (`authorization_code`, `refresh_token`, `client_credentials`, `device_code`, `ciba`), `redirectUris`, `postLogoutRedirectUris`, `scopes`, `requirePkce`, `dpop`. Web and service clients are confidential and get a secret in the response, once; it is stored as SHA-256 (base64url). SPA and native clients are public and always use PKCE. Redirect addresses must be https (http only for localhost; native apps may use their own scheme); wildcards and fragments are refused. `service` clients use `client_credentials` only, with `scopes` as the allowed scopes. New clients start disabled.
+- `GET|PATCH|DELETE /api/admin/oidc-clients/:clientId`, `POST .../rotate-secret` (the old secret stops working at once). The dashboard client cannot be edited or deleted here; a client an app still points at cannot be deleted.
+- `GET /api/admin/applications/:slug/integration` returns the provider behind the app (client settings without the secret, SAML entity ID / ACS / certificate, WS-Fed realm / reply URL, SWA origin) and this system's endpoints (`/saml/metadata`, `/saml/sso`, `/wsfed/metadata`, `/wsfed/signin`). `PUT` changes the ACS address and certificate (SAML) or the reply address (WS-Fed).
+- `POST /api/admin/saml-service-providers` accepts `verifyCertificate: true` to prove the certificate imports as an RSA key before it is stored.
+- Enabling or disabling an app now enables or disables its provider too (OIDC client, SAML SP, WS-Fed party, SWA origin). Enabling a SAML app with an unusable certificate answers 409 and leaves the app off. Deleting an app deletes its provider and its protocol access policy.
+- `GET|PUT /api/admin/applications/:slug/assignment` sets who may open the app: `{ mode: "everyone" }` or `{ mode: "groups", groups: [id…] }`. The groups are written to the dashboard gate (`app:<slug>`) and to the protocol's own gate (`saml:`, `oidc:`, `wsfed:`, `swa:`) together.
+
 ### First administrator
 
 `POST /api/admin/bootstrap` also returns `activation: { url, expiresAt }`, a one-time link to `/activate` (valid for the activation TTL). Plaintext sign-in is disabled by default, so this link is the only way for the first administrator to set a password (OPAQUE registration). The `password` in the request body is a placeholder required by the account creation call.

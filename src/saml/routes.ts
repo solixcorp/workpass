@@ -99,6 +99,15 @@ samlAdminRoutes.post("/saml-service-providers", async (context) => {
   }
   const provider = { id: crypto.randomUUID(), entityId: value.entityId, acsUrl: value.acsUrl, signingCertificate: value.signingCertificate };
   try { validateSamlServiceProvider({ ...provider, enabled: false }); } catch { return context.json({ error: "Invalid service provider" }, 400); }
+  // The console asks for the certificate to be proven usable now, so an app is
+  // never created that could not be turned on.
+  if (value.verifyCertificate === true) {
+    try {
+      await importSamlServiceProviderTrustedKey(provider.signingCertificate);
+    } catch {
+      return context.json({ error: "서명 인증서를 쓸 수 없습니다. RSA 인증서(PEM)가 맞는지 확인하세요." }, 400);
+    }
+  }
   return auditStandaloneOperation(context.env, "saml.service_provider.create", "/api/admin/saml-service-providers", async () => {
     const inserted = await createSamlServiceProvider(context.env, provider);
     return {

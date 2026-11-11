@@ -20,6 +20,7 @@ import {
   validateApplicationInput,
   validateBindingReference,
 } from "./store";
+import { removeProvider, syncProvider } from "./integration-routes";
 import {
   deleteApplicationIcon,
   iconDisplayPath,
@@ -127,6 +128,12 @@ async function withEnabled(
   return auditStandaloneOperation(context.env, eventType, context.req.path, async () => {
     const application = await getApplication(context.env, slug);
     if (!application) return { response: await applicationNotFound(context), actorUserId: actor.userId };
+    // The protocol provider follows the app; turning on fails with the reason
+    // (for example an unusable SAML certificate) and leaves the app off.
+    const providerError = await syncProvider(context.env, application, enabled);
+    if (providerError && enabled) {
+      return { response: Response.json({ error: providerError }, { status: 409 }), actorUserId: actor.userId, targetUserId: slug };
+    }
     const changed = await setApplicationEnabled(context.env, slug, enabled);
     return {
       response: changed
@@ -228,6 +235,7 @@ applicationAdminRoutes.delete("/applications/:slug", async (context) => {
       await deleteApplicationIcon(context.env, slug).catch(() => undefined);
     }
     const removed = await deleteApplication(context.env, slug);
+    if (removed) await removeProvider(context.env, existing).catch(() => undefined);
     return {
       response: removed
         ? Response.json({ deleted: true })
