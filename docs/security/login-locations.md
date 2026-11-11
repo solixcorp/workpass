@@ -1,5 +1,7 @@
 # Sign-in places
 
+Group and application scopes are described in [location scopes](../design/location-scopes.md).
+
 Administrators define named **places** (a centre and a radius) and a **policy** that limits sign-in to
 people who are near one of them. It is managed in the console under "로그인 위치" and stored in
 `location_places`, `location_policy` (one row) and `location_proofs`.

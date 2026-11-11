@@ -6,6 +6,7 @@
  */
 
 import { Hono } from "hono";
+import { locationGate } from "../security/location-gate";
 import type { Context } from "hono";
 import type { Env } from "../env";
 import { createAuth } from "../auth/config";
@@ -114,6 +115,8 @@ samlProtocolRoutes.get(SAML_SSO_PATH, async (context) => {
       return reject(context, "mfa-required");
     }
     const policySubject = `saml:${provider.entityId}`;
+    const location = await locationGate(context.env, { request: context.req.raw, userId: session.user.id, path: context.req.path, subject: policySubject });
+    if (!location.allowed) return context.redirect(`${new URL(context.env.AUTH_BASE_URL).origin}/api/auth/error?error=access_denied`, 302);
     const policy = await loadAppAccessPolicy(context.env, policySubject);
     if (policy) {
       if (policy.requireMfa) {

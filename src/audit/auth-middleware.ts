@@ -118,11 +118,10 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
   const grantCopy = path.startsWith("/api/auth/oauth2/") ? request.clone() : null;
 
   if (!eventType) {
+    const removal = request.method === "POST" && ["/api/auth/two-factor/disable", "/api/auth/passkey/delete-passkey"].includes(path);
+    const removalSession = removal ? await auth.api.getSession({ headers: request.headers }).catch(() => null) : null;
     const answer = await auth.handler(request);
-    if (answer.ok && request.method === "POST" && ["/api/auth/two-factor/disable", "/api/auth/passkey/delete-passkey"].includes(path)) {
-      const session = await auth.api.getSession({ headers: request.headers }).catch(() => null);
-      if (session) await notifySecurity(env, session.user.id, mfaRemovedNotice);
-    }
+    if (answer.ok && removalSession) await notifySecurity(env, removalSession.user.id, mfaRemovedNotice);
     if (grantCopy && path === "/api/auth/oauth2/continue") {
       const continuing = await auth.api.getSession({ headers: request.headers }).catch(() => null);
       await recordOAuthGrant(env, grantCopy, answer, continuing?.user.id ?? null);
@@ -410,7 +409,9 @@ async function denyPublicRegistration(
 async function enforceLocationAtAuthorize(request: Request, env: Env, auth: AuthInstance, path: string): Promise<Response | null> {
   const session = await auth.api.getSession({ headers: request.headers }).catch(() => null);
   if (!session) return null;
-  const verdict = await locationGate(env, { request, userId: session.user.id, path });
+  let verdict = await locationGate(env, { request, userId: session.user.id, path });
+  const clientId = new URL(request.url).searchParams.get("client_id");
+  if (verdict.allowed && clientId) verdict = await locationGate(env, { request, userId: session.user.id, path, subject: `oidc:${clientId}` });
   if (verdict.allowed) return null;
   const origin = new URL(env.AUTH_BASE_URL).origin;
   const url = new URL(request.url);

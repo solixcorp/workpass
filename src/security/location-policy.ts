@@ -137,13 +137,17 @@ export function proofTokenFromRequest(request: Request): string | null {
   return null;
 }
 
-async function validProof(env: Env, token: string): Promise<{ placeName: string; distanceM: number } | null> {
+async function validProof(env: Env, token: string): Promise<{ placeId: string; placeName: string; distanceM: number } | null> {
   const row = await env.DB.prepare(
-    `SELECT p.distance_m AS distanceM, l.name AS name FROM location_proofs p
+    `SELECT p.distance_m AS distanceM, l.name AS name, l.id AS placeId FROM location_proofs p
      JOIN location_places l ON l.id = p.place_id AND l.enabled = 1
      WHERE p.token_hash = ? AND p.expires_at > ?`,
-  ).bind(await sha256Hex(token), new Date().toISOString()).first<{ distanceM: number; name: string }>().catch(() => null);
-  return row ? { placeName: row.name, distanceM: row.distanceM } : null;
+  ).bind(await sha256Hex(token), new Date().toISOString()).first<{ distanceM: number; name: string; placeId: string }>().catch(() => null);
+  return row ? { placeId: row.placeId, placeName: row.name, distanceM: row.distanceM } : null;
+}
+
+export function parsePlaceIds(value: string): string[] {
+  try { const ids: unknown = JSON.parse(value); return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []; } catch { return []; }
 }
 
 async function exempt(env: Env, policy: LocationPolicy, userId: string): Promise<boolean> {
@@ -157,17 +161,33 @@ async function exempt(env: Env, policy: LocationPolicy, userId: string): Promise
 /** Check a request against the policy. `policy` overrides the stored one (to test a change before saving it). */
 export async function evaluateLocation(
   env: Env,
-  input: { request: Request; userId: string | null; policy?: LocationPolicy },
+  input: { request: Request; userId: string | null; policy?: LocationPolicy; subject?: string; groupOverride?: { groupId: string; placeIds: string[] } },
 ): Promise<LocationVerdict> {
-  const policy = input.policy ?? await loadLocationPolicy(env);
+  let policy = input.policy ?? await loadLocationPolicy(env);
+  let scopedIds: string[] | null = null;
+  if (input.subject) {
+    const rule = await env.DB.prepare("SELECT place_ids, mode FROM location_app_rules WHERE subject = ?").bind(input.subject).first<{ place_ids: string; mode: "observe" | "enforce" }>();
+    if (!rule) return { allowed: true, pass: true, mode: "off", method: "off", needsBrowser: false, reason: "ok", placeName: null, distanceM: null };
+    policy = { ...policy, mode: rule.mode };
+    scopedIds = parsePlaceIds(rule.place_ids);
+  }
   const result = (pass: boolean, rest: Partial<LocationVerdict>): LocationVerdict => ({
     allowed: pass || policy.mode !== "enforce", pass, mode: policy.mode, method: "none", needsBrowser: false,
     reason: pass ? "ok" : "outside", placeName: null, distanceM: null, ...rest,
   });
   if (policy.mode === "off") return result(true, { method: "off" });
-  const places = await listPlaces(env, true);
-  if (places.length === 0) return result(true, { reason: "no_places" });
   if (input.userId && await exempt(env, policy, input.userId)) return result(true, { method: "exempt" });
+  if (!input.subject && input.userId) {
+    const rows = await env.DB.prepare("SELECT r.group_id, r.place_ids FROM location_group_rules r JOIN directory_group_members m ON m.group_id = r.group_id WHERE m.user_id = ?").bind(input.userId).all<{ group_id: string; place_ids: string }>();
+    const rules = rows.results.filter((row) => row.group_id !== input.groupOverride?.groupId).map((row) => parsePlaceIds(row.place_ids));
+    if (input.groupOverride) {
+      const member = await env.DB.prepare("SELECT 1 FROM directory_group_members WHERE group_id = ? AND user_id = ?").bind(input.groupOverride.groupId, input.userId).first();
+      if (member && input.groupOverride.placeIds.length) rules.push(input.groupOverride.placeIds);
+    }
+    if (rules.length) scopedIds = [...new Set(rules.flat())];
+  }
+  const places = (await listPlaces(env, true)).filter((place) => scopedIds === null || scopedIds.includes(place.id));
+  if (places.length === 0) return result(scopedIds === null, { reason: "no_places" });
 
   const point = policy.signal === "browser" ? null : networkPoint(input.request);
   let nearest: { place: Place; distanceM: number } | null = null;
@@ -180,7 +200,7 @@ export async function evaluateLocation(
   if (policy.signal !== "network") {
     const token = proofTokenFromRequest(input.request);
     const proof = token ? await validProof(env, token) : null;
-    if (proof) return result(true, { method: "browser", placeName: proof.placeName, distanceM: proof.distanceM });
+    if (proof && places.some((place) => place.id === proof.placeId)) return result(true, { method: "browser", placeName: proof.placeName, distanceM: proof.distanceM });
   }
   const needsBrowser = policy.signal !== "network";
   return result(false, {
@@ -201,7 +221,7 @@ export async function recordLocationProof(
   input: { request: Request; latitude: number; longitude: number; accuracyM: number },
 ): Promise<{ ok: true; token: string } | { ok: false; reason: "outside" | "inaccurate" | "rate_limited" | "unavailable" }> {
   const policy = await loadLocationPolicy(env);
-  if (policy.mode === "off" || policy.signal === "network") return { ok: false, reason: "unavailable" };
+  if (policy.signal === "network") return { ok: false, reason: "unavailable" };
   const places = await listPlaces(env, true);
   const ip = (input.request.headers.get("cf-connecting-ip") ?? "local").slice(0, 64);
   const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM location_proofs WHERE client_ip = ? AND created_at > ?")

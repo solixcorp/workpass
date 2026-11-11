@@ -1016,4 +1016,15 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       sends_in_window INTEGER NOT NULL DEFAULT 1
     )`,
   ).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS location_group_rules (
+    group_id TEXT PRIMARY KEY NOT NULL, place_ids TEXT NOT NULL
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS location_app_rules (
+    subject TEXT PRIMARY KEY NOT NULL, place_ids TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('observe', 'enforce'))
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id TEXT NOT NULL, category TEXT NOT NULL, enabled INTEGER NOT NULL,
+    updated_at TEXT NOT NULL, PRIMARY KEY (user_id, category)
+  )`).run();
 }

@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ApiError, apiFetch } from '@/lib/api'
 import { shareLocation } from '@/lib/location'
 import { PlaceDialog } from './places-dialog'
+import { ScopeRules } from './scope-rules'
 import type { LocationView, Place, Policy, Verdict } from './types'
 
 const MODES: Array<{ value: Policy['mode']; title: string; description: string }> = [
@@ -188,6 +189,8 @@ export function LocationsPage() {
           </div>
         )}
       </section>
+
+      <ScopeRules view={view} />
 
       {editing !== null ? <PlaceDialog key={editing === 'new' ? 'new' : editing.id} open place={editing === 'new' ? null : editing} onClose={() => setEditing(null)} /> : null}
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && !remove.isPending && setRemoving(null)}>

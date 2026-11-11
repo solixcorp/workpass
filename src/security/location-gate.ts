@@ -12,11 +12,11 @@ import { findNewSessionFromResponse } from "./risk-auth-middleware";
  */
 export async function locationGate(
   env: Env,
-  input: { request: Request; userId: string | null; path: string },
+  input: { request: Request; userId: string | null; path: string; subject?: string },
 ): Promise<LocationVerdict> {
   let verdict: LocationVerdict;
   try {
-    verdict = await evaluateLocation(env, { request: input.request, userId: input.userId });
+    verdict = await evaluateLocation(env, { request: input.request, userId: input.userId, subject: input.subject });
   } catch {
     return { allowed: false, pass: false, mode: "enforce", method: "none", needsBrowser: false, reason: "no_signal", placeName: null, distanceM: null };
   }
@@ -30,7 +30,7 @@ export async function locationGate(
       outcome: verdict.mode === "enforce" ? "failure" : "success",
       request_path: input.path,
       client_ip: input.request.headers.get("cf-connecting-ip"),
-      event_context: { reason: verdict.reason, nearestPlace: verdict.placeName, distanceM: verdict.distanceM },
+      event_context: { reason: verdict.reason, nearestPlace: verdict.placeName, distanceM: verdict.distanceM, ...(input.subject ? { subject: input.subject } : {}) },
     });
   } catch {
     // The decision stands; the audit gap shows in the logs.
