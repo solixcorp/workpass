@@ -102,6 +102,17 @@ describe("application lifecycle", () => {
     expect(await createApplication(env, { ...bookmarkInput, name: "Duplicate" }, "u1")).toBeNull();
   });
 
+  test("an update saves the group and the external icon URL, and leaves them alone when omitted", async () => {
+    const env = await seededEnv();
+    await createApplication(env, bookmarkInput, "u1");
+    const grouped = await updateApplication(env, "company-wiki", { categoryGroup: "업무 도구", iconUrl: "https://cdn.example.test/wiki.png" });
+    expect(grouped).toMatchObject({ categoryGroup: "업무 도구", iconUrl: "https://cdn.example.test/wiki.png" });
+    const untouched = await updateApplication(env, "company-wiki", { description: "only this" });
+    expect(untouched).toMatchObject({ categoryGroup: "업무 도구", iconUrl: "https://cdn.example.test/wiki.png", description: "only this" });
+    const cleared = await updateApplication(env, "company-wiki", { categoryGroup: null, iconUrl: null });
+    expect(cleared).toMatchObject({ categoryGroup: null, iconUrl: null });
+  });
+
   test("updates keep the protocol and binding integrity enforced", async () => {
     const env = await seededEnv();
     await createApplication(env, bookmarkInput, "u1");

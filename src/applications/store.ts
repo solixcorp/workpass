@@ -275,13 +275,16 @@ export async function updateApplication(
     description: updates.description ?? existing.description,
     launchUrl: updates.launchUrl !== undefined ? updates.launchUrl : existing.launchUrl,
     hideFromDashboard: updates.hideFromDashboard ?? existing.hideFromDashboard,
+    iconUrl: updates.iconUrl !== undefined ? updates.iconUrl : existing.iconUrl,
+    categoryGroup: updates.categoryGroup !== undefined ? updates.categoryGroup : existing.categoryGroup,
   };
   const protocol = await finalizeProtocol(env, merged);
   const result = await env.DB.prepare(
     `UPDATE applications SET name = ?, description = ?, binding = ?, launch_url = ?,
-       hide_from_dashboard = ?, updated_at = ? WHERE slug = ?`,
+       icon_url = ?, category_group = ?, hide_from_dashboard = ?, updated_at = ? WHERE slug = ?`,
   ).bind(
     merged.name!, merged.description ?? "", merged.binding ?? null, merged.launchUrl ?? null,
+    merged.iconUrl ?? null, merged.categoryGroup ?? null,
     (merged.hideFromDashboard ?? false) ? 1 : 0, new Date().toISOString(), slug,
   ).run();
   if (result.meta.changes !== 1) return null;
