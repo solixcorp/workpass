@@ -52,6 +52,8 @@ export interface EnrollmentView {
   passwordLabel: string;
   requiredNotice: string;
   methods: MethodView[];
+  /** The card shown during sign-in when a required second factor is not set up yet. */
+  signIn: { title: string; description: string; requiredHeading: string; hint: string; setup: string; back: string };
   hotpTokens: Array<{ id: string; label: string; createdAt: string }>;
   backupCodes: { available: boolean; label: string; description: string };
   disable: { available: boolean; label: string; description: string; blockedReason?: string };
@@ -135,6 +137,14 @@ export async function buildEnrollmentView(
     passwordLabel: "계정 비밀번호",
     requiredNotice: "관리자가 이 계정에 2차 인증을 필수로 정했습니다. 등록을 마쳐야 앱을 열 수 있습니다.",
     methods,
+    signIn: {
+      title: "보안 방법 설정",
+      description: "보안 방법은 사용자 본인만 접근할 수 있도록 계정을 보호합니다.",
+      requiredHeading: "지금 요구됨",
+      hint: "아래 방법 중 하나를 설정하면 로그인을 계속할 수 있습니다.",
+      setup: "설정",
+      back: "로그인으로 돌아가기",
+    },
     hotpTokens: tokens.results,
     backupCodes: {
       available: hasTotp,

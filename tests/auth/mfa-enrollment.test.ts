@@ -136,6 +136,8 @@ describe("second-factor enrollment", () => {
     const me = await (await call("/api/auth/get-session")).json() as any;
     const view = await (await call("/api/mfa/enrollment")).json() as any;
     expect(view).toMatchObject({ required: true, mustEnroll: false, enabled: true });
+    // The sign-in card copy is defined by the server.
+    expect(view.signIn).toMatchObject({ title: "보안 방법 설정", requiredHeading: "지금 요구됨", setup: "설정" });
     expect(view.disable.available).toBeFalse();
     expect((await call("/api/auth/two-factor/disable", { method: "POST", body: {} })).status).toBe(403);
 

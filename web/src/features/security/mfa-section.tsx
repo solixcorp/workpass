@@ -135,6 +135,25 @@ export function MfaSection() {
   )
 }
 
+/** The enrollment dialogs on their own, for screens that open one method at a time (the sign-in card). */
+export function EnrollmentDialogs({
+  view,
+  kind,
+  onClose,
+}: {
+  view: EnrollmentView
+  kind: 'totp' | 'otp' | 'hotp' | null
+  onClose: () => void
+}) {
+  return (
+    <>
+      <TotpDialog view={view} open={kind === 'totp'} onClose={onClose} />
+      <OtpDialog view={view} open={kind === 'otp'} onClose={onClose} />
+      <HotpDialog view={view} open={kind === 'hotp'} onClose={onClose} />
+    </>
+  )
+}
+
 function HotpTokenRow({
   id,
   label,

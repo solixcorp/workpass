@@ -30,6 +30,8 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { Spinner } from '@/components/ui/spinner'
+import { EnrollmentDialogs } from '@/features/security/mfa-section'
+import { enrollmentQuery, type EnrollmentView } from '@/lib/mfa'
 import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { fingerprintEventId, loginConfigQuery, startFingerprint } from '@/lib/fingerprint'
@@ -71,6 +73,9 @@ export function LoginPage() {
   const [folded, setFolded] = useState(false)
   const [warm, setWarm] = useState(false)
   const continued = useRef(false)
+  const [enrolling, setEnrolling] = useState(false)
+  const [enrollKind, setEnrollKind] = useState<'totp' | 'otp' | 'hotp' | null>(null)
+  const enrollment = useQuery({ ...enrollmentQuery, enabled: enrolling })
 
   // The first card waits a moment so the folded line is seen before it opens.
   useEffect(() => {
@@ -139,6 +144,25 @@ export function LoginPage() {
     }
   }
 
+  /** A signed-in user whose required second factor is not set up yet gets the setup card first. */
+  async function afterSignIn() {
+    const view = await queryClient.fetchQuery({ ...enrollmentQuery, staleTime: 0 }).catch(() => null)
+    if (view?.mustEnroll) {
+      await fold(() => setEnrolling(true))
+      return
+    }
+    await finish()
+  }
+
+  // Setting a method up completes the requirement: carry on with the sign-in.
+  useEffect(() => {
+    if (enrolling && enrollment.data && !enrollment.data.mustEnroll) {
+      setEnrolling(false)
+      void finish()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrolling, enrollment.data])
+
   // A browser that already holds a session only needs to resume the request.
   useEffect(() => {
     if (existingSession) void finish()
@@ -172,7 +196,7 @@ export function LoginPage() {
       )
       return
     }
-    await finish()
+    await afterSignIn()
   }
 
   async function run<T>(task: () => Promise<T>): Promise<T | undefined> {
@@ -236,7 +260,7 @@ export function LoginPage() {
         await fold(() => setStepUp(challenge))
         return
       }
-      await finish()
+      await afterSignIn()
     }
   }
 
@@ -270,6 +294,62 @@ export function LoginPage() {
     )
   }
   if (!idx) return <AuthShell folded />
+
+  if (enrolling) {
+    const view: EnrollmentView | undefined = enrollment.data
+    const options = (view?.methods ?? []).filter(
+      (method) => method.state === 'available' && (method.key === 'totp' || method.key === 'otp' || method.key === 'hotp'),
+    )
+    return (
+      <AuthShell folded={folded || !view || finishing} identifier={identifier} badge={<ShieldCheckIcon />}>
+        {view ? (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-xl font-semibold">{view.signIn.title}</h1>
+              <p className="text-sm text-muted-foreground">{view.signIn.description}</p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <h2 className="text-sm font-medium text-muted-foreground">{view.signIn.requiredHeading}</h2>
+              <p className="text-sm text-muted-foreground">{view.signIn.hint}</p>
+              <ItemGroup className="gap-2">
+                {options.map((method) => (
+                  <Item key={method.key} variant="outline">
+                    <ItemContent>
+                      <ItemTitle>{method.label}</ItemTitle>
+                      <ItemDescription>{method.description}</ItemDescription>
+                    </ItemContent>
+                    <ItemActions>
+                      <Button variant="outline" size="sm" onClick={() => setEnrollKind(method.key as 'totp' | 'otp' | 'hotp')}>
+                        {view.signIn.setup}
+                      </Button>
+                    </ItemActions>
+                  </Item>
+                ))}
+              </ItemGroup>
+              {options.length === 0 ? (
+                <Alert>
+                  <AlertDescription>지금 설정할 수 있는 방법이 없습니다. 관리자에게 문의하세요.</AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
+            <Button
+              variant="link"
+              className="self-start px-0 text-muted-foreground"
+              onClick={async () => {
+                await authClient.signOut()
+                setEnrolling(false)
+                setIdentifier('')
+                await start().catch(() => setFatal(true))
+              }}
+            >
+              {view.signIn.back}
+            </Button>
+            <EnrollmentDialogs view={view} kind={enrollKind} onClose={() => setEnrollKind(null)} />
+          </div>
+        ) : null}
+      </AuthShell>
+    )
+  }
 
   if (stepUp) {
     return (
