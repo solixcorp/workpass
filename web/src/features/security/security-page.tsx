@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { KeyRoundIcon, LaptopIcon, MonitorSmartphoneIcon, PencilIcon, PlusIcon, SmartphoneIcon, Trash2Icon } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -26,7 +26,8 @@ import { apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import { TrustedDevicesSection } from './devices-section'
 import { LockdownSection } from './lockdown-section'
-import { MfaSection } from './mfa-section'
+import { MfaSection, VerificationDialog } from './mfa-section'
+import { enrollmentQuery } from '@/lib/mfa'
 import { loginConfigQuery } from '@/lib/fingerprint'
 
 type DeviceSession = {
@@ -234,6 +235,8 @@ function PasskeysSection() {
   const [target, setTarget] = useState<PasskeyRow | null>(null)
   const [renaming, setRenaming] = useState<PasskeyRow | null>(null)
   const [adding, setAdding] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const enrollment = useQuery(enrollmentQuery)
   const { data, isPending, error } = useQuery({
     queryKey: ['security', 'passkeys'],
     queryFn: async () => {
@@ -242,6 +245,20 @@ function PasskeysSection() {
       return result.data as PasskeyRow[]
     },
   })
+
+  // Adding a passkey needs the same fresh password and second check as any factor.
+  async function startAdding() {
+    const view = (await enrollment.refetch()).data
+    if (view?.verification.required) setVerifying(true)
+    else setAdding(true)
+  }
+
+  useEffect(() => {
+    if (verifying && enrollment.data && !enrollment.data.verification.required) {
+      setVerifying(false)
+      setAdding(true)
+    }
+  }, [verifying, enrollment.data])
 
   const add = useMutation({
     mutationFn: async (name: string) => {
@@ -286,7 +303,7 @@ function PasskeysSection() {
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-sm font-medium text-muted-foreground">패스키</h2>
-        <Button variant="outline" size="sm" disabled={add.isPending} onClick={() => setAdding(true)}>
+        <Button variant="outline" size="sm" disabled={add.isPending || enrollment.isFetching} onClick={startAdding}>
           {add.isPending ? <Spinner data-icon="inline-start" /> : <PlusIcon data-icon="inline-start" />}
           패스키 추가
         </Button>
@@ -339,6 +356,9 @@ function PasskeysSection() {
           ))}
         </ItemGroup>
       )}
+      {enrollment.data ? (
+        <VerificationDialog view={enrollment.data} open={verifying} onClose={() => setVerifying(false)} />
+      ) : null}
       <PasskeyNameDialog
         key={adding ? 'add-open' : 'add-closed'}
         open={adding}

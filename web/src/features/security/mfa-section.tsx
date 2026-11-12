@@ -159,7 +159,7 @@ export function EnrollmentDialogs({
 }
 
 /** Adding a factor needs the password again and a second check: an existing method, or an emailed code when there is none. */
-function VerificationDialog({ view, open, onClose }: { view: EnrollmentView; open: boolean; onClose: () => void }) {
+export function VerificationDialog({ view, open, onClose }: { view: EnrollmentView; open: boolean; onClose: () => void }) {
   const refresh = useRefresh()
   const [selected, setSelected] = useState<string | null>(null)
   const [password, setPassword] = useState('')
