@@ -15,14 +15,20 @@ describe("device trust grading", () => {
   test("private mode and developer tools are recorded but never lower the grade", () => {
     expect(gradeDeviceTrust("allow", ["incognito_detected", "developer_tools_detected"])).toEqual({ level: "trusted", score: 95 });
     expect(gradeDeviceTrust("step_up", ["untrusted_device", "incognito_detected", "developer_tools_detected"])).toEqual({ level: "review", score: 55 });
+    expect(gradeDeviceTrust("allow", ["incognito_detected"], { suspectScore: 5 }).score).toBe(95);
     expect(gradeDeviceTrust("allow", ["developer_tools_detected"]).level).not.toBe("risky");
   });
 
-  test("a low provider suspect score costs nothing and a high one lowers the grade", () => {
-    expect(gradeDeviceTrust("allow", [], { suspectScore: 12 }).score).toBe(94);
-    expect(gradeDeviceTrust("allow", [], { suspectScore: 0 }).score).toBe(95);
-    expect(gradeDeviceTrust("allow", [], { suspectScore: 90 }).score).toBe(86);
-    expect(gradeDeviceTrust("allow", ["vpn_detected"], { suspectScore: 200 }).score).toBe(80);
+  test("the score is Fingerprint Pro's Suspect Score turned around", () => {
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 0 })).toEqual({ level: "trusted", score: 100 });
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 12 })).toEqual({ level: "trusted", score: 88 });
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 30 })).toEqual({ level: "normal", score: 70 });
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 90 })).toEqual({ level: "review", score: 10 });
+    // The provider's number wins over the count of reasons.
+    expect(gradeDeviceTrust("allow", ["vpn_detected", "proxy_detected"], { suspectScore: 12 }).score).toBe(88);
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 250 }).score).toBe(0);
+    expect(gradeDeviceTrust("step_up", ["untrusted_device"], { suspectScore: 23 })).toEqual({ level: "review", score: 77 });
+    expect(gradeDeviceTrust("deny", ["bot_detected", "tampering_detected"], { suspectScore: 23 })).toEqual({ level: "risky", score: 77 });
   });
 
   test("step-up verdicts are capped at review and hard reasons are risky", () => {

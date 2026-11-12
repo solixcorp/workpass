@@ -1,0 +1,8 @@
+schema = 1
+id = "REQ-1794503754-2xv"
+type = "requirement"
+title = "A user can trust a risky signed-in device after fresh reverification; device score follows Fingerprint Pro"
+description = "The security page offers 'trust' on a signed-in device that has a linked fingerprint record. It needs the same fresh password and second verification as adding a factor, is refused for bot, tampering, Tor and blocklisted-IP devices, and lasts 30 days. The device safety score is 100 minus the Fingerprint Pro Suspect Score when one was recorded. Enrolled second-factor methods show a check icon and green badge."
+status = "active"
+created_at = 2026-11-13T02:15:54+09:00
+updated_at = 2026-11-13T02:15:54+09:00

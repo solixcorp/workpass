@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, CopyIcon, PlusIcon, ShieldCheckIcon, Trash2Icon } from 'lucide-react'
+import { CheckIcon, CircleIcon, CopyIcon, PlusIcon, ShieldCheckIcon, Trash2Icon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
@@ -24,6 +24,7 @@ import {
   ItemContent,
   ItemDescription,
   ItemGroup,
+  ItemMedia,
   ItemTitle,
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -81,13 +82,31 @@ export function MfaSection() {
       ) : null}
       <ItemGroup className="gap-2">
         {data.methods.map((method) => (
-          <Item key={method.key} variant="outline">
+          <Item
+            key={method.key}
+            variant="outline"
+            className={method.state === 'enrolled' ? 'border-green-600/40 bg-green-50/60 dark:border-green-500/40 dark:bg-green-950/20' : undefined}
+          >
+            <ItemMedia variant="icon">
+              {method.state === 'enrolled' ? (
+                <CheckIcon className="text-green-700 dark:text-green-400" />
+              ) : (
+                <CircleIcon className="text-muted-foreground" />
+              )}
+            </ItemMedia>
             <ItemContent>
               <ItemTitle>
                 {method.label}
-                <Badge variant={method.state === 'enrolled' ? 'secondary' : 'outline'}>
-                  {method.stateLabel}
-                </Badge>
+                {method.state === 'enrolled' ? (
+                  <Badge className="bg-green-600 text-white hover:bg-green-600 dark:bg-green-500 dark:text-green-950">
+                    <CheckIcon data-icon="inline-start" />
+                    {method.stateLabel}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    {method.stateLabel}
+                  </Badge>
+                )}
               </ItemTitle>
               <ItemDescription>{method.description}</ItemDescription>
             </ItemContent>

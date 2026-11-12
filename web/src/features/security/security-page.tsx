@@ -41,7 +41,13 @@ type DeviceSession = {
   userAgent: string | null
   label: string
   location: { city: string | null; region: string | null; country: string | null } | null
-  trust: { level: 'trusted' | 'normal' | 'review' | 'risky' | 'unknown'; score: number; observedAt: string | null }
+  trust: {
+    level: 'trusted' | 'normal' | 'review' | 'risky' | 'unknown'
+    score: number
+    observedAt: string | null
+    trusted: boolean
+    canTrust: boolean
+  }
 }
 
 const TRUST_COPY: Record<DeviceSession['trust']['level'], { label: string; note: string; className: string }> = {
@@ -61,6 +67,10 @@ function placeOf(location: DeviceSession['location']): string {
 function SessionsSection() {
   const queryClient = useQueryClient()
   const [target, setTarget] = useState<DeviceSession | null>(null)
+  const [trustTarget, setTrustTarget] = useState<DeviceSession | null>(null)
+  const [verifying, setVerifying] = useState(false)
+  const [confirmingTrust, setConfirmingTrust] = useState(false)
+  const enrollment = useQuery(enrollmentQuery)
   const { data, isPending, error } = useQuery({
     queryKey: ['security', 'sessions'],
     queryFn: async () => (await apiFetch<{ sessions: DeviceSession[] }>('/api/security/sessions/overview')).sessions,
@@ -77,6 +87,39 @@ function SessionsSection() {
     },
     onError: () => toast.error('세션을 종료하지 못했습니다.'),
     onSettled: () => setTarget(null),
+  })
+
+  // Trusting a device needs the same fresh password and second check as adding a factor.
+  async function startTrust(entry: DeviceSession) {
+    setTrustTarget(entry)
+    const view = (await enrollment.refetch()).data
+    if (view?.verification.required) setVerifying(true)
+    else setConfirmingTrust(true)
+  }
+
+  useEffect(() => {
+    if (verifying && enrollment.data && !enrollment.data.verification.required) {
+      setVerifying(false)
+      setConfirmingTrust(true)
+    }
+  }, [verifying, enrollment.data])
+
+  const trust = useMutation({
+    mutationFn: (sessionId: string) =>
+      apiFetch('/api/security/trusted-devices/from-session', { method: 'POST', body: JSON.stringify({ sessionId }) }),
+    onSuccess: async () => {
+      toast.success('이 기기를 신뢰한 기기로 등록했습니다. 30일 동안 유지됩니다.')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['security', 'sessions'] }),
+        queryClient.invalidateQueries({ queryKey: ['security', 'trusted-devices'] }),
+      ])
+    },
+    onError: (cause: unknown) =>
+      toast.error(cause instanceof Error && /[가-힣]/.test(cause.message) ? cause.message : '신뢰한 기기로 등록하지 못했습니다.'),
+    onSettled: () => {
+      setConfirmingTrust(false)
+      setTrustTarget(null)
+    },
   })
 
   return (
@@ -110,6 +153,7 @@ function SessionsSection() {
                   <ItemTitle>
                     {entry.label}
                     {isCurrent ? <Badge variant="secondary">이 기기</Badge> : null}
+                    {entry.trust.trusted ? <Badge variant="outline">신뢰한 기기</Badge> : null}
                   </ItemTitle>
                   <ItemDescription>
                     {location ? <span className="block">{location}</span> : null}
@@ -120,19 +164,26 @@ function SessionsSection() {
                   <p className={`text-sm ${TRUST_COPY[entry.trust.level].className}`} title={TRUST_COPY[entry.trust.level].note}>
                     {entry.trust.level === 'unknown'
                       ? TRUST_COPY.unknown.note
-                      : `이 기기는 ${TRUST_COPY[entry.trust.level].label}으로 판단했습니다 (점수 ${entry.trust.score}/100)`}
+                      : `이 기기는 ${TRUST_COPY[entry.trust.level].label}으로 판단했습니다 (안전 점수 ${entry.trust.score}/100)`}
                   </p>
                 </ItemContent>
-                {!isCurrent ? (
+                {!isCurrent || entry.trust.canTrust ? (
                   <ItemActions>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={revoke.isPending}
-                      onClick={() => setTarget(entry)}
-                    >
-                      종료
-                    </Button>
+                    {entry.trust.canTrust ? (
+                      <Button variant="outline" size="sm" disabled={trust.isPending} onClick={() => void startTrust(entry)}>
+                        신뢰하기
+                      </Button>
+                    ) : null}
+                    {!isCurrent ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={revoke.isPending}
+                        onClick={() => setTarget(entry)}
+                      >
+                        종료
+                      </Button>
+                    ) : null}
                   </ItemActions>
                 ) : null}
               </Item>
@@ -140,6 +191,42 @@ function SessionsSection() {
           })}
         </ItemGroup>
       )}
+      {enrollment.data ? (
+        <VerificationDialog
+          view={enrollment.data}
+          open={verifying}
+          onClose={() => {
+            setVerifying(false)
+            setTrustTarget(null)
+          }}
+        />
+      ) : null}
+      <ConfirmDialog
+        open={confirmingTrust && trustTarget !== null}
+        title="이 기기를 신뢰할까요?"
+        description={
+          trustTarget && (trustTarget.trust.level === 'risky' || trustTarget.trust.level === 'review')
+            ? '이 기기는 로그인할 때 위험 신호가 있었습니다. 본인이 쓰는 기기가 확실할 때만 신뢰하세요. 신뢰하면 30일 동안 이 기기에서 등록하지 않은 기기 신호로 추가 확인을 받지 않습니다. 봇, 변조, Tor, 차단된 IP로 확인된 기기는 신뢰할 수 없습니다.'
+            : '신뢰하면 30일 동안 이 기기에서 등록하지 않은 기기 신호로 추가 확인을 받지 않습니다.'
+        }
+        details={
+          trustTarget
+            ? [
+                { label: '기기', value: trustTarget.label },
+                { label: '위치', value: placeOf(trustTarget.location) || '알 수 없음' },
+                { label: 'IP', value: trustTarget.ipAddress ?? '알 수 없음' },
+                { label: '현재 평가', value: `${TRUST_COPY[trustTarget.trust.level].label} (${trustTarget.trust.score}/100)` },
+              ]
+            : []
+        }
+        confirmLabel="신뢰하기"
+        pending={trust.isPending}
+        onConfirm={() => trustTarget && trust.mutate(trustTarget.id)}
+        onCancel={() => {
+          setConfirmingTrust(false)
+          setTrustTarget(null)
+        }}
+      />
       <ConfirmDialog
         open={target !== null}
         title="이 기기의 로그인을 종료할까요?"

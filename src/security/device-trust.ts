@@ -25,14 +25,19 @@ const HARD_REASONS = new Set([
   "rapid_device_and_country_change",
 ]);
 
-/**
- * Turn the verdict recorded at sign-in into a coarse grade. An allowed sign-in
- * starts high and loses a little for each soft reason that did not block it;
- * step-up and deny verdicts cap the grade.
- */
 /** Private mode and open developer tools are recorded but do not lower the grade. */
 const INFORMATIONAL = new Set(["incognito_detected", "developer_tools_detected"]);
 
+/**
+ * Grade the device recorded at sign-in.
+ *
+ * The score is Fingerprint Pro's own Suspect Score turned around: 100 minus
+ * the provider's 0-100 suspicion, so a device the provider considers clean
+ * reads high. Observations recorded without a Suspect Score fall back to a
+ * count of the reasons that were raised. The level still follows the verdict
+ * (deny or a hard signal is risky, step-up is review), so a hard signal can
+ * make a device risky even when the provider's score is low.
+ */
 export function gradeDeviceTrust(
   action: string | null,
   reasons: string[],
@@ -40,15 +45,19 @@ export function gradeDeviceTrust(
 ): { level: DeviceTrustLevel; score: number } {
   if (!action) return { level: "unknown", score: 0 };
   const counted = reasons.filter((reason) => !INFORMATIONAL.has(reason));
+  const suspect = typeof signals?.suspectScore === "number" && Number.isFinite(signals.suspectScore)
+    ? Math.min(100, Math.max(0, signals.suspectScore))
+    : null;
+  const fallback = (base: number, floor: number) => Math.max(floor, base - counted.length * 5);
+
   if (action === "deny" || counted.some((reason) => HARD_REASONS.has(reason))) {
-    return { level: "risky", score: Math.max(5, 25 - counted.length * 5) };
+    return { level: "risky", score: suspect !== null ? Math.round(100 - suspect) : fallback(25, 5) };
   }
-  // The provider's own suspect score nudges the grade: a low score costs nothing.
-  const suspect = typeof signals?.suspectScore === "number" ? signals.suspectScore : 0;
-  const suspectPenalty = Math.min(10, Math.floor(Math.max(0, suspect) / 10));
-  if (action === "step_up") return { level: "review", score: Math.max(30, 60 - counted.length * 5 - suspectPenalty) };
-  const score = Math.max(70, 95 - counted.length * 5 - suspectPenalty);
-  return { level: score >= 85 ? "trusted" : "normal", score };
+  if (action === "step_up") {
+    return { level: "review", score: suspect !== null ? Math.round(100 - suspect) : fallback(60, 30) };
+  }
+  const score = suspect !== null ? Math.round(100 - suspect) : fallback(95, 70);
+  return { level: score >= 85 ? "trusted" : score >= 50 ? "normal" : "review", score };
 }
 
 interface ObservationRow {

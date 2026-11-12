@@ -68,7 +68,7 @@ test("session overview is private and enriches active sessions from matching log
   expect(sessions.find((s) => s.id === "unmatched")!.location).toBeNull();
 
   // No recorded verdict yet: reported as unknown, never as safe.
-  expect(active.trust).toEqual({ level: "unknown", score: 0, observedAt: null });
+  expect(active.trust).toEqual({ level: "unknown", score: 0, observedAt: null, trusted: false, canTrust: false });
 
   // A login row that ties a session to a device digest, plus that device's observation.
   await db.prepare(`INSERT INTO login_history (id, user_id, occurred_at, ip, user_agent, session_token_hash, visitor_digest)

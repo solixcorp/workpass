@@ -99,10 +99,14 @@ function FingerprintDetail({ entry }: { entry: Fingerprint }) {
     <div className="flex flex-col gap-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={entry.level === 'risky' ? 'destructive' : 'secondary'}>{TRUST_LABEL[entry.level]}</Badge>
-        {entry.level !== 'unknown' ? <span className="text-muted-foreground">{entry.score}/100</span> : null}
+        {entry.level !== 'unknown' ? (
+          <span className="text-muted-foreground" title="Fingerprint Pro 의심 점수(Suspect Score)를 뒤집은 값입니다. 100 − 의심 점수.">
+            안전 점수 {entry.score}/100
+          </span>
+        ) : null}
         <span className="text-muted-foreground">판정 {entry.action ?? '기록 없음'}</span>
         {suspect !== null ? (
-          <Badge variant={suspectLabel(suspect).tone}>의심 점수 {suspect} · {suspectLabel(suspect).text}</Badge>
+          <Badge variant={suspectLabel(suspect).tone}>Fingerprint 의심 점수 {suspect} · {suspectLabel(suspect).text}</Badge>
         ) : null}
         {confidence !== null ? <span className="text-muted-foreground">식별 신뢰도 {Math.round(confidence * 100)}%</span> : null}
       </div>

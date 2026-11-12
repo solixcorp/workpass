@@ -7,6 +7,7 @@ import { revokeTrustedDevices } from "./trusted-device-store";
 import { requireSameOrigin } from "./authorization";
 import { hashSessionToken } from "../users/login-history";
 import { latestObservations } from "./device-trust";
+import { mayEnrollFactor } from "../mfa/second-factor";
 import {
   consumeFingerprintLookupBudget,
   digestVisitorId,
@@ -46,6 +47,14 @@ trustedDeviceRoutes.get("/sessions/overview", async (context) => {
     }
   }
   const observations = await latestObservations(context.env, session.user.id, [...digestBySession.values()]);
+  const trustedDigests = new Set<string>();
+  if (digestBySession.size > 0) {
+    const trusted = await context.env.DB.prepare(
+      `SELECT visitor_digest FROM trusted_devices
+       WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?`,
+    ).bind(session.user.id, new Date().toISOString()).all<{ visitor_digest: string }>().catch(() => ({ results: [] as Array<{ visitor_digest: string }> }));
+    for (const row of trusted.results) trustedDigests.add(row.visitor_digest);
+  }
 
   return context.json({ sessions: sessions.map((item) => {
     const digest = digestBySession.get(hashes.get(item.token) ?? "");
@@ -63,9 +72,13 @@ trustedDeviceRoutes.get("/sessions/overview", async (context) => {
       userAgent: item.userAgent ?? null,
       label: describeDevice(item.userAgent ?? match?.user_agent).label,
       location: match ? { city: match.city, region: match.region, country: match.country } : null,
-      trust: observed
-        ? { level: observed.level, score: observed.score, observedAt: observed.observedAt }
-        : { level: "unknown", score: 0, observedAt: null },
+      trust: {
+        ...(observed
+          ? { level: observed.level, score: observed.score, observedAt: observed.observedAt }
+          : { level: "unknown", score: 0, observedAt: null }),
+        trusted: digest ? trustedDigests.has(digest) : false,
+        canTrust: Boolean(digest) && !(digest && trustedDigests.has(digest)),
+      },
     };
   }) });
 });
@@ -260,6 +273,74 @@ trustedDeviceRoutes.post("/trusted-devices", async (context) => {
           { device: { id: deviceId, label, createdAt, expiresAt } },
           { status: 201 },
         ),
+        actorUserId: session.user.id,
+        targetUserId: session.user.id,
+      };
+    },
+  );
+});
+
+/** Reasons that mean the device's identity itself cannot be believed; a password and a code do not change that. */
+const NEVER_TRUSTABLE = new Set(["bot_detected", "tampering_detected", "tor_network_detected", "ip_blocklisted"]);
+
+trustedDeviceRoutes.post("/trusted-devices/from-session", async (context) => {
+  const originFailure = requireSameOrigin(context);
+  if (originFailure) return originFailure;
+  const auth = createAuth(context.env);
+  const session = await auth.api.getSession({ headers: context.req.raw.headers });
+  if (!session) return context.json({ error: "Unauthorized" }, 401);
+
+  let body: unknown;
+  try {
+    body = await context.req.json();
+  } catch {
+    return context.json({ error: "Invalid request" }, 400);
+  }
+  const sessionId = body && typeof body === "object" ? (body as { sessionId?: unknown }).sessionId : undefined;
+  if (typeof sessionId !== "string" || sessionId.length === 0 || sessionId.length > 256) {
+    return context.json({ error: "sessionId is required" }, 400);
+  }
+  // Same fresh password and second verification that adding a factor needs.
+  if (!await mayEnrollFactor(context.env, session as Parameters<typeof mayEnrollFactor>[1])) {
+    return context.json({ error: "추가 인증이 필요합니다.", code: "verification_required" }, 403);
+  }
+
+  const sessions = await auth.api.listSessions({ headers: context.req.raw.headers });
+  const target = sessions.find((item) => item.id === sessionId);
+  if (!target) return context.json({ error: "Session not found" }, 404);
+  const linked = await context.env.DB.prepare(
+    `SELECT visitor_digest, user_agent FROM login_history
+     WHERE user_id = ? AND session_token_hash = ? AND visitor_digest IS NOT NULL
+     ORDER BY occurred_at DESC LIMIT 1`,
+  ).bind(session.user.id, await hashSessionToken(target.token)).first<{ visitor_digest: string; user_agent: string | null }>();
+  if (!linked) {
+    return context.json({ error: "이 기기는 기기 확인 기록이 없어 신뢰할 수 없습니다. 다시 로그인한 뒤 시도하세요." }, 409);
+  }
+  const observed = (await latestObservations(context.env, session.user.id, [linked.visitor_digest])).get(linked.visitor_digest);
+  if (observed?.reasons.some((reason) => NEVER_TRUSTABLE.has(reason))) {
+    return context.json({ error: "이 기기는 조작되었거나 신뢰할 수 없는 네트워크로 확인되어 신뢰할 수 없습니다." }, 403);
+  }
+
+  const label = describeDevice(target.userAgent ?? linked.user_agent).label.slice(0, 80);
+  return auditStandaloneOperation(
+    context.env,
+    "authentication.trusted_device.enroll",
+    "/api/security/trusted-devices/from-session",
+    async () => {
+      const now = new Date();
+      const createdAt = now.toISOString();
+      const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const deviceId = crypto.randomUUID();
+      await context.env.DB.prepare(
+        `INSERT INTO trusted_devices
+           (id, user_id, visitor_digest, label, created_at, last_seen_at, expires_at, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(user_id, visitor_digest) DO UPDATE SET
+           id = excluded.id, label = excluded.label, created_at = excluded.created_at,
+           last_seen_at = excluded.last_seen_at, expires_at = excluded.expires_at, revoked_at = NULL`,
+      ).bind(deviceId, session.user.id, linked.visitor_digest, label, createdAt, createdAt, expiresAt).run();
+      return {
+        response: Response.json({ device: { id: deviceId, label, createdAt, expiresAt } }, { status: 201 }),
         actorUserId: session.user.id,
         targetUserId: session.user.id,
       };
