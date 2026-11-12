@@ -32,6 +32,14 @@ describe("session-bound passkey step-up", () => {
   }
   const options = () => call("/api/security/step-up/passkey/options");
   const verify = (body: unknown, anonymous = false) => call("/api/security/step-up/passkey/verify", body, anonymous);
+  async function enrollment() {
+    const response = await mod.fetch(new Request(`${ORIGIN}/api/mfa/enrollment`, {
+      headers: { Cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; ") },
+    }), env, { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    return await response.json() as { verification: { required: boolean; blockedReason: string | null; ui: { methods: Array<{ key: string }> } } };
+  }
   async function assertion(challenge: string, flags = 5) {
     const client = enc.encode(JSON.stringify({ type: "webauthn.get", challenge, origin: ORIGIN }));
     const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode("127.0.0.1")));
@@ -56,6 +64,7 @@ describe("session-bound passkey step-up", () => {
     publicKey = Buffer.from(cose).toString("base64");
   });
   test("anonymous and unenrolled users are denied", async () => {
+    expect((await enrollment()).verification.required).toBe(false);
     expect((await call("/api/security/step-up/passkey/options", {}, true)).status).toBe(401);
     expect((await verify({}, true)).status).toBe(401);
     const response = await options(); expect(response.status).toBe(409); expect(await response.json()).toEqual({ error: "등록된 패스키가 없습니다." });
@@ -98,11 +107,16 @@ describe("session-bound passkey step-up", () => {
   });
   test("a real signed UV assertion records the proof but does not satisfy a risk challenge", async () => {
     await openStepUpChallenge({ env, sessionToken: token, userId, reasons: ["risk"], requestPath: "/test" });
+    const before = await enrollment();
+    expect(before.verification.required).toBe(true);
+    expect(before.verification.ui.methods.map((method) => method.key)).not.toContain("passkey");
+    expect(before.verification.blockedReason).toContain("관리자");
     const o = await (await options()).json() as any;
     const body = await assertion(o.challenge);
     const result = await verify(body); expect(result.status).toBe(200); expect(await result.json()).toEqual({ verified: true });
     expect((await db.prepare('SELECT methods FROM session_mfa_proofs WHERE session_token = ?').bind(token).first<{ methods: string }>())?.methods).toContain("passkey");
     expect((await getStepUpChallenge(env, token)).state).toBe("pending");
+    expect((await enrollment()).verification.required).toBe(true);
     expect((await verify(body)).status).toBe(401);
   });
   test("per-user route limits preserve the challenge and reset after the window", async () => {
@@ -154,5 +168,29 @@ describe("session-bound passkey step-up", () => {
     } finally {
       clock.mockRestore();
     }
+  });
+  test("a passkey-only session verifies ownership before adding an authenticator app", async () => {
+    await db.prepare("DELETE FROM session_step_up_requirements WHERE session_token = ?").bind(token).run();
+    await db.prepare("DELETE FROM session_mfa_proofs WHERE session_token = ?").bind(token).run();
+    await db.prepare("DELETE FROM fingerprint_lookup_limits WHERE budget_key LIKE 'passkey_step_up:%'").run();
+    await db.prepare('UPDATE passkey SET counter = 0 WHERE id = ?').bind("p1").run();
+    const before = await enrollment();
+    expect(before.verification.required).toBe(true);
+    expect(before.verification.blockedReason).toBeNull();
+    expect(before.verification.ui.methods.map((method) => method.key)).toEqual(["passkey"]);
+    const enable = () => call("/api/auth/two-factor/enable", { password: "SelfSvc-7d9Kpw9zL2xQ" });
+    expect((await enable()).status).toBe(403);
+
+    const invalid = await (await options()).json() as { challenge: string };
+    expect((await verify(await assertion(invalid.challenge, 1))).status).toBe(401);
+    expect((await enrollment()).verification.required).toBe(true);
+    expect((await enable()).status).toBe(403);
+
+    const valid = await (await options()).json() as { challenge: string };
+    expect((await verify(await assertion(valid.challenge))).status).toBe(200);
+    expect((await enrollment()).verification.required).toBe(false);
+    const enabled = await enable();
+    expect(enabled.status).toBe(200);
+    expect(await enabled.json()).toMatchObject({ method: "totp", totpURI: expect.stringContaining("otpauth://totp/") });
   });
 });

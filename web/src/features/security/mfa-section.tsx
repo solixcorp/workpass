@@ -32,6 +32,7 @@ import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { formatDateTime } from '@/lib/format'
 import { enrollmentKey, enrollmentQuery, type EnrollmentView } from '@/lib/mfa'
+import { TwoFactorForm } from '@/features/auth/two-factor-form'
 
 type Flow =
   | { kind: 'totp' }
@@ -127,9 +128,7 @@ export function MfaSection() {
         </div>
       ) : null}
 
-      <TotpDialog view={data} open={flow?.kind === 'totp'} onClose={() => setFlow(null)} />
-      <OtpDialog view={data} open={flow?.kind === 'otp'} onClose={() => setFlow(null)} />
-      <HotpDialog view={data} open={flow?.kind === 'hotp'} onClose={() => setFlow(null)} />
+      <EnrollmentDialogs view={data} kind={flow?.kind === 'totp' || flow?.kind === 'otp' || flow?.kind === 'hotp' ? flow.kind : null} onClose={() => setFlow(null)} />
       <BackupDialog view={data} open={flow?.kind === 'backup'} onClose={() => setFlow(null)} />
       <DisableDialog view={data} open={flow?.kind === 'disable'} onClose={() => setFlow(null)} />
     </section>
@@ -146,6 +145,28 @@ export function EnrollmentDialogs({
   kind: 'totp' | 'otp' | 'hotp' | null
   onClose: () => void
 }) {
+  const refresh = useRefresh()
+  if (view.verification.required) {
+    const { ui, blockedReason } = view.verification
+    return (
+      <Dialog open={kind !== null} onOpenChange={(next) => !next && onClose()}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{ui.title}</DialogTitle>
+            <DialogDescription>{ui.description}</DialogDescription>
+          </DialogHeader>
+          {blockedReason ? (
+            <>
+              <Alert><AlertDescription>{blockedReason}</AlertDescription></Alert>
+              <DialogFooter><Button variant="outline" onClick={onClose}>닫기</Button></DialogFooter>
+            </>
+          ) : (
+            <TwoFactorForm ui={ui} onVerified={refresh} onCancel={onClose} />
+          )}
+        </DialogContent>
+      </Dialog>
+    )
+  }
   return (
     <>
       <TotpDialog view={view} open={kind === 'totp'} onClose={onClose} />
@@ -343,6 +364,7 @@ function TotpDialog({ view, open, onClose }: { view: EnrollmentView; open: boole
     const enrolled = result.data
     if (result.error || !enrolled || enrolled.method !== 'totp') {
       setError(message(result.error, '인증 앱 등록을 시작하지 못했습니다.'))
+      if (result.error?.status === 403) await refresh()
       return
     }
     const secret = new URL(enrolled.totpURI).searchParams.get('secret') ?? ''
@@ -442,6 +464,7 @@ function OtpDialog({ view, open, onClose }: { view: EnrollmentView; open: boolea
       setStep(2)
     } catch (cause) {
       setError(message(cause instanceof ApiError ? cause : null, '인증 코드를 보내지 못했습니다.'))
+      if (cause instanceof ApiError && cause.status === 403) await refresh()
     } finally {
       setPending(false)
     }
@@ -543,8 +566,9 @@ function HotpDialog({ view, open, onClose }: { view: EnrollmentView; open: boole
       })
       setToken({ secret: result.secretBase32, tokenId: result.tokenId })
       await refresh()
-    } catch {
+    } catch (cause) {
       setError('토큰을 등록하지 못했습니다.')
+      if (cause instanceof ApiError && cause.status === 403) await refresh()
     } finally {
       setPending(false)
     }

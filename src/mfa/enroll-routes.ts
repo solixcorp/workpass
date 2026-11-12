@@ -17,7 +17,9 @@ import { auditStandaloneOperation } from "../audit/store";
 import { duoConfig } from "./duo";
 import { isSmsOtpAvailable } from "./otp-senders";
 import { mfaPolicy, userMustUseMfa, workpassMfaRequired } from "./policy";
-import { usableSecondFactors } from "../security/step-up";
+import { getStepUpChallenge, usableSecondFactors } from "../security/step-up";
+import { mayEnrollFactor, type MfaCheckedSession } from "./second-factor";
+import { stepUpUi, type StepUpUi } from "../security/step-up-ui";
 
 export const mfaEnrollRoutes = new Hono<{ Bindings: Env }>();
 
@@ -50,6 +52,7 @@ export interface EnrollmentView {
   /** The account still holds a server-side password, which Better Auth asks for on enable/disable. */
   passwordRequired: boolean;
   passwordLabel: string;
+  verification: { required: boolean; ui: StepUpUi; blockedReason: string | null };
   requiredNotice: string;
   methods: MethodView[];
   /** The card shown during sign-in when a required second factor is not set up yet. */
@@ -62,8 +65,9 @@ export interface EnrollmentView {
 
 export async function buildEnrollmentView(
   env: Env,
-  user: { id: string; role?: unknown; twoFactorEnabled?: unknown },
+  session: MfaCheckedSession & { user: { id: string; role?: unknown; twoFactorEnabled?: unknown } },
 ): Promise<EnrollmentView> {
+  const user = session.user;
   const policy = mfaPolicy(env);
   const twoFactorEnabled = user.twoFactorEnabled === true || user.twoFactorEnabled === 1;
   const secret = await env.DB.prepare('SELECT verified FROM "twoFactor" WHERE userId = ? LIMIT 1')
@@ -126,6 +130,28 @@ export async function buildEnrollmentView(
   const enabled = factors.length > 0;
   const mustEnrollNow = userMustUseMfa(env, user) || required;
   const locked = userMustUseMfa(env, user);
+  const mayEnroll = await mayEnrollFactor(env, session);
+  const verificationMethods = mayEnroll ? [] : [...factors];
+  let blockedReason: string | null = null;
+  if (!mayEnroll) {
+    const challenge = await getStepUpChallenge(env, String(session.session?.token ?? ""), true);
+    if (challenge.state === "expired") {
+      verificationMethods.length = 0;
+      blockedReason = "추가 인증 기한이 지났습니다. 다시 로그인한 뒤 등록하세요.";
+    } else if (challenge.state !== "pending") {
+      // A registered passkey proves ownership for enrollment. It must never
+      // substitute for the independent factor required by an open risk gate.
+      const passkey = await env.DB.prepare('SELECT id FROM "passkey" WHERE "userId" = ? LIMIT 1')
+        .bind(user.id).first<{ id: string }>();
+      if (passkey) verificationMethods.push("passkey");
+    }
+    if (!blockedReason && verificationMethods.length === 0) {
+      blockedReason = "확인할 수 있는 기존 인증 수단이 없습니다. 관리자에게 인증 수단 복구를 요청하세요.";
+    }
+  }
+  const verificationUi = stepUpUi(verificationMethods);
+  verificationUi.description = "인증 수단을 추가하기 전에 이미 등록한 수단으로 본인을 확인하세요.";
+  verificationUi.alternatives = [{ label: "취소", action: "cancel" }];
 
   return {
     title: "2차 인증",
@@ -135,6 +161,7 @@ export async function buildEnrollmentView(
     enabled,
     passwordRequired: Boolean(credential?.password),
     passwordLabel: "계정 비밀번호",
+    verification: { required: !mayEnroll, ui: verificationUi, blockedReason },
     requiredNotice: "관리자가 이 계정에 2차 인증을 필수로 정했습니다. 등록을 마쳐야 앱을 열 수 있습니다.",
     methods,
     signIn: {
@@ -181,7 +208,7 @@ mfaEnrollRoutes.get("/mfa/enrollment", async (context) => {
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);
   context.header("Cache-Control", "no-store");
-  return context.json(await buildEnrollmentView(context.env, session.user as never));
+  return context.json(await buildEnrollmentView(context.env, session));
 });
 
 mfaEnrollRoutes.delete("/mfa/hotp/:id", async (context) => {

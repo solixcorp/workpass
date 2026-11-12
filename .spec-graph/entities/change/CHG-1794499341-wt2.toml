@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794499341-wt2"
+type = "change"
+title = "Offer trusted-factor verification before MFA enrollment"
+description = "Expose session-bound enrollment verification status and available existing methods on the enrollment API. Both security settings and sign-in enrollment dialogs must verify an existing passkey or second factor before opening enrollment, retain the requested method after successful verification, and preserve independent risk challenges. QA: bun test (695 passed across 113 files); bun run typecheck; bun run web:build. Real signed passkey regression: tests/security/passkey-step-up.test.ts."
+status = "resolved"
+created_at = 2026-11-13T01:02:21+09:00
+updated_at = 2026-11-13T01:03:23+09:00
+
+[[relations]]
+to = "REQ-1794459899-bex"
+type = "covers"

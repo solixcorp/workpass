@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
+import type { StepUpUi } from '@/lib/step-up'
 
 export type MfaMethodKey = 'totp' | 'otp' | 'hotp' | 'duo'
 
@@ -12,6 +13,7 @@ export type EnrollmentView = {
   enabled: boolean
   passwordRequired: boolean
   passwordLabel: string
+  verification: { required: boolean; ui: StepUpUi; blockedReason: string | null }
   requiredNotice: string
   methods: Array<{
     key: MfaMethodKey
