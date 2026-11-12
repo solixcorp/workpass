@@ -19,12 +19,30 @@ authRoutes.get("/.well-known/oauth-authorization-server/api/auth", (context) =>
   oauthProviderAuthServerMetadata(createAuth(context.env))(context.req.raw),
 );
 
+/**
+ * Rebuilding a request drops the Cloudflare edge data (`request.cf`: country,
+ * region, city, coordinates), which left passkey sign-ins without a location.
+ * Carry it over to the rebuilt request.
+ */
+export function rebuildRequest(original: Request, url: URL | string, init: RequestInit): Request {
+  const next = new Request(url, init);
+  const cf = (original as Request & { cf?: unknown }).cf;
+  if (cf !== undefined && (next as Request & { cf?: unknown }).cf === undefined) {
+    try {
+      Object.defineProperty(next, "cf", { value: cf, enumerable: true });
+    } catch {
+      // A runtime that keeps `cf` read-only already copied it.
+    }
+  }
+  return next;
+}
+
 /** Prevent the provider's pre-validation hook from starting an internal authorize. */
 export async function stripUntrustedOAuthQuery(request: Request): Promise<Request> {
   const url = new URL(request.url);
   if (["/api/auth/oauth2/authorize", "/api/auth/oauth2/consent", "/api/auth/oauth2/continue"].includes(url.pathname)) return request;
   url.searchParams.delete("oauth_query");
-  if (request.method === "GET" || request.method === "HEAD") return new Request(url, request);
+  if (request.method === "GET" || request.method === "HEAD") return rebuildRequest(request, url, request as unknown as RequestInit);
   const type = (request.headers.get("content-type") ?? "").toLowerCase();
   let body: BodyInit | null = null;
   if (/^application\/([a-z0-9.+-]*\+)?json/.test(type)) {
@@ -44,13 +62,13 @@ export async function stripUntrustedOAuthQuery(request: Request): Promise<Reques
     const headers = new Headers(request.headers);
     headers.delete("content-type");
     headers.delete("content-length");
-    return new Request(url, { method: request.method, headers, body: form, redirect: request.redirect });
+    return rebuildRequest(request, url, { method: request.method, headers, body: form, redirect: request.redirect });
   } else {
-    return new Request(url, request);
+    return rebuildRequest(request, url, request as unknown as RequestInit);
   }
   const headers = new Headers(request.headers);
   headers.delete("content-length");
-  return new Request(url, { method: request.method, headers, body, redirect: request.redirect });
+  return rebuildRequest(request, url, { method: request.method, headers, body, redirect: request.redirect });
 }
 
 /** Provider defaults: unprefixed refresh tokens stored as unpadded base64url SHA-256. */

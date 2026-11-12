@@ -1,0 +1,8 @@
+schema = 1
+id = "REQ-1794504312-xyd"
+type = "requirement"
+title = "Sign-in location survives request rewriting"
+description = "Passkey and other sign-ins that pass through request rewriting in src/auth/routes.ts must keep the Cloudflare edge data (country, region, city, coordinates) so login history and device lists show where the sign-in came from."
+status = "active"
+created_at = 2026-11-13T02:25:12+09:00
+updated_at = 2026-11-13T02:25:12+09:00

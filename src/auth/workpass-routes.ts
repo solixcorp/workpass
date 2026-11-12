@@ -21,6 +21,7 @@ import type { Env } from "../env";
 import { createAuth } from "./config";
 import { insertAuditEvent } from "../audit/store";
 import { auditAuthRequest } from "../audit/auth-middleware";
+import { rebuildRequest } from "./routes";
 import { WORKPASS_CALLBACK_PATH, WORKPASS_SCOPES, workpassClientId, workpassRedirectUri } from "./workpass";
 
 export const workpassRoutes = new Hono<{ Bindings: Env }>();
@@ -135,7 +136,7 @@ workpassRoutes.get("/auth/login", async (context) => {
 workpassRoutes.get("/oauth2/v1/authorize", (context) => {
   const target = new URL(context.req.url);
   target.pathname = "/api/auth/oauth2/authorize";
-  return auditAuthRequest(new Request(target, context.req.raw), context.env);
+  return auditAuthRequest(rebuildRequest(context.req.raw, target, context.req.raw as unknown as RequestInit), context.env);
 });
 
 workpassRoutes.get(WORKPASS_CALLBACK_PATH, async (context) => {
