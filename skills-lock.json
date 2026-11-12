@@ -1,11 +1,65 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
+    "dependency-audit": {
+      "source": "woohyun212/security-skill",
+      "sourceType": "github",
+      "skillPath": "dependency-audit/SKILL.md",
+      "computedHash": "89264134229d906e14ebb40d4cdd3a5f5d96082d078412afcd1ffd4e7c360f67"
+    },
+    "entry-point-analyzer": {
+      "source": "woohyun212/security-skill",
+      "sourceType": "github",
+      "skillPath": "entry-point-analyzer/SKILL.md",
+      "computedHash": "f661370d437f6fc21449b5b65405e2877e0ba388eb6b7d22aeabda944c22c8d3"
+    },
+    "insecure-defaults": {
+      "source": "woohyun212/security-skill",
+      "sourceType": "github",
+      "skillPath": "insecure-defaults/SKILL.md",
+      "computedHash": "251017c21cb7cc7b7a2bc330c3bc3f315b0e018ae082cc6a509b563630d19397"
+    },
+    "owasp-check": {
+      "source": "woohyun212/security-skill",
+      "sourceType": "github",
+      "skillPath": "owasp-check/SKILL.md",
+      "computedHash": "d80e063165efc56f8011c51b0145cfa2d87513385084ed7c7e02237041a86265"
+    },
+    "secure-code-review": {
+      "source": "woohyun212/security-skill",
+      "sourceType": "github",
+      "skillPath": "secure-code-review/SKILL.md",
+      "computedHash": "c7aaf175a993a6832120a37e6ea94f99ee177161bae4bc11657c2259d0dca8eb"
+    },
+    "security-audit": {
+      "source": "cloudflare/security-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/security-audit/SKILL.md",
+      "computedHash": "8513eb3b2c39b8d05ef4f47b32ef4d18280b93a5efb91d8df6272f7435034af5"
+    },
+    "security-headers": {
+      "source": "woohyun212/security-skill",
+      "sourceType": "github",
+      "skillPath": "security-headers/SKILL.md",
+      "computedHash": "94b022c41d61c2e6e72aa18565087afa9a39b94aa6e0855bec574c417072a08e"
+    },
     "shadcn": {
       "source": "shadcn/ui",
       "sourceType": "github",
       "skillPath": "skills/shadcn/SKILL.md",
-      "computedHash": "b864a958765563321f485a96f4d59c0bb6539f4286ab6d8b8b66895b7ebd302d"
+      "computedHash": "388962d16c7a4f13aaeee0d8f128e50a87df8553d42ef7988c39c0e1c74a40e8"
+    },
+    "threat-model": {
+      "source": "woohyun212/security-skill",
+      "sourceType": "github",
+      "skillPath": "threat-model/SKILL.md",
+      "computedHash": "c16424319d0ae4cd7a00abee65104193978e2e874964fd03c8cbf639b5c844e3"
+    },
+    "web-vuln-business-logic": {
+      "source": "woohyun212/security-skill",
+      "sourceType": "github",
+      "skillPath": "web-vuln-business-logic/SKILL.md",
+      "computedHash": "a4635faea76bbbceadfe7ac212fd0dc9307fb0d867f91e5a032025085aa13334"
     }
   }
 }
