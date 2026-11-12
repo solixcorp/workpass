@@ -11,5 +11,9 @@ updated_at = 2026-11-12T14:43:04+09:00
 kind = "integration"
 
 [[relations]]
+to = "ACT-1794462184-s8y"
+type = "verifies"
+
+[[relations]]
 to = "REQ-1794462184-033"
 type = "verifies"
