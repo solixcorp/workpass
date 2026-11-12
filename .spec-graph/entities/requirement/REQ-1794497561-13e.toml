@@ -1,0 +1,12 @@
+schema = 1
+id = "REQ-1794497561-13e"
+type = "requirement"
+title = "Administrators choose activation delivery and users see live password requirements"
+description = "User creation and activation-link reissue from the user list and detail offer email or manual delivery. Manual mode sends sendEmail=false and displays a copyable one-time link suitable for messenger or SMS; native sharing is available when supported. Activation password requirements turn green individually as configured conditions are met and return to neutral when unmet, sharing the submit validation logic."
+status = "active"
+created_at = 2026-11-13T00:32:41+09:00
+updated_at = 2026-11-13T00:32:41+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"

@@ -1,0 +1,15 @@
+schema = 1
+id = "CHG-1794497601-g3r"
+type = "change"
+title = "Add activation delivery choices and live password feedback"
+description = "Implemented manual activation-link delivery for create/reissue in both admin user views, browser-native sharing where supported, and live password requirement checks using shared validation. QA: bun run web:build passed; bun test tests/auth/account-activation.test.ts tests/auth/activation-email.test.ts passed 10 tests; web lint passed with existing unrelated warnings. Browser QA unavailable because Aside profile is disconnected."
+status = "resolved"
+created_at = 2026-11-13T00:33:21+09:00
+updated_at = 2026-11-13T00:33:40+09:00
+
+[metadata]
+changed_entities = ["web/src/features/auth/activation-page.tsx", "web/src/lib/activation.ts", "web/src/features/admin/activation-link-dialog.tsx", "web/src/features/admin/users-page.tsx", "web/src/features/admin/user-detail-page.tsx", "docs/design/account-activation.md"]
+
+[[relations]]
+to = "REQ-1794497561-13e"
+type = "covers"

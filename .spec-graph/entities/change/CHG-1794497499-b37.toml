@@ -1,0 +1,11 @@
+schema = 1
+id = "CHG-1794497499-b37"
+type = "change"
+title = "Improve activation password feedback and manual link delivery"
+description = "Show live per-requirement password success indicators using server-provided rules. Allow administrators to choose email delivery or a copyable activation link on user creation and reissue from both user list and detail. Share via the browser share sheet when supported. QA: bun run web:build passes. Existing activation integration tests cover the server API."
+status = "deprecated"
+created_at = 2026-11-13T00:31:39+09:00
+updated_at = 2026-11-13T00:33:12+09:00
+
+[metadata]
+changed_entities = ["web/src/features/auth/activation-page.tsx", "web/src/lib/activation.ts", "web/src/features/admin/activation-link-dialog.tsx", "web/src/features/admin/users-page.tsx", "web/src/features/admin/user-detail-page.tsx"]

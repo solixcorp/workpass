@@ -55,6 +55,23 @@ export function inspectActivation(token: string): Promise<ActivationInspect> {
   })
 }
 
+/** Checks in the same order as the server-provided requirement labels. */
+export function passwordRequirementChecks(password: string, rules: PasswordRules) {
+  const count = (pattern: RegExp) => (password.match(pattern) ?? []).length
+  const symbols = rules.symbolSet.split('')
+  return [
+    { key: 'min_length' as const, required: true, satisfied: password.length >= rules.minLength },
+    { key: 'min_upper' as const, required: rules.minUpper > 0, satisfied: count(/[A-Z]/g) >= rules.minUpper },
+    { key: 'min_lower' as const, required: rules.minLower > 0, satisfied: count(/[a-z]/g) >= rules.minLower },
+    { key: 'min_digit' as const, required: rules.minDigit > 0, satisfied: count(/[0-9]/g) >= rules.minDigit },
+    {
+      key: 'min_symbol' as const,
+      required: rules.minSymbol > 0,
+      satisfied: password.split('').filter((char) => symbols.includes(char)).length >= rules.minSymbol,
+    },
+  ].filter((check) => check.required)
+}
+
 /**
  * Check a candidate against the rules the server sent. OPAQUE keeps the
  * password from the server, so this is the only place the rules can run; the
@@ -62,17 +79,8 @@ export function inspectActivation(token: string): Promise<ActivationInspect> {
  * message, or null.
  */
 export function checkPassword(password: string, ui: ActivationUi): string | null {
-  const { rules, messages } = ui
-  const count = (pattern: RegExp) => (password.match(pattern) ?? []).length
-  if (password.length < rules.minLength) return messages.min_length
-  if (count(/[A-Z]/g) < rules.minUpper) return messages.min_upper
-  if (count(/[a-z]/g) < rules.minLower) return messages.min_lower
-  if (count(/[0-9]/g) < rules.minDigit) return messages.min_digit
-  const symbols = rules.symbolSet.split('')
-  if (password.split('').filter((char) => symbols.includes(char)).length < rules.minSymbol) {
-    return messages.min_symbol
-  }
-  return null
+  const failed = passwordRequirementChecks(password, ui.rules).find((check) => !check.satisfied)
+  return failed ? ui.messages[failed.key] : null
 }
 
 export type ActivationResult = 'ok' | 'invalid_link' | 'rate_limited' | 'unavailable'

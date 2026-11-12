@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2Icon, EyeIcon, EyeOffIcon } from 'lucide-react'
+import { CheckCircle2Icon, CheckIcon, CircleIcon, EyeIcon, EyeOffIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { LoadingScreen } from '@/components/loading-screen'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import {
   InputGroup,
   InputGroupAddon,
@@ -16,6 +16,7 @@ import {
   activateAccount,
   checkPassword,
   inspectActivation,
+  passwordRequirementChecks,
   type ActivationUi,
 } from '@/lib/activation'
 
@@ -103,6 +104,7 @@ function ActivationForm({ token, email, ui }: { token: string; email: string; ui
     { ...ui.fields[0]!, value: password, set: setPassword },
     { ...ui.fields[1]!, value: confirm, set: setConfirm },
   ]
+  const checks = passwordRequirementChecks(password, ui.rules)
 
   return (
     <Shell identifier={email}>
@@ -127,6 +129,7 @@ function ActivationForm({ token, email, ui }: { token: string; email: string; ui
                   type={visible ? 'text' : 'password'}
                   autoComplete={field.autocomplete}
                   autoFocus={index === 0}
+                  aria-describedby={index === 0 ? 'activation-password-requirements' : undefined}
                   required
                   value={field.value}
                   disabled={pending}
@@ -144,7 +147,24 @@ function ActivationForm({ token, email, ui }: { token: string; email: string; ui
                   </InputGroupAddon>
                 ) : null}
               </InputGroup>
-              {index === 0 ? <FieldDescription>{ui.requirements.join(' · ')}</FieldDescription> : null}
+              {index === 0 ? (
+                <ul id="activation-password-requirements" className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                  {ui.requirements.map((requirement, requirementIndex) => {
+                    const satisfied = checks[requirementIndex]?.satisfied === true
+                    const Icon = satisfied ? CheckIcon : CircleIcon
+                    return (
+                      <li
+                        key={checks[requirementIndex]?.key ?? requirement}
+                        className={`inline-flex items-center gap-1 transition-colors ${satisfied ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}
+                      >
+                        <Icon className="size-3 shrink-0" aria-hidden="true" />
+                        <span>{requirement}</span>
+                        <span className="sr-only">{satisfied ? '충족' : '미충족'}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
             </Field>
           ))}
           <Field>

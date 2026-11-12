@@ -1,20 +1,17 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from '@tanstack/react-router'
-import { ArrowLeftIcon, CopyIcon, MailIcon, ScrollTextIcon, TagsIcon } from 'lucide-react'
+import { ArrowLeftIcon, LinkIcon, ScrollTextIcon, TagsIcon } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import { sessionQuery } from '@/lib/queries'
 import { AttributesDialog } from './attributes-dialog'
+import { ActivationLinkDialog } from './activation-link-dialog'
 import { UserActions } from './user-actions'
 import { AppSessions } from './user-detail/app-sessions'
 import { ApplicationsTab, GroupsTab } from './user-detail/apps-groups'
@@ -51,8 +48,6 @@ const TABS = [
   { value: 'logs', label: '로그' },
 ] as const
 
-type ActivationOutcome = { expiresAt: string; emailed: boolean; activationUrl: string | null; emailError: boolean }
-
 /** One user, in detail: who they are, what they can open, and what has happened to them. */
 export function UserDetailPage() {
   const { id } = useParams({ strict: false }) as { id: string }
@@ -60,13 +55,7 @@ export function UserDetailPage() {
   const detail = useUserData<Detail>(id, 'detail')
   const [tab, setTab] = useState<(typeof TABS)[number]['value']>('apps')
   const [attributes, setAttributes] = useState(false)
-  const [link, setLink] = useState<ActivationOutcome | null>(null)
-
-  const sendLink = useMutation({
-    mutationFn: async () => (await apiFetch<{ activation: ActivationOutcome }>(`/api/admin/users/${id}/activation-link`, { method: 'POST', body: JSON.stringify({}) })).activation,
-    onSuccess: setLink,
-    onError: () => toast.error('링크를 만들지 못했습니다.'),
-  })
+  const [linkOpen, setLinkOpen] = useState(false)
 
   const back = (
     <div>
@@ -133,14 +122,14 @@ export function UserDetailPage() {
             <TagsIcon data-icon="inline-start" />
             속성
           </Button>
-          <Button variant="outline" size="sm" disabled={sendLink.isPending} onClick={() => sendLink.mutate()}>
-            <MailIcon data-icon="inline-start" />
+          <Button variant="outline" size="sm" onClick={() => setLinkOpen(true)}>
+            <LinkIcon data-icon="inline-start" />
             비밀번호 설정 링크
           </Button>
           <UserActions
             user={{ id: user.id, name: user.name, email: user.email, role: user.roles.join(','), banned: !user.active }}
             currentUserId={session.data?.user.id}
-            onUnlocked={() => sendLink.mutate()}
+            onUnlocked={() => setLinkOpen(true)}
           />
         </div>
       </div>
@@ -168,36 +157,7 @@ export function UserDetailPage() {
       </Tabs>
 
       <AttributesDialog target={attributes ? { type: 'user', id: user.id, label: user.email } : null} onClose={() => setAttributes(false)} />
-      <Dialog open={link !== null} onOpenChange={(open) => !open && setLink(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>비밀번호 설정 링크</DialogTitle>
-            <DialogDescription>
-              {link?.emailed ? `${user.email}으로 링크를 보냈습니다.` : '메일을 보내지 못해 링크를 직접 전달해야 합니다. 이 링크는 지금 한 번만 볼 수 있습니다.'}
-            </DialogDescription>
-          </DialogHeader>
-          {link?.activationUrl ? (
-            <div className="flex gap-2">
-              <Input readOnly aria-label="비밀번호 설정 링크" value={link.activationUrl} />
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="링크 복사"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(link.activationUrl!)
-                  toast.success('링크를 복사했습니다.')
-                }}
-              >
-                <CopyIcon />
-              </Button>
-            </div>
-          ) : null}
-          {link ? <p className="text-sm text-muted-foreground">{formatDateTime(link.expiresAt)}까지 한 번 사용할 수 있습니다.</p> : null}
-          <DialogFooter>
-            <Button onClick={() => setLink(null)}>확인</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {linkOpen ? <ActivationLinkDialog key={user.id} user={user} onClose={() => setLinkOpen(false)} /> : null}
     </div>
   )
 }
