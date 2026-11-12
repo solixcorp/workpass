@@ -5,6 +5,8 @@ import { describeDevice } from "../users/device";
 import { auditStandaloneOperation } from "../audit/store";
 import { revokeTrustedDevices } from "./trusted-device-store";
 import { requireSameOrigin } from "./authorization";
+import { hashSessionToken } from "../users/login-history";
+import { latestObservations } from "./device-trust";
 import {
   consumeFingerprintLookupBudget,
   digestVisitorId,
@@ -23,9 +25,11 @@ trustedDeviceRoutes.get("/sessions/overview", async (context) => {
 
   const sessions = await auth.api.listSessions({ headers });
   const history = await context.env.DB.prepare(
-    `SELECT ip, user_agent, city, region, country FROM login_history
+    `SELECT ip, user_agent, city, region, country, session_token_hash, visitor_digest FROM login_history
      WHERE user_id = ? ORDER BY occurred_at DESC LIMIT 100`,
   ).bind(session.user.id).all<{
+    session_token_hash: string | null;
+    visitor_digest: string | null;
     ip: string | null;
     user_agent: string | null;
     city: string | null;
@@ -33,7 +37,19 @@ trustedDeviceRoutes.get("/sessions/overview", async (context) => {
     country: string | null;
   }>();
 
+  const hashes = new Map<string, string>();
+  for (const item of sessions) hashes.set(item.token, await hashSessionToken(item.token));
+  const digestBySession = new Map<string, string>();
+  for (const row of history.results) {
+    if (row.session_token_hash && row.visitor_digest && !digestBySession.has(row.session_token_hash)) {
+      digestBySession.set(row.session_token_hash, row.visitor_digest);
+    }
+  }
+  const observations = await latestObservations(context.env, session.user.id, [...digestBySession.values()]);
+
   return context.json({ sessions: sessions.map((item) => {
+    const digest = digestBySession.get(hashes.get(item.token) ?? "");
+    const observed = digest ? observations.get(digest) : undefined;
     const matches = item.ipAddress ? history.results.filter((row) => row.ip === item.ipAddress) : [];
     const match = (item.userAgent ? matches.find((row) => row.user_agent === item.userAgent) : undefined) ?? matches[0];
     return {
@@ -47,6 +63,9 @@ trustedDeviceRoutes.get("/sessions/overview", async (context) => {
       userAgent: item.userAgent ?? null,
       label: describeDevice(item.userAgent ?? match?.user_agent).label,
       location: match ? { city: match.city, region: match.region, country: match.country } : null,
+      trust: observed
+        ? { level: observed.level, score: observed.score, observedAt: observed.observedAt }
+        : { level: "unknown", score: 0, observedAt: null },
     };
   }) });
 });

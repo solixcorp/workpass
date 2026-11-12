@@ -4,6 +4,7 @@
  * is the one thing an administrator can change here.
  */
 
+import { gradeDeviceTrust } from "../security/device-trust";
 import { Hono } from "hono";
 import { createAuth } from "../auth/config";
 import type { Env } from "../env";
@@ -104,6 +105,15 @@ userDetailRoutes.get("/users/:id/applications", async (context) => {
   return context.json({ applications: result });
 });
 
+function parseStoredJson<T>(value: string | null, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 userDetailRoutes.get("/users/:id/devices", async (context) => {
   const admin = await requireAdministrator(context);
   if (admin instanceof Response) return admin;
@@ -122,6 +132,16 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
     `SELECT id, occurred_at AS at, ip, user_agent AS userAgent, country, region, city, method
      FROM login_history WHERE user_id = ? ORDER BY occurred_at DESC LIMIT 100`,
   ).bind(id).all<{ id: string; at: string; ip: string | null; userAgent: string | null; country: string | null; region: string | null; city: string | null; method: string | null }>());
+  const observations = await rows(db.prepare(
+    `SELECT id, visitor_digest AS visitorDigest, network_digest AS networkDigest, country_code AS countryCode,
+            latitude, longitude, geo_source AS geoSource, occurred_at AS at,
+            risk_action AS action, risk_reasons AS reasons, signals
+     FROM auth_device_observations WHERE user_id = ? ORDER BY occurred_at DESC LIMIT 100`,
+  ).bind(id).all<{
+    id: string; visitorDigest: string; networkDigest: string | null; countryCode: string | null;
+    latitude: number | null; longitude: number | null; geoSource: string | null; at: string;
+    action: string | null; reasons: string | null; signals: string | null;
+  }>().catch(() => ({ results: [] as never[] })));
   const reports = await rows(db.prepare(
     "SELECT id, login_id AS loginId, created_at AS createdAt, status FROM suspicious_reports WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
   ).bind(id).all<{ id: string; loginId: string | null; createdAt: string; status: string }>());
@@ -145,6 +165,23 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
       reported: reports.some((r) => r.loginId === l.id),
     })),
     reports,
+    fingerprints: observations.map((o) => {
+      const reasons = parseStoredJson<string[]>(o.reasons, []);
+      return {
+        id: o.id,
+        at: o.at,
+        visitorDigest: o.visitorDigest,
+        networkDigest: o.networkDigest,
+        countryCode: o.countryCode,
+        latitude: o.latitude,
+        longitude: o.longitude,
+        geoSource: o.geoSource,
+        action: o.action,
+        reasons,
+        signals: parseStoredJson<Record<string, unknown> | null>(o.signals, null),
+        ...gradeDeviceTrust(o.action, reasons),
+      };
+    }),
   });
 });
 

@@ -40,6 +40,15 @@ type DeviceSession = {
   userAgent: string | null
   label: string
   location: { city: string | null; region: string | null; country: string | null } | null
+  trust: { level: 'trusted' | 'normal' | 'review' | 'risky' | 'unknown'; score: number; observedAt: string | null }
+}
+
+const TRUST_COPY: Record<DeviceSession['trust']['level'], { label: string; note: string; className: string }> = {
+  trusted: { label: '안전', note: '로그인할 때 위험 신호가 없었습니다.', className: 'text-green-700 dark:text-green-400' },
+  normal: { label: '대체로 안전', note: '사소한 신호가 있었지만 로그인을 막을 정도는 아니었습니다.', className: 'text-green-700 dark:text-green-400' },
+  review: { label: '확인 필요', note: '로그인할 때 추가 확인이 필요한 신호가 있었습니다.', className: 'text-amber-700 dark:text-amber-400' },
+  risky: { label: '위험', note: '로그인할 때 위험 신호가 감지되었습니다. 본인이 아니라면 종료하세요.', className: 'text-destructive' },
+  unknown: { label: '평가 없음', note: '이 기기는 아직 위험 평가 기록이 없습니다.', className: 'text-muted-foreground' },
 }
 
 type PasskeyRow = { id: string; name?: string | null; createdAt?: string | Date | null }
@@ -106,6 +115,11 @@ function SessionsSection() {
                     {entry.ipAddress ? <span className="block">{entry.ipAddress}</span> : null}
                     {!location && !entry.ipAddress ? <span className="block">IP/위치 정보 없음</span> : null}
                     <span className="block">마지막 활동 {formatDateTime(entry.updatedAt ?? entry.createdAt)}</span>
+                    <span className={`block ${TRUST_COPY[entry.trust.level].className}`} title={TRUST_COPY[entry.trust.level].note}>
+                      {entry.trust.level === 'unknown'
+                        ? TRUST_COPY.unknown.note
+                        : `이 기기는 ${TRUST_COPY[entry.trust.level].label}으로 판단했습니다 (점수 ${entry.trust.score}/100)`}
+                    </span>
                   </ItemDescription>
                 </ItemContent>
                 {!isCurrent ? (

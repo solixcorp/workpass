@@ -564,6 +564,37 @@ function resolveGeoPointFromRow(row: {
   });
 }
 
+/**
+ * The provider signals kept with each observation for administrators. The raw
+ * visitor ID and network address are left out: the device is identified by its
+ * keyed digest and the address is already in the login history.
+ */
+export function fingerprintSignalSnapshot(event: FingerprintEvent): Record<string, unknown> {
+  return {
+    confidence: event.confidence,
+    suspectScore: event.suspectScore ?? null,
+    bot: event.bot ?? null,
+    tampering: event.tampering,
+    vpn: event.vpn ?? null,
+    proxy: event.proxy ?? null,
+    incognito: event.incognito ?? null,
+    developerTools: event.developerTools ?? null,
+    privacySettings: event.privacySettings ?? null,
+    virtualMachine: event.virtualMachine ?? null,
+    simulator: event.simulator ?? null,
+    rareDevice: event.rareDevice ?? null,
+    highActivityDevice: event.highActivityDevice ?? null,
+    torNode: event.torNode ?? null,
+    attackSource: event.attackSource ?? null,
+    datacenterIp: event.datacenterIp ?? null,
+    asnV4: event.asnV4 ?? null,
+    asnV6: event.asnV6 ?? null,
+    countryCode: event.countryCode,
+    eventOrigin: event.eventOrigin,
+    eventTimestamp: event.timestamp,
+  };
+}
+
 export async function recordFingerprintObservation(input: {
   env: Env;
   userId: string;
@@ -582,8 +613,9 @@ export async function recordFingerprintObservation(input: {
       .bind(keepSince),
     input.env.DB.prepare(
       `INSERT INTO auth_device_observations
-        (id, user_id, visitor_digest, network_digest, country_code, latitude, longitude, geo_source, occurred_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, user_id, visitor_digest, network_digest, country_code, latitude, longitude, geo_source, occurred_at,
+         risk_action, risk_reasons, signals)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       input.userId,
@@ -594,6 +626,9 @@ export async function recordFingerprintObservation(input: {
       geoPoint?.longitude ?? null,
       geoPoint?.source ?? null,
       now,
+      input.risk.action,
+      JSON.stringify(input.risk.reasons),
+      JSON.stringify(fingerprintSignalSnapshot(input.event)),
     ),
     ...(input.risk.trustedDeviceId
       ? [input.env.DB.prepare(

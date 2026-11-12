@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import worker from "../../src/index";
 import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
+import { hashSessionToken } from "../../src/users/login-history";
 
 test("session overview is private and enriches active sessions from matching login history", async () => {
   const { db } = createTestD1();
@@ -65,4 +66,19 @@ test("session overview is private and enriches active sessions from matching log
   expect(typeof active.updatedAt).toBe("string");
   expect(sessions.find((s) => s.id === "rotated")).toMatchObject({ current: false, token: "rotated-token", userAgent: null, label: "Linux Firefox", location: { city: "Busan", region: null, country: "KR" } });
   expect(sessions.find((s) => s.id === "unmatched")!.location).toBeNull();
+
+  // No recorded verdict yet: reported as unknown, never as safe.
+  expect(active.trust).toEqual({ level: "unknown", score: 0, observedAt: null });
+
+  // A login row that ties a session to a device digest, plus that device's observation.
+  await db.prepare(`INSERT INTO login_history (id, user_id, occurred_at, ip, user_agent, session_token_hash, visitor_digest)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .bind("linked", userId, "2099-01-03T00:00:00.000Z", "192.0.2.10", ua, await hashSessionToken("rotated-token"), "digest-linked").run();
+  await db.prepare(`INSERT INTO auth_device_observations (id, user_id, visitor_digest, occurred_at, risk_action, risk_reasons, signals)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .bind("obs", userId, "digest-linked", "2099-01-03T00:00:00.000Z", "step_up", JSON.stringify(["untrusted_device"]), JSON.stringify({ vpn: false })).run();
+  const again = await call("/api/security/sessions/overview");
+  const linked = ((await again.json()) as { sessions: Array<Record<string, any>> }).sessions.find((s) => s.id === "rotated")!;
+  expect(linked.trust).toMatchObject({ level: "review", observedAt: "2099-01-03T00:00:00.000Z" });
+  expect(JSON.stringify(linked.trust)).not.toContain("untrusted_device");
 });

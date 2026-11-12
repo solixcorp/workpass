@@ -17,6 +17,29 @@ type Devices = {
   trusted: Array<{ id: string; label: string; createdAt: string; lastSeenAt: string; expiresAt: string; revokedAt: string | null }>
   logins: Array<{ id: string; at: string; ip: string | null; device: string; method: string | null; location: string | null; reported: boolean }>
   reports: Array<{ id: string; loginId: string | null; createdAt: string; status: string }>
+  fingerprints: Array<{
+    id: string
+    at: string
+    visitorDigest: string
+    networkDigest: string | null
+    countryCode: string | null
+    latitude: number | null
+    longitude: number | null
+    geoSource: string | null
+    action: string | null
+    reasons: string[]
+    signals: Record<string, unknown> | null
+    level: 'trusted' | 'normal' | 'review' | 'risky' | 'unknown'
+    score: number
+  }>
+}
+
+const TRUST_LABEL: Record<Devices['fingerprints'][number]['level'], string> = {
+  trusted: '안전',
+  normal: '대체로 안전',
+  review: '확인 필요',
+  risky: '위험',
+  unknown: '평가 없음',
 }
 
 const METHODS: Record<string, string> = { password: '비밀번호', passkey: '패스키' }
@@ -38,7 +61,7 @@ export function DevicesTab({ id }: { id: string }) {
   })
   if (query.isPending) return <Loading />
   if (query.error) return <Failed what="기기" />
-  const { devices, sessions, trusted, logins, reports } = query.data
+  const { devices, sessions, trusted, logins, reports, fingerprints } = query.data
   const now = Date.now()
   return (
     <div className="flex flex-col gap-8">
@@ -63,6 +86,63 @@ export function DevicesTab({ id }: { id: string }) {
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(device.lastAt)}</TableCell>
                     <TableCell className="text-muted-foreground">{device.location ?? device.ip ?? '알 수 없음'}</TableCell>
                     <TableCell>{device.count}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Block>
+        )}
+      </Panel>
+
+      <Panel title="기기 지문 기록" description="로그인할 때 기록한 기기 판정과 지문 신호 전체입니다. 기기는 원본 ID가 아니라 키로 만든 해시로만 식별하며, 30일 동안 보관됩니다.">
+        {fingerprints.length === 0 ? (
+          <Nothing>기록된 기기 지문이 없습니다.</Nothing>
+        ) : (
+          <Block>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>시각</TableHead>
+                  <TableHead>판정</TableHead>
+                  <TableHead>기기 해시</TableHead>
+                  <TableHead>네트워크 해시</TableHead>
+                  <TableHead>국가</TableHead>
+                  <TableHead>상세</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fingerprints.map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(entry.at)}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <Badge variant={entry.level === 'risky' ? 'destructive' : 'secondary'}>{TRUST_LABEL[entry.level]}</Badge>
+                      {entry.level !== 'unknown' ? <span className="ml-2 text-muted-foreground">{entry.score}/100</span> : null}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{entry.visitorDigest.slice(0, 12)}</TableCell>
+                    <TableCell className="font-mono text-xs">{entry.networkDigest?.slice(0, 12) ?? '-'}</TableCell>
+                    <TableCell>{entry.countryCode ?? '-'}</TableCell>
+                    <TableCell className="min-w-64 text-xs">
+                      <details>
+                        <summary className="cursor-pointer text-muted-foreground">
+                          {entry.action ?? '판정 기록 없음'}
+                          {entry.reasons.length > 0 ? ` · ${entry.reasons.join(', ')}` : ''}
+                        </summary>
+                        <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-muted p-2 font-mono">
+                          {JSON.stringify(
+                            {
+                              visitorDigest: entry.visitorDigest,
+                              networkDigest: entry.networkDigest,
+                              position: entry.latitude === null ? null : { latitude: entry.latitude, longitude: entry.longitude, source: entry.geoSource },
+                              action: entry.action,
+                              reasons: entry.reasons,
+                              signals: entry.signals,
+                            },
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </details>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

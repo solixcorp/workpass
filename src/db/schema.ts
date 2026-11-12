@@ -223,6 +223,13 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
   if (!observationColumns.results.some((column) => column.name === "geo_source")) {
     await env.DB.prepare("ALTER TABLE auth_device_observations ADD COLUMN geo_source TEXT").run();
   }
+  // The verdict and the provider signals behind each observation, so a device's
+  // trust can be explained to its owner and inspected by an administrator.
+  for (const column of ["risk_action", "risk_reasons", "signals"]) {
+    if (!observationColumns.results.some((entry) => entry.name === column)) {
+      await env.DB.prepare(`ALTER TABLE auth_device_observations ADD COLUMN ${column} TEXT`).run();
+    }
+  }
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS fingerprint_risk_decisions (
       id TEXT PRIMARY KEY NOT NULL,

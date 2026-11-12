@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794500278-13v"
+type = "change"
+title = "Device trust grade for owners and fingerprint evidence for administrators"
+description = "Persist risk verdict and provider signals on auth_device_observations, grade them in src/security/device-trust.ts, return trust on /api/security/sessions/overview and fingerprints on the admin devices endpoint, show both in the UI. QA: bun test (700 pass), bun run typecheck, bun run web:build."
+status = "resolved"
+created_at = 2026-11-13T01:17:58+09:00
+updated_at = 2026-11-13T01:17:58+09:00
+
+[[relations]]
+to = "REQ-1794500278-wxf"
+type = "covers"

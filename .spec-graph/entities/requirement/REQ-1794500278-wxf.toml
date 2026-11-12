@@ -1,0 +1,8 @@
+schema = 1
+id = "REQ-1794500278-wxf"
+type = "requirement"
+title = "Explain device trust to its owner and expose fingerprint evidence to administrators"
+description = "Each signed-in device on the security page shows a coarse trust grade and score derived from the verdict recorded at sign-in, or states that no assessment exists. Administrators can read every recorded fingerprint signal, verdict and reason per observation, identified only by keyed digests. Raw visitor IDs and addresses are never stored with observations."
+status = "active"
+created_at = 2026-11-13T01:17:58+09:00
+updated_at = 2026-11-13T01:17:58+09:00
