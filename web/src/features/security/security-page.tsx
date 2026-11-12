@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRoundIcon, LaptopIcon, MonitorSmartphoneIcon, PlusIcon, SmartphoneIcon, Trash2Icon } from 'lucide-react'
-import { useState } from 'react'
+import { KeyRoundIcon, LaptopIcon, MonitorSmartphoneIcon, PencilIcon, PlusIcon, SmartphoneIcon, Trash2Icon } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import {
   Item,
   ItemActions,
@@ -145,9 +148,78 @@ function SessionsSection() {
   )
 }
 
+const DEFAULT_PASSKEY_NAME = '내 패스키'
+
+/** Names a new passkey before the browser prompt, or renames an existing one. */
+function PasskeyNameDialog({
+  open,
+  initialName,
+  title,
+  description,
+  confirmLabel,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean
+  initialName: string
+  title: string
+  description: string
+  confirmLabel: string
+  pending: boolean
+  onConfirm: (name: string) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(initialName)
+  const trimmed = name.trim()
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (trimmed && !pending) onConfirm(trimmed)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && !pending && onCancel()}>
+      <DialogContent className="sm:max-w-sm">
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="passkey-name">패스키 이름</FieldLabel>
+              <Input
+                id="passkey-name"
+                autoFocus
+                maxLength={64}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                onFocus={(event) => event.target.select()}
+              />
+              <FieldDescription>예: 회사 맥북, 개인 휴대폰, 보안 키</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>
+              취소
+            </Button>
+            <Button type="submit" disabled={pending || !trimmed}>
+              {pending ? <Spinner data-icon="inline-start" /> : null}
+              {confirmLabel}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PasskeysSection() {
   const queryClient = useQueryClient()
   const [target, setTarget] = useState<PasskeyRow | null>(null)
+  const [renaming, setRenaming] = useState<PasskeyRow | null>(null)
+  const [adding, setAdding] = useState(false)
   const { data, isPending, error } = useQuery({
     queryKey: ['security', 'passkeys'],
     queryFn: async () => {
@@ -158,8 +230,8 @@ function PasskeysSection() {
   })
 
   const add = useMutation({
-    mutationFn: async () => {
-      const result = await authClient.passkey.addPasskey({ name: '내 패스키' })
+    mutationFn: async (name: string) => {
+      const result = await authClient.passkey.addPasskey({ name })
       if (result?.error) throw new Error(result.error.message ?? 'Failed to add passkey')
     },
     onSuccess: () => {
@@ -167,6 +239,20 @@ function PasskeysSection() {
       return queryClient.invalidateQueries({ queryKey: ['security', 'passkeys'] })
     },
     onError: () => toast.error('패스키를 등록하지 못했습니다.'),
+    onSettled: () => setAdding(false),
+  })
+
+  const rename = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const result = await authClient.passkey.updatePasskey({ id, name })
+      if (result.error) throw new Error(result.error.message ?? 'Failed to rename passkey')
+    },
+    onSuccess: () => {
+      toast.success('패스키 이름을 바꿨습니다.')
+      return queryClient.invalidateQueries({ queryKey: ['security', 'passkeys'] })
+    },
+    onError: () => toast.error('패스키 이름을 바꾸지 못했습니다.'),
+    onSettled: () => setRenaming(null),
   })
 
   const remove = useMutation({
@@ -186,7 +272,7 @@ function PasskeysSection() {
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-sm font-medium text-muted-foreground">패스키</h2>
-        <Button variant="outline" size="sm" disabled={add.isPending} onClick={() => add.mutate()}>
+        <Button variant="outline" size="sm" disabled={add.isPending} onClick={() => setAdding(true)}>
           {add.isPending ? <Spinner data-icon="inline-start" /> : <PlusIcon data-icon="inline-start" />}
           패스키 추가
         </Button>
@@ -219,6 +305,15 @@ function PasskeysSection() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  aria-label="패스키 이름 변경"
+                  disabled={rename.isPending}
+                  onClick={() => setRenaming(passkey)}
+                >
+                  <PencilIcon />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   aria-label="패스키 삭제"
                   disabled={remove.isPending}
                   onClick={() => setTarget(passkey)}
@@ -230,6 +325,28 @@ function PasskeysSection() {
           ))}
         </ItemGroup>
       )}
+      <PasskeyNameDialog
+        key={adding ? 'add-open' : 'add-closed'}
+        open={adding}
+        initialName={DEFAULT_PASSKEY_NAME}
+        title="패스키 추가"
+        description="나중에 구분할 수 있게 이름을 정하세요. 다음 단계에서 브라우저가 패스키 만들기를 안내합니다."
+        confirmLabel="계속"
+        pending={add.isPending}
+        onConfirm={(name) => add.mutate(name)}
+        onCancel={() => setAdding(false)}
+      />
+      <PasskeyNameDialog
+        key={renaming?.id ?? 'rename-closed'}
+        open={renaming !== null}
+        initialName={renaming?.name || DEFAULT_PASSKEY_NAME}
+        title="패스키 이름 변경"
+        description="이름만 바뀌고 로그인 방법은 그대로입니다."
+        confirmLabel="저장"
+        pending={rename.isPending}
+        onConfirm={(name) => renaming && rename.mutate({ id: renaming.id, name })}
+        onCancel={() => setRenaming(null)}
+      />
       <ConfirmDialog
         open={target !== null}
         title="이 패스키를 삭제할까요?"

@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794499964-6rk"
+type = "change"
+title = "Name and rename passkeys"
+description = "Security page asks for a passkey name before registration and lets the user rename an existing passkey via Better Auth update-passkey. QA: bun run web:build; bun run typecheck."
+status = "resolved"
+created_at = 2026-11-13T01:12:44+09:00
+updated_at = 2026-11-13T01:12:45+09:00
+
+[[relations]]
+to = "REQ-1794459899-bex"
+type = "covers"
