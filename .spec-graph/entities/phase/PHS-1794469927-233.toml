@@ -1,0 +1,17 @@
+schema = 1
+id = "PHS-1794469927-233"
+type = "phase"
+title = "Phase 13: Access request group approval quorums"
+description = "Extend request-rule configuration, guarded approval finalization, reviewer notifications and the administration UI."
+status = "resolved"
+created_at = 2026-11-12T16:52:07+09:00
+updated_at = 2026-11-12T17:00:00+09:00
+
+[metadata]
+exit_criteria = ["Migration preserves existing rules.", "Each group quorum is checked atomically at finalization.", "Administration UI exposes the new rule option.", "Backend tests, typecheck and web build pass."]
+goal = "Deliver optional per-group approval quorums end to end."
+order = 15.0
+
+[[relations]]
+to = "PLN-1794159216-par"
+type = "belongs_to"

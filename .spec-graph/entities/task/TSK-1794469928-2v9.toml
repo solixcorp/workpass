@@ -1,0 +1,28 @@
+schema = 1
+id = "TSK-1794469928-2v9"
+type = "task"
+title = "Expose group quorums in the administration UI"
+description = "Add the opt-in group quorum switch, explanatory labels and API payload to the existing rule dialog; update the design documentation."
+status = "resolved"
+created_at = 2026-11-12T16:52:08+09:00
+updated_at = 2026-11-12T16:59:54+09:00
+
+[metadata]
+acceptance = ["Existing total-quorum rules remain compatible.", "Group quorum behavior is verifiable from the implementation and tests."]
+instructions = ["Add the opt-in group quorum switch, explanatory labels and API payload to the existing rule dialog; update the design documentation."]
+must_not = ["Do not bypass self-review, veto, expiry or account/MFA gates."]
+order = 2.0
+qa = [{command = "bun run web:build", evidence = "web/src/features/admin/access-requests-page.tsx", expected = "exit 0"}]
+references = ["docs/design/access-requests.md"]
+
+[[relations]]
+to = "PHS-1794469927-233"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794469927-awp"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794469927-awp"
+type = "delivers"

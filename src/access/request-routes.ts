@@ -234,7 +234,7 @@ accessRequestUserRoutes.post(USER_PREFIX, async (context) => {
      FROM request_rule_bindings b JOIN request_rules r ON r.id = b.rule_id WHERE b.id = ?`,
   ).bind(request.bindingId).first<{ ruleId: string; minReviewers: number; notifyMode: string }>();
   if (bindingRule) {
-    const reviewers = await resolveRuleReviewers(context.env, bindingRule.ruleId, bindingRule.minReviewers, bindingRule.notifyMode);
+    const reviewers = await resolveRuleReviewers(context.env, bindingRule.ruleId, bindingRule.minReviewers, bindingRule.notifyMode, actor.userId);
     // Best-effort; never authoritative for the reviewer queue.
     await notifyAccessRequestEvent(context.env, {
       type: "access_request.created",
@@ -244,9 +244,6 @@ accessRequestUserRoutes.post(USER_PREFIX, async (context) => {
       justification: request.justification,
       reviewers,
     });
-  }
-  if (bindingRule) {
-    const reviewers = await resolveRuleReviewers(context.env, bindingRule.ruleId, bindingRule.minReviewers, bindingRule.notifyMode);
     await notifyUsers(context.env, reviewers, { kind: "access_request", title: "새 접근 요청", body: `${await appNameForSubject(context.env, request.subject)} 접근을 요청했습니다.`, link: "/requests" });
   }
   return context.json({ request }, { status: 201 });

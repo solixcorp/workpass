@@ -44,6 +44,14 @@ recorded in the tamper-evident audit stream.
   request outright; self-review is refused structurally; the approval writes the grant
   only after the minimum is reached and no denial has been recorded. A recorded veto
   is finalized as denied even if the pending deadline has subsequently passed.
+- **Optional group quorums.** `minReviewersPerGroup: true` requires at least
+  `minReviewers` distinct approving members in **every** configured reviewer group,
+  checked in the guarded final approval UPDATE using current group memberships.
+  Direct reviewers remain eligible to approve or veto, but their approvals only
+  satisfy a group if they are also members of it. A member of multiple groups
+  counts once in each of those groups; this does not require different people
+  across groups. An empty group or a rule that has lost all its reviewer groups
+  cannot satisfy the quorum. The default `false` retains the total approval count.
 - **One request at a time.** A partial unique index allows at most one `pending` request
   per (user, subject).
 - **Audit.** `access_request.created / approved / denied / cancelled / revoked / lapsed`
@@ -53,7 +61,10 @@ recorded in the tamper-evident audit stream.
   `ACCESS_REQUEST_WEBHOOK_URL` is set, creation and decisions POST a JSON summary. There
   are no retry queues: reviewers must also be able to discover pending work from the
   reviewer queue API. Notification modes: `all` (every matched reviewer summarized) or
-  `random` (a subset of size `min_reviewers`, sampled with a crypto shuffle).
+  `random` (a subset of size `min_reviewers`, sampled with a crypto shuffle;
+  for group quorums, sampled separately from each group and deduplicated).
+  The requester is excluded before sampling, and the same selected reviewers
+  receive both webhook and in-app notifications.
   In-app reviewer creation notices and requester decision and revocation notices
   link to `/requests`. Its review section is available to eligible reviewers
   whether or not they are administrators.
@@ -61,7 +72,9 @@ recorded in the tamper-evident audit stream.
 ## Data model
 
 - `request_rules` — name (1–64 `[A-Za-z0-9_.-]`), `min_reviewers` (1–5),
-  `notify_mode` (`all` | `random`), created_by/at.
+  `min_reviewers_per_group` (boolean, default false), `notify_mode` (`all` | `random`),
+  created_by/at. Existing deployments receive an additive column migration with
+  default false; existing rules preserve their total-quorum behavior.
 - `request_rule_reviewers` / `request_rule_reviewer_groups` — reviewer bindings;
   `request_rule_reviewer_groups` references `directory_groups` (deletion cascades).
 - `request_rule_bindings` — unique per subject, `rule_id`, `pending_expiry_seconds`
@@ -94,9 +107,7 @@ page) inherit this automatically.
 
 - Authentik's full flow engine (stages, policies on flows, MFA re-auth elevation). The
   justification prompt replaces it; elevation hardening is a separate reviewed design.
-- Per-group minimum reviewers (`min_reviewers is per-group`); the minimum is a total.
-  The `min_reviewers` column leaves room for the extension.
-- Browser UI (Discover page / reviewer queue). The API contract above is the surface a
-  client builds on; the project's documented direction defers client work.
+- Different quorum sizes for individual groups. One `minReviewers` value applies
+  to every configured group when group quorums are enabled.
 - Notification transports beyond the single webhook URL (email/Slack routing is a
   follow-up transport decision).

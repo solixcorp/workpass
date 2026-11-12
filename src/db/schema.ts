@@ -736,11 +736,18 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL UNIQUE,
       min_reviewers INTEGER NOT NULL DEFAULT 1 CHECK (min_reviewers BETWEEN 1 AND 5),
+      min_reviewers_per_group INTEGER NOT NULL DEFAULT 0 CHECK (min_reviewers_per_group IN (0, 1)),
       notify_mode TEXT NOT NULL DEFAULT 'all' CHECK (notify_mode IN ('all', 'random')),
       created_by TEXT NOT NULL,
       created_at TEXT NOT NULL
     )`,
   ).run();
+  const requestRuleColumns = await env.DB.prepare("PRAGMA table_info(request_rules)").all<{ name: string }>();
+  if (!requestRuleColumns.results.some((column) => column.name === "min_reviewers_per_group")) {
+    await env.DB.prepare(
+      "ALTER TABLE request_rules ADD COLUMN min_reviewers_per_group INTEGER NOT NULL DEFAULT 0 CHECK (min_reviewers_per_group IN (0, 1))",
+    ).run();
+  }
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS request_rule_reviewers (
       rule_id TEXT NOT NULL REFERENCES request_rules (id) ON DELETE CASCADE,

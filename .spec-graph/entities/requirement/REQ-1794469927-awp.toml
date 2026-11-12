@@ -1,0 +1,16 @@
+schema = 1
+id = "REQ-1794469927-awp"
+type = "requirement"
+title = "Access requests can require an approval quorum in every reviewer group"
+description = "Opt-in minReviewersPerGroup preserves the total-quorum default. Every configured group needs minReviewers distinct approving members; direct reviewers cannot replace group votes, denial wins, and random notifications cover each group."
+status = "active"
+created_at = 2026-11-12T16:52:07+09:00
+updated_at = 2026-11-12T16:59:54+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
+
+[[relations]]
+to = "REQ-1794243099-z0e"
+type = "depends_on"

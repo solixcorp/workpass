@@ -8,8 +8,8 @@
  * requests are finalized by the scheduled cleanup.
  *
  * Simplifications recorded in the design doc: the request flow is a mandatory
- * justification prompt (no flow engine), the minimum-reviewer count is a total
- * (not per-group), and notifications are best-effort through a single webhook.
+ * justification prompt (no flow engine), and webhook notifications are best-effort.
+ * Rules may require a total approval quorum or a quorum in every reviewer group.
  */
 
 import type { Env } from "../env";
@@ -27,6 +27,7 @@ export interface RequestRule {
   id: string;
   name: string;
   minReviewers: number;
+  minReviewersPerGroup: boolean;
   notifyMode: "all" | "random";
   reviewerUsers: string[];
   reviewerGroups: string[];
@@ -105,6 +106,7 @@ export async function createRequestRule(
   input: {
     name: string;
     minReviewers?: unknown;
+    minReviewersPerGroup?: unknown;
     notifyMode?: unknown;
     reviewerUsers?: unknown;
     reviewerGroups?: unknown;
@@ -114,16 +116,27 @@ export async function createRequestRule(
   if (!REQUEST_RULE_NAME_PATTERN.test(input.name)) throw new Error("Invalid rule name");
   const minReviewers = intInRange(input.minReviewers, 1, MIN_REVIEWERS_CAP, 1);
   if (minReviewers === null) throw new Error("minReviewers must be between 1 and 5");
+  if (input.minReviewersPerGroup !== undefined && typeof input.minReviewersPerGroup !== "boolean") {
+    throw new Error("minReviewersPerGroup must be a boolean");
+  }
+  const minReviewersPerGroup = input.minReviewersPerGroup === true;
   const notifyMode = input.notifyMode === undefined ? "all" : input.notifyMode === "random" || input.notifyMode === "all" ? input.notifyMode as "all" | "random" : null;
   if (notifyMode === null) throw new Error("notifyMode must be 'all' or 'random'");
   const reviewerUsers = stringList(input.reviewerUsers, 100, 128);
   const reviewerGroups = stringList(input.reviewerGroups, 100, 128);
+  if (minReviewersPerGroup && (!Array.isArray(input.reviewerGroups) || input.reviewerGroups.length > 100 ||
+    input.reviewerGroups.some((id) => typeof id !== "string" || id.length === 0 || id.length > 128))) {
+    throw new Error("Group approval quorums require 1-100 valid reviewer group IDs");
+  }
+  if (minReviewersPerGroup && reviewerGroups.length === 0) {
+    throw new Error("Group approval quorums require at least one reviewer group");
+  }
 
   const id = crypto.randomUUID();
   const createdAt = nowIso();
   const statements = [
-    env.DB.prepare("INSERT INTO request_rules (id, name, min_reviewers, notify_mode, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(id, input.name, minReviewers, notifyMode, createdBy, createdAt),
+    env.DB.prepare("INSERT INTO request_rules (id, name, min_reviewers, min_reviewers_per_group, notify_mode, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, input.name, minReviewers, minReviewersPerGroup ? 1 : 0, notifyMode, createdBy, createdAt),
   ];
   for (const userId of reviewerUsers) {
     statements.push(env.DB.prepare("INSERT INTO request_rule_reviewers (rule_id, user_id) VALUES (?, ?)").bind(id, userId));
@@ -132,20 +145,21 @@ export async function createRequestRule(
     statements.push(env.DB.prepare("INSERT INTO request_rule_reviewer_groups (rule_id, group_id) VALUES (?, ?)").bind(id, groupId));
   }
   await env.DB.batch(statements);
-  return { id, name: input.name, minReviewers, notifyMode, reviewerUsers, reviewerGroups };
+  return { id, name: input.name, minReviewers, minReviewersPerGroup, notifyMode, reviewerUsers, reviewerGroups };
 }
 
 export async function listRequestRules(env: Env): Promise<RequestRule[]> {
   const rows = await env.DB.prepare(
-    `SELECT id, name, min_reviewers AS minReviewers, notify_mode AS notifyMode
+    `SELECT id, name, min_reviewers AS minReviewers, min_reviewers_per_group AS minReviewersPerGroup, notify_mode AS notifyMode
      FROM request_rules ORDER BY name ASC LIMIT 200`,
-  ).all<{ id: string; name: string; minReviewers: number; notifyMode: string }>();
+  ).all<{ id: string; name: string; minReviewers: number; minReviewersPerGroup: number; notifyMode: string }>();
   const users = await env.DB.prepare("SELECT rule_id, user_id FROM request_rule_reviewers").all<{ rule_id: string; user_id: string }>();
   const groups = await env.DB.prepare("SELECT rule_id, group_id FROM request_rule_reviewer_groups").all<{ rule_id: string; group_id: string }>();
   return rows.results.map((row) => ({
     id: row.id,
     name: row.name,
     minReviewers: row.minReviewers,
+    minReviewersPerGroup: row.minReviewersPerGroup === 1,
     notifyMode: row.notifyMode as "all" | "random",
     reviewerUsers: users.results.filter((u) => u.rule_id === row.id).map((u) => u.user_id),
     reviewerGroups: groups.results.filter((g) => g.rule_id === row.id).map((g) => g.group_id),
@@ -311,16 +325,27 @@ function sampledReviewers(reviewers: string[], size: number): string[] {
 }
 
 /** All users who can review against the rule: bound users plus group members. */
-export async function resolveRuleReviewers(env: Env, ruleId: string, minReviewers: number, notifyMode: string): Promise<string[]> {
+export async function resolveRuleReviewers(env: Env, ruleId: string, minReviewers: number, notifyMode: string, requesterId?: string): Promise<string[]> {
   const rows = await env.DB.prepare(
-    `SELECT user_id FROM request_rule_reviewers WHERE rule_id = ?
+    `SELECT user_id, NULL AS group_id FROM request_rule_reviewers WHERE rule_id = ?
      UNION
-     SELECT m.user_id FROM request_rule_reviewer_groups rg
+     SELECT m.user_id, rg.group_id FROM request_rule_reviewer_groups rg
      JOIN directory_group_members m ON m.group_id = rg.group_id
      WHERE rg.rule_id = ?`,
-  ).bind(ruleId, ruleId).all<{ user_id: string }>();
-  const reviewers = rows.results.map((r) => r.user_id);
-  return notifyMode === "random" ? sampledReviewers(reviewers, minReviewers) : reviewers;
+  ).bind(ruleId, ruleId).all<{ user_id: string; group_id: string | null }>();
+  const eligible = rows.results.filter((row) => row.user_id !== requesterId);
+  const reviewers = [...new Set(eligible.map((row) => row.user_id))];
+  if (notifyMode !== "random") return reviewers;
+  const rule = await env.DB.prepare("SELECT min_reviewers_per_group AS perGroup FROM request_rules WHERE id = ?")
+    .bind(ruleId).first<{ perGroup: number }>();
+  if (rule?.perGroup !== 1) return sampledReviewers(reviewers, minReviewers);
+  const selected = new Set<string>();
+  for (const groupId of new Set(eligible.map((row) => row.group_id).filter((id) => id !== null))) {
+    for (const userId of sampledReviewers(eligible.filter((row) => row.group_id === groupId).map((row) => row.user_id), minReviewers)) {
+      selected.add(userId);
+    }
+  }
+  return [...selected];
 }
 
 // ---------------------------------------------------------------------------
@@ -558,7 +583,8 @@ export async function reviewAccessRequest(
     };
   }
 
-  // Approve path: finalize only when the recorded approval count reaches the rule minimum.
+  // Quorums are checked inside the final UPDATE, including current group
+  // memberships, so concurrent reviews cannot finalize from a stale count.
   const grantedExpiresAt = new Date(
     Date.parse(request.createdAt) + request.requestedExpirySeconds * 1000,
   ).toISOString();
@@ -568,7 +594,22 @@ export async function reviewAccessRequest(
      WHERE id = ? AND status = 'pending' AND pending_expires_at > ?
        AND NOT EXISTS (SELECT 1 FROM access_request_approvals WHERE request_id = ? AND decision = 'denied')
        AND (SELECT COUNT(*) FROM access_request_approvals WHERE request_id = ? AND decision = 'approved')
-            >= (SELECT min_reviewers FROM request_rules WHERE id = (SELECT rule_id FROM request_rule_bindings WHERE id = binding_id))`,
+            >= (SELECT min_reviewers FROM request_rules WHERE id = (SELECT rule_id FROM request_rule_bindings WHERE id = binding_id))
+       AND EXISTS (
+          SELECT 1 FROM request_rules r JOIN request_rule_bindings b ON b.rule_id = r.id
+          WHERE b.id = access_requests.binding_id AND (
+            r.min_reviewers_per_group = 0 OR (
+              EXISTS (SELECT 1 FROM request_rule_reviewer_groups WHERE rule_id = r.id)
+              AND NOT EXISTS (
+                SELECT 1 FROM request_rule_reviewer_groups rg WHERE rg.rule_id = r.id
+                  AND (SELECT COUNT(*) FROM access_request_approvals a
+                       JOIN directory_group_members m ON m.user_id = a.reviewer_id AND m.group_id = rg.group_id
+                       WHERE a.request_id = access_requests.id AND a.decision = 'approved'
+                         AND a.reviewer_id != access_requests.user_id) < r.min_reviewers
+              )
+            )
+          )
+        )`,
   ).bind(grantedExpiresAt, nowIso(), input.reviewerId, note, request.id, nowIso(), request.id, request.id).run();
   if (result.meta.changes !== 1) {
     return (await finalizeRecordedVeto(env, request)) ?? { request, newStatus: null };

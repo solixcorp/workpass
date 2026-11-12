@@ -28,7 +28,7 @@ import { authClient } from '@/lib/auth-client'
 import { formatDuration, STATUS_LABELS, subjectLabel } from '@/lib/access-requests'
 import { formatDateTime } from '@/lib/format'
 
-type Rule = { id: string; name: string; minReviewers: number; notifyMode: 'all' | 'random'; reviewerUsers: string[]; reviewerGroups: string[] }
+type Rule = { id: string; name: string; minReviewers: number; minReviewersPerGroup: boolean; notifyMode: 'all' | 'random'; reviewerUsers: string[]; reviewerGroups: string[] }
 type Binding = {
   id: string
   subject: string
@@ -119,7 +119,7 @@ function RulesSection() {
               <ItemContent>
                 <ItemTitle>{rule.name}</ItemTitle>
                 <ItemDescription>
-                  검토자 {rule.reviewerUsers.length}명 · 그룹 {rule.reviewerGroups.length}개 · {rule.minReviewers}명 승인 필요
+                  검토자 {rule.reviewerUsers.length}명 · 그룹 {rule.reviewerGroups.length}개 · {rule.minReviewersPerGroup ? `각 그룹에서 ${rule.minReviewers}명 승인 필요` : `전체 ${rule.minReviewers}명 승인 필요`}
                 </ItemDescription>
               </ItemContent>
               <ItemActions>
@@ -153,6 +153,7 @@ function CreateRuleDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [min, setMin] = useState('1')
+  const [perGroup, setPerGroup] = useState(false)
   const [users, setUsers] = useState<string[]>([])
   const [groups, setGroups] = useState<string[]>([])
   const [failure, setFailure] = useState<string | null>(null)
@@ -176,12 +177,13 @@ function CreateRuleDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     mutationFn: () =>
       apiFetch('/api/admin/access-request-rules', {
         method: 'POST',
-        body: JSON.stringify({ name: name.trim(), minReviewers: Number(min), reviewerUsers: users, reviewerGroups: groups }),
+        body: JSON.stringify({ name: name.trim(), minReviewers: Number(min), minReviewersPerGroup: perGroup, reviewerUsers: users, reviewerGroups: groups }),
       }),
     onSuccess: async () => {
       toast.success('규칙을 만들었습니다.')
       setName('')
       setMin('1')
+      setPerGroup(false)
       setUsers([])
       setGroups([])
       setFailure(null)
@@ -199,6 +201,10 @@ function CreateRuleDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     setFailure(null)
     if (users.length + groups.length === 0) {
       setFailure('검토자나 검토 그룹을 하나 이상 고르세요.')
+      return
+    }
+    if (perGroup && groups.length === 0) {
+      setFailure('그룹별 승인을 사용하려면 검토 그룹을 하나 이상 고르세요.')
       return
     }
     create.mutate()
@@ -219,7 +225,7 @@ function CreateRuleDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
               <FieldDescription>영문, 숫자, 점, 밑줄, 하이픈. 예: it-approvers</FieldDescription>
             </Field>
             <Field>
-              <FieldLabel htmlFor="rule-min">필요한 승인 수</FieldLabel>
+              <FieldLabel htmlFor="rule-min">{perGroup ? '그룹마다 필요한 승인 수' : '전체 필요한 승인 수'}</FieldLabel>
               <Select value={min} onValueChange={setMin}>
                 <SelectTrigger id="rule-min" className="w-32">
                   <SelectValue />
@@ -234,6 +240,14 @@ function CreateRuleDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                   </SelectGroup>
                 </SelectContent>
               </Select>
+            </Field>
+            <Field orientation="horizontal">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <FieldLabel htmlFor="rule-per-group">모든 검토 그룹의 승인 필요</FieldLabel>
+                <FieldDescription>선택한 그룹마다 정한 인원이 승인해야 합니다. 직접 지정한 검토자의 승인만으로는 충족되지 않습니다.</FieldDescription>
+                {perGroup ? <FieldDescription>여러 그룹에 속한 검토자의 승인은 각 소속 그룹에 반영됩니다.</FieldDescription> : null}
+              </div>
+              <Switch id="rule-per-group" checked={perGroup} onCheckedChange={setPerGroup} />
             </Field>
             <FieldSet>
               <FieldLegend variant="label">검토 그룹</FieldLegend>
