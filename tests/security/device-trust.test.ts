@@ -7,9 +7,22 @@ import { fingerprintSignalSnapshot } from "../../src/security/fingerprint";
 describe("device trust grading", () => {
   test("a clean allowed sign-in is trusted and soft reasons lower the score", () => {
     expect(gradeDeviceTrust("allow", [])).toEqual({ level: "trusted", score: 95 });
-    const soft = gradeDeviceTrust("allow", ["vpn_detected", "incognito_detected", "rare_device_detected"]);
+    const soft = gradeDeviceTrust("allow", ["vpn_detected", "proxy_detected", "rare_device_detected"]);
     expect(soft.level).toBe("normal");
     expect(soft.score).toBe(80);
+  });
+
+  test("private mode and developer tools are recorded but never lower the grade", () => {
+    expect(gradeDeviceTrust("allow", ["incognito_detected", "developer_tools_detected"])).toEqual({ level: "trusted", score: 95 });
+    expect(gradeDeviceTrust("step_up", ["untrusted_device", "incognito_detected", "developer_tools_detected"])).toEqual({ level: "review", score: 55 });
+    expect(gradeDeviceTrust("allow", ["developer_tools_detected"]).level).not.toBe("risky");
+  });
+
+  test("a low provider suspect score costs nothing and a high one lowers the grade", () => {
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 12 }).score).toBe(94);
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 0 }).score).toBe(95);
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 90 }).score).toBe(86);
+    expect(gradeDeviceTrust("allow", ["vpn_detected"], { suspectScore: 200 }).score).toBe(80);
   });
 
   test("step-up verdicts are capped at review and hard reasons are risky", () => {

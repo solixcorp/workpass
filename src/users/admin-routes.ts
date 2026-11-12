@@ -129,9 +129,9 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
      FROM trusted_devices WHERE user_id = ? ORDER BY last_seen_at DESC LIMIT 50`,
   ).bind(id).all<{ id: string; label: string; createdAt: string; lastSeenAt: string; expiresAt: string; revokedAt: string | null }>());
   const logins = await rows(db.prepare(
-    `SELECT id, occurred_at AS at, ip, user_agent AS userAgent, country, region, city, method
+    `SELECT id, occurred_at AS at, ip, user_agent AS userAgent, country, region, city, method, visitor_digest AS visitorDigest
      FROM login_history WHERE user_id = ? ORDER BY occurred_at DESC LIMIT 100`,
-  ).bind(id).all<{ id: string; at: string; ip: string | null; userAgent: string | null; country: string | null; region: string | null; city: string | null; method: string | null }>());
+  ).bind(id).all<{ id: string; at: string; ip: string | null; userAgent: string | null; country: string | null; region: string | null; city: string | null; method: string | null; visitorDigest: string | null }>());
   const observations = await rows(db.prepare(
     `SELECT id, visitor_digest AS visitorDigest, network_digest AS networkDigest, country_code AS countryCode,
             latitude, longitude, geo_source AS geoSource, occurred_at AS at,
@@ -147,13 +147,17 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
   ).bind(id).all<{ id: string; loginId: string | null; createdAt: string; status: string }>());
 
   // One row per device (same OS and browser), newest sign-in first.
-  const devices = new Map<string, { label: string; lastAt: string; location: string | null; ip: string | null; count: number }>();
+  const devices = new Map<string, { label: string; lastAt: string; location: string | null; ip: string | null; count: number; digests: string[] }>();
   for (const login of logins) {
     const label = describeDevice(login.userAgent).label;
     const place = [login.city, login.region, login.country].filter(Boolean).join(", ") || null;
     const existing = devices.get(label);
-    if (existing) existing.count += 1;
-    else devices.set(label, { label, lastAt: login.at, location: place, ip: login.ip, count: 1 });
+    if (existing) {
+      existing.count += 1;
+      if (login.visitorDigest && !existing.digests.includes(login.visitorDigest)) existing.digests.push(login.visitorDigest);
+    } else {
+      devices.set(label, { label, lastAt: login.at, location: place, ip: login.ip, count: 1, digests: login.visitorDigest ? [login.visitorDigest] : [] });
+    }
   }
   return context.json({
     devices: [...devices.values()],
@@ -167,6 +171,7 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
     reports,
     fingerprints: observations.map((o) => {
       const reasons = parseStoredJson<string[]>(o.reasons, []);
+      const signals = parseStoredJson<Record<string, unknown> | null>(o.signals, null);
       return {
         id: o.id,
         at: o.at,
@@ -178,8 +183,8 @@ userDetailRoutes.get("/users/:id/devices", async (context) => {
         geoSource: o.geoSource,
         action: o.action,
         reasons,
-        signals: parseStoredJson<Record<string, unknown> | null>(o.signals, null),
-        ...gradeDeviceTrust(o.action, reasons),
+        signals,
+        ...gradeDeviceTrust(o.action, reasons, signals),
       };
     }),
   });

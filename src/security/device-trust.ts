@@ -21,7 +21,6 @@ const HARD_REASONS = new Set([
   "tor_network_detected",
   "ip_blocklisted",
   "virtual_machine_detected",
-  "developer_tools_detected",
   "suspect_score_threshold",
   "rapid_device_and_country_change",
 ]);
@@ -31,13 +30,24 @@ const HARD_REASONS = new Set([
  * starts high and loses a little for each soft reason that did not block it;
  * step-up and deny verdicts cap the grade.
  */
-export function gradeDeviceTrust(action: string | null, reasons: string[]): { level: DeviceTrustLevel; score: number } {
+/** Private mode and open developer tools are recorded but do not lower the grade. */
+const INFORMATIONAL = new Set(["incognito_detected", "developer_tools_detected"]);
+
+export function gradeDeviceTrust(
+  action: string | null,
+  reasons: string[],
+  signals?: Record<string, unknown> | null,
+): { level: DeviceTrustLevel; score: number } {
   if (!action) return { level: "unknown", score: 0 };
-  if (action === "deny" || reasons.some((reason) => HARD_REASONS.has(reason))) {
-    return { level: "risky", score: Math.max(5, 25 - reasons.length * 5) };
+  const counted = reasons.filter((reason) => !INFORMATIONAL.has(reason));
+  if (action === "deny" || counted.some((reason) => HARD_REASONS.has(reason))) {
+    return { level: "risky", score: Math.max(5, 25 - counted.length * 5) };
   }
-  if (action === "step_up") return { level: "review", score: Math.max(30, 60 - reasons.length * 5) };
-  const score = Math.max(70, 95 - reasons.length * 5);
+  // The provider's own suspect score nudges the grade: a low score costs nothing.
+  const suspect = typeof signals?.suspectScore === "number" ? signals.suspectScore : 0;
+  const suspectPenalty = Math.min(10, Math.floor(Math.max(0, suspect) / 10));
+  if (action === "step_up") return { level: "review", score: Math.max(30, 60 - counted.length * 5 - suspectPenalty) };
+  const score = Math.max(70, 95 - counted.length * 5 - suspectPenalty);
   return { level: score >= 85 ? "trusted" : "normal", score };
 }
 
@@ -74,12 +84,13 @@ export async function latestObservations(env: Env, userId: string, digests: stri
     for (const row of observations.results) {
       if (result.has(row.visitor_digest)) continue;
       const reasons = parseJson<string[]>(row.risk_reasons, []);
+      const signals = parseJson<Record<string, unknown> | null>(row.signals, null);
       result.set(row.visitor_digest, {
-        ...gradeDeviceTrust(row.risk_action, reasons),
+        ...gradeDeviceTrust(row.risk_action, reasons, signals),
         observedAt: row.occurred_at,
         action: row.risk_action,
         reasons,
-        signals: parseJson<Record<string, unknown> | null>(row.signals, null),
+        signals,
       });
     }
   } catch {

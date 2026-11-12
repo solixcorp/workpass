@@ -1,0 +1,8 @@
+schema = 1
+id = "REQ-1794503194-fxb"
+type = "requirement"
+title = "Device assessment in observe mode never blocks sign-in; private mode and developer tools are informational; admins browse fingerprints per device"
+description = "Observe mode records the device verdict but returns allow, so accounts without a second factor are not refused with 503 when a step_up verdict appears. incognito_detected and developer_tools_detected are recorded but do not cause step_up or deny and do not lower the trust grade. The provider suspect score lowers the grade by at most 10 points. The admin devices tab opens a device's fingerprint history in a dialog, and each fingerprint record opens a detail dialog."
+status = "active"
+created_at = 2026-11-13T02:06:34+09:00
+updated_at = 2026-11-13T02:06:34+09:00

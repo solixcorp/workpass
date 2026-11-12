@@ -269,4 +269,26 @@ describe("security regressions", () => {
     expect(observed.allowed).toBe(true);
     expect(decisions.length).toBeGreaterThan(decisionCount);
   });
+
+  test("observe mode never turns a risky verdict into a step-up the account cannot answer", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json({
+      event_id: "event", timestamp: Date.now(), identification: { visitor_id: "v", confidence: { score: 1 } },
+      incognito: true, ip_address: "203.0.113.9",
+    })) as typeof fetch;
+    try {
+      const db = { prepare: (sql: string) => ({ bind: () => ({
+        first: async () => sql.includes('banned FROM "user"') ? { banned: 0 } : null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ meta: { changes: 1 } }),
+      }) }) };
+      const env = { FINGERPRINT_MODE: "observe", FINGERPRINT_SERVER_API_KEY: "key", AUTH_SECRET: "s", AUTH_BASE_URL: "https://idp.test", DB: db } as unknown as Env;
+      const request = new Request("https://idp.test/api/opaque/auth/finish", { method: "POST", headers: { origin: "https://idp.test" } });
+      const result = await evaluateOpaqueLoginGate(env, { userId: "u1", eventId: "event", request, contextPath: "/api/opaque/auth/finish" });
+      expect(result.allowed).toBe(true);
+      expect(result.action).toBe("allow");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
 });

@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794503195-tz0"
+type = "change"
+title = "Fix observe-mode 503, soften informational signals, fingerprint dialogs"
+description = "src/auth/opaque-login.ts observe returns allow; src/security/fingerprint.ts INFORMATIONAL_REASONS; src/security/device-trust.ts grade ignores informational reasons and uses suspectScore; src/users/admin-routes.ts devices carry digests; web devices-auth.tsx dialogs. QA: bun test 711 pass, typecheck, web:build."
+status = "resolved"
+created_at = 2026-11-13T02:06:35+09:00
+updated_at = 2026-11-13T02:06:35+09:00
+
+[[relations]]
+to = "REQ-1794503194-fxb"
+type = "covers"

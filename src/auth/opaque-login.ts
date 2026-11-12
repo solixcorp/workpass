@@ -159,7 +159,14 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
     // complete one. Without any factor this stays fail closed (denied).
     return await stepUpOutcome(env, input.userId, [...risk.reasons, ...reasons]);
   }
-  return { allowed: true, action: risk.action, reasons: [...risk.reasons, ...reasons], visitorDigest: risk.visitorDigest };
+  // Observe records the verdict but never changes the outcome: handing a
+  // step_up back would make accounts without a second factor fail with 503.
+  return {
+    allowed: true,
+    action: mode === "enforce" ? risk.action : "allow",
+    reasons: [...risk.reasons, ...reasons],
+    visitorDigest: risk.visitorDigest,
+  };
 }
 
 /**

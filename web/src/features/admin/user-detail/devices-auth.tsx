@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useState, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ApiError, apiFetch } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
@@ -12,7 +13,7 @@ import { UserMfaDialog } from '../user-mfa-dialog'
 import { Failed, Loading, Nothing, Panel, useUserData } from './shared'
 
 type Devices = {
-  devices: Array<{ label: string; lastAt: string; location: string | null; ip: string | null; count: number }>
+  devices: Array<{ label: string; lastAt: string; location: string | null; ip: string | null; count: number; digests: string[] }>
   sessions: Array<{ id: string; ip: string | null; device: string; createdAt: string; expiresAt: string; current?: boolean }>
   trusted: Array<{ id: string; label: string; createdAt: string; lastSeenAt: string; expiresAt: string; revokedAt: string | null }>
   logins: Array<{ id: string; at: string; ip: string | null; device: string; method: string | null; location: string | null; reported: boolean }>
@@ -48,8 +49,167 @@ function Block({ children }: { children: ReactNode }) {
   return <div className="overflow-x-auto rounded-xl border">{children}</div>
 }
 
+
+type Fingerprint = Devices['fingerprints'][number]
+
+const REASON_TEXT: Record<string, string> = {
+  incognito_detected: '시크릿 모드 (참고용)',
+  developer_tools_detected: '개발자 도구 (참고용)',
+  untrusted_device: '등록하지 않은 기기',
+  vpn_detected: 'VPN',
+  proxy_detected: '프록시',
+  privacy_settings_detected: '개인정보 보호 설정',
+  rare_device_detected: '드문 기기',
+  high_activity_device_detected: '활동이 많은 기기',
+  simulator_detected: '시뮬레이터',
+  datacenter_ip_detected: '데이터센터 IP',
+  low_identification_confidence: '식별 신뢰도 낮음',
+  bot_detected: '봇',
+  tampering_detected: '변조',
+  tor_network_detected: 'Tor',
+  ip_blocklisted: '차단 목록 IP',
+  virtual_machine_detected: '가상 머신',
+  suspect_score_threshold: '의심 점수 초과',
+  impossible_travel: '이동 불가능한 위치 변화',
+  history_distance_exceeded: '평소 위치에서 멀리 떨어짐',
+  geo_position_unavailable: '위치 확인 불가',
+  rapid_network_change: '짧은 시간에 네트워크 바뀜',
+  rapid_device_change: '짧은 시간에 기기 바뀜',
+  rapid_device_and_country_change: '짧은 시간에 기기와 국가가 모두 바뀜',
+}
+
+const SIGNAL_LABELS: Array<[string, string]> = [
+  ['bot', '봇'], ['tampering', '변조'], ['vpn', 'VPN'], ['proxy', '프록시'], ['incognito', '시크릿 모드'],
+  ['developerTools', '개발자 도구'], ['privacySettings', '개인정보 보호 설정'], ['virtualMachine', '가상 머신'],
+  ['simulator', '시뮬레이터'], ['rareDevice', '드문 기기'], ['highActivityDevice', '활동 많은 기기'],
+  ['torNode', 'Tor'], ['attackSource', '공격 IP 목록'], ['datacenterIp', '데이터센터 IP'],
+]
+
+function suspectLabel(score: number): { text: string; tone: 'secondary' | 'outline' | 'destructive' } {
+  if (score <= 30) return { text: '낮음', tone: 'secondary' }
+  if (score <= 70) return { text: '보통', tone: 'outline' }
+  return { text: '높음', tone: 'destructive' }
+}
+
+function FingerprintDetail({ entry }: { entry: Fingerprint }) {
+  const signals = entry.signals ?? {}
+  const suspect = typeof signals.suspectScore === 'number' ? signals.suspectScore : null
+  const confidence = typeof signals.confidence === 'number' ? signals.confidence : null
+  return (
+    <div className="flex flex-col gap-4 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={entry.level === 'risky' ? 'destructive' : 'secondary'}>{TRUST_LABEL[entry.level]}</Badge>
+        {entry.level !== 'unknown' ? <span className="text-muted-foreground">{entry.score}/100</span> : null}
+        <span className="text-muted-foreground">판정 {entry.action ?? '기록 없음'}</span>
+        {suspect !== null ? (
+          <Badge variant={suspectLabel(suspect).tone}>의심 점수 {suspect} · {suspectLabel(suspect).text}</Badge>
+        ) : null}
+        {confidence !== null ? <span className="text-muted-foreground">식별 신뢰도 {Math.round(confidence * 100)}%</span> : null}
+      </div>
+      {entry.reasons.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {entry.reasons.map((reason) => (
+            <Badge key={reason} variant="outline">{REASON_TEXT[reason] ?? reason}</Badge>
+          ))}
+        </div>
+      ) : null}
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
+        {SIGNAL_LABELS.map(([key, label]) => {
+          const value = signals[key]
+          const on = value === true || (key === 'bot' && value !== undefined && value !== 'not_detected' && value !== null)
+          return (
+            <div key={key} className="flex items-center justify-between gap-2 border-b py-1">
+              <span className="text-muted-foreground">{label}</span>
+              <span className={on ? 'font-medium' : 'text-muted-foreground'}>{on ? '감지' : '없음'}</span>
+            </div>
+          )
+        })}
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+        <dt className="text-muted-foreground">시각</dt><dd>{formatDateTime(entry.at)}</dd>
+        <dt className="text-muted-foreground">국가</dt><dd>{entry.countryCode ?? '-'}</dd>
+        <dt className="text-muted-foreground">위치</dt>
+        <dd>{entry.latitude === null ? '-' : `${entry.latitude}, ${entry.longitude} (${entry.geoSource ?? '출처 미상'})`}</dd>
+        <dt className="text-muted-foreground">기기 해시</dt><dd className="break-all font-mono">{entry.visitorDigest}</dd>
+        <dt className="text-muted-foreground">네트워크 해시</dt><dd className="break-all font-mono">{entry.networkDigest ?? '-'}</dd>
+      </dl>
+      <details>
+        <summary className="cursor-pointer text-xs text-muted-foreground">원본 신호 전체</summary>
+        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-2 font-mono text-xs">
+          {JSON.stringify({ action: entry.action, reasons: entry.reasons, signals: entry.signals }, null, 2)}
+        </pre>
+      </details>
+    </div>
+  )
+}
+
+function FingerprintDialog({ entry, onClose }: { entry: Fingerprint | null; onClose: () => void }) {
+  return (
+    <Dialog open={entry !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>기기 지문 상세</DialogTitle>
+          <DialogDescription>로그인 순간 기록한 기기 판정과 지문 신호입니다.</DialogDescription>
+        </DialogHeader>
+        {entry ? <FingerprintDetail entry={entry} /> : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DeviceFingerprintsDialog({
+  device,
+  fingerprints,
+  onClose,
+  onOpen,
+}: {
+  device: Devices['devices'][number] | null
+  fingerprints: Fingerprint[]
+  onClose: () => void
+  onOpen: (entry: Fingerprint) => void
+}) {
+  const matching = device ? fingerprints.filter((entry) => device.digests.includes(entry.visitorDigest)) : []
+  return (
+    <Dialog open={device !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{device?.label ?? '기기'}</DialogTitle>
+          <DialogDescription>이 기기로 로그인할 때 기록한 지문 판정입니다.</DialogDescription>
+        </DialogHeader>
+        {matching.length === 0 ? (
+          <Nothing>이 기기에서 기록된 지문이 없습니다. 기기 확인이 켜진 뒤 로그인하면 쌓입니다.</Nothing>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {matching.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left hover:bg-muted/50"
+                onClick={() => onOpen(entry)}
+              >
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm">{formatDateTime(entry.at)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {entry.reasons.length > 0 ? entry.reasons.map((reason) => REASON_TEXT[reason] ?? reason).join(' · ') : '특이 신호 없음'}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2">
+                  <Badge variant={entry.level === 'risky' ? 'destructive' : 'secondary'}>{TRUST_LABEL[entry.level]}</Badge>
+                  <span className="text-xs text-muted-foreground">{entry.score}/100</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function DevicesTab({ id }: { id: string }) {
   const queryClient = useQueryClient()
+  const [openDevice, setOpenDevice] = useState<Devices['devices'][number] | null>(null)
+  const [openEntry, setOpenEntry] = useState<Fingerprint | null>(null)
   const query = useUserData<Devices>(id, 'devices')
   const revoke = useMutation({
     mutationFn: (sessionId: string) => apiFetch(`/api/admin/users/${id}/sessions/${sessionId}`, { method: 'DELETE' }),
@@ -65,7 +225,7 @@ export function DevicesTab({ id }: { id: string }) {
   const now = Date.now()
   return (
     <div className="flex flex-col gap-8">
-      <Panel title="기기" description="최근 로그인 기록으로 묶은 기기입니다. 로그인 기록은 180일 동안 보관됩니다.">
+      <Panel title="기기" description="최근 로그인 기록으로 묶은 기기입니다. 기기를 누르면 그 기기의 지문 기록이 열립니다. 로그인 기록은 180일 동안 보관됩니다.">
         {devices.length === 0 ? (
           <Nothing>로그인 기록이 없습니다.</Nothing>
         ) : (
@@ -81,7 +241,13 @@ export function DevicesTab({ id }: { id: string }) {
               </TableHeader>
               <TableBody>
                 {devices.map((device) => (
-                  <TableRow key={device.label}>
+                  <TableRow
+                    key={device.label}
+                    className="cursor-pointer"
+                    tabIndex={0}
+                    onClick={() => setOpenDevice(device)}
+                    onKeyDown={(event) => event.key === 'Enter' && setOpenDevice(device)}
+                  >
                     <TableCell className="font-medium">{device.label}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(device.lastAt)}</TableCell>
                     <TableCell className="text-muted-foreground">{device.location ?? device.ip ?? '알 수 없음'}</TableCell>
@@ -122,26 +288,14 @@ export function DevicesTab({ id }: { id: string }) {
                     <TableCell className="font-mono text-xs">{entry.networkDigest?.slice(0, 12) ?? '-'}</TableCell>
                     <TableCell>{entry.countryCode ?? '-'}</TableCell>
                     <TableCell className="min-w-64 text-xs">
-                      <details>
-                        <summary className="cursor-pointer text-muted-foreground">
-                          {entry.action ?? '판정 기록 없음'}
-                          {entry.reasons.length > 0 ? ` · ${entry.reasons.join(', ')}` : ''}
-                        </summary>
-                        <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-muted p-2 font-mono">
-                          {JSON.stringify(
-                            {
-                              visitorDigest: entry.visitorDigest,
-                              networkDigest: entry.networkDigest,
-                              position: entry.latitude === null ? null : { latitude: entry.latitude, longitude: entry.longitude, source: entry.geoSource },
-                              action: entry.action,
-                              reasons: entry.reasons,
-                              signals: entry.signals,
-                            },
-                            null,
-                            2,
-                          )}
-                        </pre>
-                      </details>
+                      <button
+                        type="button"
+                        className="text-left text-muted-foreground underline-offset-2 hover:underline"
+                        onClick={() => setOpenEntry(entry)}
+                      >
+                        {entry.action ?? '판정 기록 없음'}
+                        {entry.reasons.length > 0 ? ` · ${entry.reasons.map((reason) => REASON_TEXT[reason] ?? reason).join(', ')}` : ''}
+                      </button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -150,6 +304,9 @@ export function DevicesTab({ id }: { id: string }) {
           </Block>
         )}
       </Panel>
+
+      <DeviceFingerprintsDialog device={openDevice} fingerprints={fingerprints} onClose={() => setOpenDevice(null)} onOpen={setOpenEntry} />
+      <FingerprintDialog entry={openEntry} onClose={() => setOpenEntry(null)} />
 
       <Panel title="열려 있는 세션" description="하나씩 끝낼 수 있습니다. 끝낸 기기는 다시 로그인해야 합니다.">
         {sessions.length === 0 ? (

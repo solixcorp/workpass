@@ -396,6 +396,13 @@ export async function digestVisitorId(env: Env, visitorId: string): Promise<stri
   return Array.from(signature, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Recorded for administrators but never a reason to challenge or block:
+ * browsers opened in private mode and people with developer tools open are
+ * ordinary. Everything else keeps its existing weight.
+ */
+export const INFORMATIONAL_REASONS: ReadonlySet<string> = new Set(["incognito_detected", "developer_tools_detected"]);
+
 export async function evaluateFingerprintRisk(input: {
   env: Env;
   userId: string;
@@ -534,7 +541,6 @@ export async function evaluateFingerprintRisk(input: {
     "tor_network_detected",
     "ip_blocklisted",
     "virtual_machine_detected",
-    "developer_tools_detected",
     "suspect_score_threshold",
     "rapid_device_and_country_change",
   ]);
@@ -543,7 +549,7 @@ export async function evaluateFingerprintRisk(input: {
     reasons.includes("impossible_travel") ||
     reasons.includes("history_distance_exceeded") ||
     reasons.includes("geo_position_unavailable") ||
-    signals.slice(4).some(([, reason]) => reasons.includes(reason)) ||
+    signals.slice(4).some(([, reason]) => !INFORMATIONAL_REASONS.has(reason) && reasons.includes(reason)) ||
     reasons.includes("untrusted_device") ||
     reasons.includes("low_identification_confidence")
   ) {

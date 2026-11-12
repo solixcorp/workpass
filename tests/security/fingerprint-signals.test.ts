@@ -55,7 +55,7 @@ describe("Fingerprint Smart Signals", () => {
   const cases: Array<[Record<string, unknown>, string, string]> = [
     [{ vpn: true }, "vpn_detected", "step_up"],
     [{ proxy: true }, "proxy_detected", "step_up"],
-    [{ incognito: true }, "incognito_detected", "step_up"],
+    [{ incognito: true }, "incognito_detected", "allow"],
     [{ privacy_settings: true }, "privacy_settings_detected", "step_up"],
     [{ rare_device: true }, "rare_device_detected", "step_up"],
     [{ high_activity_device: true }, "high_activity_device_detected", "step_up"],
@@ -64,7 +64,7 @@ describe("Fingerprint Smart Signals", () => {
     [{ ip_blocklist: { tor_node: true } }, "tor_network_detected", "deny"],
     [{ ip_blocklist: { attack_source: true } }, "ip_blocklisted", "deny"],
     [{ virtual_machine: true }, "virtual_machine_detected", "deny"],
-    [{ developer_tools: true }, "developer_tools_detected", "deny"],
+    [{ developer_tools: true }, "developer_tools_detected", "allow"],
   ];
   test.each(cases)("classifies signal %#", async (raw, reason, action) => {
     const { event } = await parse(raw);
