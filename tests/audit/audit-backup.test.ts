@@ -63,8 +63,8 @@ describe("audit backup export", () => {
     await updateAuditEvent(env, "pending", { actor_user_id: "actor-final", target_user_id: "target-final", outcome: "failure" });
     expect(await backupAuditEvents(env, at)).toEqual({ exported: 3, watermark: 4, backup: true });
     const lines = bucket.store.get(`${AUDIT_BACKUP_PREFIX}2026-11-10.jsonl`)!.trim().split("\n").map((line) => JSON.parse(line));
-    expect(lines[1]).toMatchObject({ id: "pending", outcome: "failure", actor_user_id: "actor-final", target_user_id: "target-final" });
-    expect(await verifyAuditBackup(env)).toEqual({ rows: 4, verified: true, firstProblem: null });
+    expect(lines[2]).toMatchObject({ id: "pending", outcome: "failure", actor_user_id: "actor-final", target_user_id: "target-final" });
+    expect(await verifyAuditBackup(env)).toEqual({ rows: 4, verified: true, firstProblem: null, manifest: "present", lastLogPos: 4 });
   });
   test("exports new rows into a dated object keyed by log position", async () => {
     const { env, db, bucket } = stub();
@@ -76,7 +76,7 @@ describe("audit backup export", () => {
     expect(first.watermark).toBe(3);
     const key = `${AUDIT_BACKUP_PREFIX}2026-11-10.jsonl`;
     const text = bucket.store.get(key)!;
-    expect(text.split("\n").filter((l) => l.trim().length > 0)).toHaveLength(3);
+    expect(text.split("\n").filter((l) => l.trim().length > 0)).toHaveLength(4);
 
     // Watermark stops repeats.
     const repeat = await backupAuditEvents(env, Date.parse("2026-11-10T10:00:00Z"));
@@ -126,6 +126,26 @@ describe("audit backup export", () => {
     const tampered = await verifyAuditBackup(env);
     expect(tampered.verified).toBe(false);
     expect(tampered.firstProblem).toContain("content hash");
+  });
+
+  test("rejects empty and missing hashes; legacy archives report absent manifests", async () => {
+    const { env, db, bucket } = stub();
+    await ensureApplicationTables(env);
+    expect((await verifyAuditBackup(env)).verified).toBe(false);
+    await seedAuditRows(db, 2);
+    await backupAuditEvents(env, Date.parse("2026-11-10T09:00:00Z"));
+    const key = `${AUDIT_BACKUP_PREFIX}2026-11-10.jsonl`;
+    const lines = bucket.store.get(key)!.trim().split("\n");
+    bucket.store.set(key, lines.slice(0, -1).join("\n") + "\n");
+    expect(await verifyAuditBackup(env)).toMatchObject({ verified: true, manifest: "absent", lastLogPos: 2 });
+    const row = JSON.parse(lines[0]!);
+    row.content_hash = null;
+    bucket.store.set(key, [JSON.stringify(row), ...lines.slice(1)].join("\n") + "\n");
+    expect(await verifyAuditBackup(env)).toMatchObject({ verified: false, manifest: "present", firstProblem: expect.stringContaining("missing its content hash") });
+    const badManifest = JSON.parse(lines[2]!);
+    badManifest.rowCount = 3;
+    bucket.store.set(key, [lines[0], lines[1], JSON.stringify(badManifest)].join("\n"));
+    expect((await verifyAuditBackup(env)).firstProblem).toContain("invalid manifest");
   });
 
   test("every audit feature fails safe without the R2 binding", async () => {

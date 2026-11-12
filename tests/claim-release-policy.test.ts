@@ -83,6 +83,15 @@ describe("claim release policy", () => {
 });
 
 describe("per-attribute allowlist", () => {
+  test("corrupt stored allowlists deny attributes without changing the flag-only path", async () => {
+    const env = await seededEnv();
+    await upsertClaimReleasePolicy(env, { subject: "oidc:client-1", allowAccountClaims: true, allowUserAttributes: true }, "u1");
+    for (const value of ["", "[\"team\"", "null", "{}", "[42]", "[\"bad key\"]"]) {
+      await env.DB.prepare("UPDATE claim_release_policies SET attribute_allowlist = ? WHERE subject = ?").bind(value, "oidc:client-1").run();
+      expect(await userAttributesClaimForSubject(env, "u1", "oidc:client-1")).toEqual({});
+      expect(await userAttributesClaimForSubject(env, "u1", undefined)).toEqual({ "https://auth.example.test/claims/attributes": { team: "core" } });
+    }
+  });
   test("an allowlist narrows the released attribute set; null keeps everything", async () => {
     const env = await seededEnv();
     const { userAttributesForSubject } = await import("../src/claims/release-policy");

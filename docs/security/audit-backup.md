@@ -19,20 +19,28 @@ chain: exported rows re-verify with `verifyAuditEventChain` semantics byte-for-b
   reports `backup: false` — the D1 log remains authoritative.
 - The exported lines keep `log_pos`, `content_hash` and all chained fields, so verification
   and audit-chain walking do not depend on D1.
+- Each appended batch ends with a JSON line of type `audit-backup-manifest`, containing
+  the cumulative row count for that object (`rowCount`) and its last position (`lastLogPos`).
+  These checkpoint lines are metadata, not audit events.
 
 ## Verification
 
 `verifyAuditBackup` walks every dated object, recomputes each entry's SHA-256 chain hash
 against the same canonical form used for writes, and checks that log positions stay
-contiguous. Any mismatch reports the object and log position of the first problem. Run it
-as part of a restore drill, after recovering rows from R2, or periodically.
+contiguous. Missing hashes, empty backups, and inconsistent checkpoints fail verification.
+The result reports `manifest: present` only when every object ends with a checkpoint;
+legacy objects remain verifiable and report `manifest: absent`. It also reports the archived
+`lastLogPos`: compare it with the independently recorded expected watermark (for example,
+`audit_backup_state.log_pos` when D1 is trustworthy). A valid checkpoint alone cannot
+detect deletion of a whole object or truncation to an earlier valid checkpoint. Any mismatch
+reports the first problem. Run it as part of a restore drill or periodically.
 
 ## Restore drill (runbook outline)
 
 1. Create a scratch D1 database; recreate `audit_events` (same DDL as
    `src/db/schema.ts`).
 2. Download all `audit-backup/*.jsonl` objects in date order and insert their rows into
-   `audit_events` as-is.
+   `audit_events` as-is, excluding `audit-backup-manifest` metadata lines.
 3. Run `verifyAuditEventChain` against the restored table (or `verifyAuditBackup` over the
    objects directly): a clean bill of evidence means the restore is faithful.
 4. Record the drill date and outcome in the operations log.

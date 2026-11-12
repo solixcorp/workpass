@@ -1,0 +1,19 @@
+schema = 1
+id = "CHG-1794465290-1w3"
+type = "change"
+title = "Patch: audit hardening batch 2 (dependency pinning, claims fail-closed allowlists, backup verification manifests)"
+description = "Non-finding hardening notes, batch 2. (1) All ranged dependency declarations in both manifests pinned to their bun.lock-resolved versions (37 direct deps verified against workspace-aware lockfile; bun.lock untouched; regression test tests/audit/dependency-pins.test.ts enforces the discipline). (2) A corrupt/unreadable stored claim allowlist now denies user-attribute keys instead of being interpreted as unrestricted (NULL and empty-list semantics unchanged). (3) Audit backup verification rejects missing content_hash rows and empty backups, adds append-only checkpoint manifests with archived last-position reporting, tolerates legacy manifest-absent archives, and docs/security/audit-backup.md documents the contract (a valid checkpoint cannot detect whole-object deletion; operators compare lastLogPos with an independent watermark). QA 2026-11-12: targeted bun test 45 passed; full suite 681 passed, 0 failed; tsc --noEmit clean."
+status = "draft"
+created_at = 2026-11-12T15:34:50+09:00
+updated_at = 2026-11-12T15:34:50+09:00
+
+[metadata]
+changed_entities = ["package.json", "web/package.json", "src/claims/release-policy.ts", "src/audit/backup.ts", "docs/security/audit-backup.md"]
+
+[[relations]]
+to = "REQ-1794461164-az3"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794461164-wwk"
+type = "covers"

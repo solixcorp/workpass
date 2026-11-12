@@ -115,15 +115,14 @@ function rowToPolicy(row: {
   allowGroupAttributes: number | null;
 }): ClaimReleasePolicy {
   let attributeAllowlist: string[] | null = null;
-  if (row.attributeAllowlist) {
+  if (row.attributeAllowlist !== null) {
     try {
       const parsed = JSON.parse(row.attributeAllowlist) as unknown;
-      if (Array.isArray(parsed)) {
-        const keys = parseAllowlist(parsed as string[]);
-        attributeAllowlist = keys;
-      }
+      if (!Array.isArray(parsed)) throw new Error("Invalid stored allowlist");
+      attributeAllowlist = parseAllowlist(parsed as string[]);
     } catch {
-      // A corrupt allowlist reads as unrestricted; the write path repairs it.
+      // Only SQL NULL is unrestricted; corruption denies all attribute keys.
+      attributeAllowlist = [];
     }
   }
   return {

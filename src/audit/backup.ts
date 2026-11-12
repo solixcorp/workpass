@@ -9,7 +9,7 @@
  *
  * Restoration: each dated object is a UTF-8 JSON Lines stream; re-walking the
  * rows through verifyAuditEventChain against a restored table reproduces the
- * tamper evidence exactly.
+ * tamper evidence exactly. Manifest lines are checkpoints, not audit rows.
  */
 
 import type { Env } from "../env";
@@ -108,7 +108,12 @@ export async function backupAuditEvents(env: Env, atMs: number, maxBatch = 5000)
   // object. A concurrent scheduler is a no-op in practice (single instance);
   // the watermark check keeps repeated runs idempotent.
   const existing = await readObjectText(bucket, key);
-  const body = existing ? `${existing.replace(/\n$/, "")}\n${payload}\n` : `${payload}\n`;
+  const existingRows = existing.split("\n").filter((line) => {
+    if (!line.trim()) return false;
+    try { return JSON.parse(line).type !== "audit-backup-manifest"; } catch { return true; }
+  }).length;
+  const manifest = JSON.stringify({ type: "audit-backup-manifest", rowCount: existingRows + exported, lastLogPos: nextWatermark });
+  const body = existing ? `${existing.replace(/\n$/, "")}\n${payload}\n${manifest}\n` : `${payload}\n${manifest}\n`;
   await bucket.put(key, body, {
     customMetadata: { lastLogPos: String(nextWatermark) },
   });
@@ -120,6 +125,8 @@ export interface AuditRestoreVerification {
   rows: number;
   verified: boolean;
   firstProblem: string | null;
+  manifest: "present" | "absent";
+  lastLogPos: number;
 }
 
 /**
@@ -128,27 +135,55 @@ export interface AuditRestoreVerification {
  * after a restore drill or spot check.
  */
 export async function verifyAuditBackup(env: Env): Promise<AuditRestoreVerification> {
-  if (!env.AUDIT_BACKUP) return { rows: 0, verified: false, firstProblem: "AUDIT_BACKUP binding is not configured" };
+  if (!env.AUDIT_BACKUP) return { rows: 0, verified: false, firstProblem: "AUDIT_BACKUP binding is not configured", manifest: "absent", lastLogPos: 0 };
   const bucket = env.AUDIT_BACKUP;
-  const objects = await bucket.list({ prefix: AUDIT_BACKUP_PREFIX });
+  const objects: Array<{ key: string }> = [];
+  let cursor: string | undefined;
+  do {
+    const page = await bucket.list({ prefix: AUDIT_BACKUP_PREFIX, cursor });
+    objects.push(...page.objects);
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  objects.sort((a, b) => a.key.localeCompare(b.key));
   let rows = 0;
   let previousPos = 0;
   let firstProblem: string | null = null;
-  for (const object of objects.objects) {
+  let allHaveManifest = objects.length > 0;
+  for (const object of objects) {
     const text = await readObjectText(bucket, object.key);
-    if (text.length === 0) continue;
+    if (text.length === 0) {
+      firstProblem ??= `object ${object.key} is empty or missing`;
+      allHaveManifest = false;
+      continue;
+    }
+    let objectRows = 0;
+    let lastWasManifest = false;
     for (const line of text.split("\n")) {
       if (line.trim().length === 0) continue;
-      let row: AuditBackupPayload;
+      let row: AuditBackupPayload & { type?: string; rowCount?: number; lastLogPos?: number };
       try {
-        row = JSON.parse(line) as AuditBackupPayload;
+        row = JSON.parse(line);
+        if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("Invalid row");
       } catch {
         if (firstProblem === null) firstProblem = `object ${object.key} has a malformed line`;
         rows += 1;
+        lastWasManifest = false;
         continue;
       }
+      if (row.type === "audit-backup-manifest") {
+        if (row.rowCount !== objectRows || row.lastLogPos !== previousPos || objectRows === 0) {
+          firstProblem ??= `object ${object.key} has an invalid manifest`;
+        }
+        lastWasManifest = true;
+        continue;
+      }
+      lastWasManifest = false;
+      objectRows += 1;
       rows += 1;
-      if (row.content_hash === null) continue;
+      if (typeof row.content_hash !== "string" || !row.content_hash) {
+        firstProblem ??= `row at log position ${row.log_pos} in ${object.key} is missing its content hash`;
+        continue;
+      }
       // The restored chain re-verifies with the same versioned canonical form
       // the audit store writes (v2 covers the client IP and event context).
       const expected = await auditContentHash({
@@ -171,6 +206,8 @@ export async function verifyAuditBackup(env: Env): Promise<AuditRestoreVerificat
       }
       previousPos = row.log_pos > previousPos ? row.log_pos : previousPos;
     }
+    if (!lastWasManifest) allHaveManifest = false;
   }
-  return { rows, verified: firstProblem === null, firstProblem };
+  if (rows === 0) firstProblem ??= "backup contains no audit rows";
+  return { rows, verified: firstProblem === null, firstProblem, manifest: allHaveManifest ? "present" : "absent", lastLogPos: previousPos };
 }
