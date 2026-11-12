@@ -299,7 +299,7 @@ export function buildGlobals(runtime: HelperRuntime, env: Env, context: PolicyEv
     pending_user: (context.context as Record<string, unknown>).pending_user ?? null,
     prompt_data: (context.context as Record<string, unknown>).prompt_data ?? null,
     ak_client_ip: context.clientIp,
-    ak_is_sso_flow: false,
+    ak_is_sso_flow: context.ssoFlow === true,
     ...ALLOWED_NAMESPACES,
   };
 }

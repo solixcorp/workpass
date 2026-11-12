@@ -225,6 +225,9 @@ export async function evaluateAppAccess(
         clientIp: runtime.clientIp ?? null,
         subject: policy.subject,
         context: runtime.context ?? {},
+        // Bound-policy evaluation always happens at an SSO surface: the
+        // protocol route is issuing an assertion/token for the application.
+        ssoFlow: true,
       } satisfies PolicyEvaluationContext,
     );
     if (policyResult.passing) return { allowed: true, observedOnly: false, reason: null };

@@ -163,6 +163,7 @@ export function createPasswordPolicyHooks(env: Env): {
 
   const after = async (hookContext: unknown): Promise<unknown> => {
     const { path, body, headers, user: hookUser, session: hookSession, request, returned } = readContext(hookContext);
+    const status = returned?.status ?? 200;
     if (!PASSWORD_SUCCESS_PATHS.has(path)) {
       // Reputation accounting for login outcomes (failures decrement, success
       // increments); the response status is the source of truth.
@@ -170,11 +171,18 @@ export function createPasswordPolicyHooks(env: Env): {
         const identity = typeof body?.email === "string"
           ? body.email
           : typeof body?.username === "string" ? body.username : null;
-        const status = returned?.status ?? 200;
         await recordReputationOutcome(env, clientIp(headers), identity, status === 200)
           .catch(() => undefined);
       }
       return AFTER_RESULT;
+    }
+    if (status !== 200) {
+      // A failed password write (wrong current password, rejected reset) is a
+      // credential attack against the target identity, so it moves reputation
+      // the same way a failed login does.
+      const identity = await pickReputationIdentity(env, body, hookUser ?? hookSession?.user ?? undefined).catch(() => null);
+      await recordReputationOutcome(env, clientIp(headers), identity, false)
+        .catch(() => undefined);
     }
     const password = pickPassword(body);
     const userId = pickTargetUser(body, hookUser ?? hookSession?.user ?? undefined);
@@ -195,4 +203,21 @@ async function resolveUserId(env: Env, identity: string | null): Promise<string 
   const byUsername = await env.DB.prepare('SELECT id FROM "user" WHERE username = ? LIMIT 1').bind(identity)
     .first<{ id: string }>();
   return byUsername?.id ?? null;
+}
+
+/**
+ * The reputation identity at password-write surfaces: an explicit email or
+ * username when the request carries one, otherwise the target user's stored
+ * email (resolved lazily so the hot path stays unchanged).
+ */
+async function pickReputationIdentity(env: Env, body: Record<string, unknown> | null, actor?: unknown): Promise<string | null> {
+  if (body) {
+    if (typeof body.email === "string" && body.email) return body.email;
+    if (typeof body.username === "string" && body.username) return body.username;
+  }
+  const userId = pickTargetUser(body, actor);
+  if (!userId) return null;
+  const row = await env.DB.prepare('SELECT email FROM "user" WHERE id = ? LIMIT 1')
+    .bind(userId).first<{ email: string }>().catch(() => null);
+  return row?.email ?? null;
 }

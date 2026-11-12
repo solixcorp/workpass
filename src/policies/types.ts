@@ -62,6 +62,8 @@ export interface PolicyEvaluationContext {
   };
   /** The audit event being matched at notification-rule surfaces. */
   event?: EventProjection;
+  /** True at SSO surfaces (application-protocol access evaluations), false in platform-local flows. */
+  ssoFlow?: boolean;
 }
 
 export interface EventProjection {
