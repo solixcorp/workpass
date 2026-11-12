@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794499740-nn6"
+type = "change"
+title = "List existing verification methods before MFA enrollment"
+description = "Enrollment verification dialog lists every available existing method (passkey, authenticator app, one-time code, backup code, security token, Duo) with a description, and runs the chosen method, like the sign-in challenge. QA: bun test (695 passed across 113 files); bun run typecheck; bun run web:build."
+status = "resolved"
+created_at = 2026-11-13T01:09:00+09:00
+updated_at = 2026-11-13T01:09:00+09:00
+
+[[relations]]
+to = "REQ-1794459899-bex"
+type = "covers"

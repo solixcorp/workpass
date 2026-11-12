@@ -150,7 +150,8 @@ export async function buildEnrollmentView(
     }
   }
   const verificationUi = stepUpUi(verificationMethods);
-  verificationUi.description = "인증 수단을 추가하기 전에 이미 등록한 수단으로 본인을 확인하세요.";
+  verificationUi.title = "추가 인증이 필요합니다";
+  verificationUi.description = "인증 수단을 추가하기 전에 이미 등록한 수단 중 하나로 본인을 확인하세요.";
   verificationUi.alternatives = [{ label: "취소", action: "cancel" }];
 
   return {

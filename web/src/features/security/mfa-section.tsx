@@ -145,27 +145,8 @@ export function EnrollmentDialogs({
   kind: 'totp' | 'otp' | 'hotp' | null
   onClose: () => void
 }) {
-  const refresh = useRefresh()
   if (view.verification.required) {
-    const { ui, blockedReason } = view.verification
-    return (
-      <Dialog open={kind !== null} onOpenChange={(next) => !next && onClose()}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{ui.title}</DialogTitle>
-            <DialogDescription>{ui.description}</DialogDescription>
-          </DialogHeader>
-          {blockedReason ? (
-            <>
-              <Alert><AlertDescription>{blockedReason}</AlertDescription></Alert>
-              <DialogFooter><Button variant="outline" onClick={onClose}>닫기</Button></DialogFooter>
-            </>
-          ) : (
-            <TwoFactorForm ui={ui} onVerified={refresh} onCancel={onClose} />
-          )}
-        </DialogContent>
-      </Dialog>
-    )
+    return <VerificationDialog view={view} open={kind !== null} onClose={onClose} />
   }
   return (
     <>
@@ -173,6 +154,68 @@ export function EnrollmentDialogs({
       <OtpDialog view={view} open={kind === 'otp'} onClose={onClose} />
       <HotpDialog view={view} open={kind === 'hotp'} onClose={onClose} />
     </>
+  )
+}
+
+/** Lists the existing methods that can prove ownership, then runs the one the person picks. */
+function VerificationDialog({ view, open, onClose }: { view: EnrollmentView; open: boolean; onClose: () => void }) {
+  const refresh = useRefresh()
+  const [selected, setSelected] = useState<string | null>(null)
+  const { ui, blockedReason } = view.verification
+  const method = ui.methods.find((entry) => entry.key === selected) ?? null
+
+  function close() {
+    setSelected(null)
+    onClose()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && close()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{ui.title}</DialogTitle>
+          <DialogDescription>{ui.description}</DialogDescription>
+        </DialogHeader>
+        {blockedReason ? (
+          <>
+            <Alert><AlertDescription>{blockedReason}</AlertDescription></Alert>
+            <DialogFooter><Button variant="outline" onClick={close}>닫기</Button></DialogFooter>
+          </>
+        ) : method ? (
+          <TwoFactorForm
+            key={method.key}
+            ui={{ ...ui, methods: [method], alternatives: [{ label: '다른 방법 선택', action: 'cancel' }] }}
+            onVerified={async () => {
+              setSelected(null)
+              await refresh()
+            }}
+            onCancel={() => setSelected(null)}
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {ui.methods.map((item) => (
+              <Button
+                key={item.key}
+                type="button"
+                variant="outline"
+                className="h-auto justify-start px-3 py-2.5 text-left"
+                onClick={() => setSelected(item.key)}
+              >
+                <span className="flex flex-col items-start gap-0.5">
+                  <span className="text-sm font-medium">{item.label}</span>
+                  {item.description ? (
+                    <span className="text-xs font-normal text-muted-foreground">{item.description}</span>
+                  ) : null}
+                </span>
+              </Button>
+            ))}
+            <Button type="button" variant="ghost" className="text-muted-foreground" onClick={close}>
+              {ui.alternatives[0]?.label}
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

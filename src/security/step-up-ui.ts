@@ -38,20 +38,22 @@ export interface StepUpUi {
 }
 
 const METHOD_UI: Record<StepUpMethodUi["key"], StepUpMethodUi> = {
-  totp: { key: "totp", label: "인증 앱", fieldLabel: "6자리 코드", input: "otp6" },
+  totp: { key: "totp", label: "인증 앱", description: "인증 앱의 6자리 코드로 확인합니다.", fieldLabel: "6자리 코드", input: "otp6" },
   otp: {
     key: "otp",
     label: "일회용 코드",
+    description: "등록된 휴대폰 또는 이메일로 받은 코드로 확인합니다.",
     fieldLabel: "6자리 코드",
     input: "otp6",
     send: { label: "코드 보내기", hint: "등록된 휴대폰 또는 이메일로 일회용 코드를 보냅니다." },
   },
-  backup_code: { key: "backup_code", label: "백업 코드", fieldLabel: "백업 코드", input: "text" },
-  hotp: { key: "hotp", label: "보안 토큰", fieldLabel: "토큰의 6자리 코드", input: "otp6" },
+  backup_code: { key: "backup_code", label: "백업 코드", description: "저장해 둔 백업 코드 하나로 확인합니다.", fieldLabel: "백업 코드", input: "text" },
+  hotp: { key: "hotp", label: "보안 토큰", description: "보안 토큰의 6자리 코드로 확인합니다.", fieldLabel: "토큰의 6자리 코드", input: "otp6" },
   passkey: { key: "passkey", label: "패스키", description: "등록한 패스키로 확인합니다.", fieldLabel: "", input: "passkey" },
   duo_push: {
     key: "duo_push",
     label: "Duo 푸시",
+    description: "휴대폰의 Duo 앱에서 승인합니다.",
     fieldLabel: "",
     input: "push",
     send: { label: "푸시 보내기", hint: "휴대폰의 Duo 앱에서 승인하세요." },
