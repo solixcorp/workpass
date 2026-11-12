@@ -1,0 +1,21 @@
+schema = 1
+id = "REQ-1794461164-say"
+type = "requirement"
+title = "Phone verification binds the verified flag to the proved number"
+description = "verifyPhoneCode's final trusted-state UPDATE predicates on the proved phone number, checks affected rows, and consumes the challenge only on success - a concurrent profile phone change can no longer inherit verification. Closes run-1 lead users/phone-verification:verified-write-not-bound-to-phone."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-z06"
+type = "has_criterion"
+
+[[relations]]
+to = "RSK-1794461164-gdv"
+type = "references"

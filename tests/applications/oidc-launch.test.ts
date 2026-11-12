@@ -82,4 +82,10 @@ describe("OIDC application launch", () => {
   test("anonymous requests are rejected", async () => {
     expect((await call("/api/applications", { anonymous: true })).status).toBe(401);
   });
+
+  test("legacy audit search rejects trailing tokens", async () => {
+    const search = (value: string) => `/api/admin/audit-events?${new URLSearchParams({ search: value })}`;
+    expect((await call(search('action = "authentication.opaque.login" extra AND'))).status).toBe(400);
+    expect((await call(search('action = "authentication.opaque.login"'))).status).toBe(200);
+  });
 });

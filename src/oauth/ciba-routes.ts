@@ -12,6 +12,7 @@ import type { Env } from "../env";
 import { insertAuditEvent } from "../audit/store";
 import { sendTransactionEmail, transactionEmailAvailable } from "../mail/send";
 import { createAuth } from "../auth/config";
+import { checkOidcAccess } from "../access/oidc-gate";
 import {
   createCibaRequest, decideCibaRequest, listPendingCibaRequests,
   normalizeBindingMessage, CIBA_REQUEST_TTL_SECONDS,
@@ -190,6 +191,17 @@ cibaRoutes.post("/api/ciba/decide", async (context) => {
     return cibaError(context, 400, "invalid_request");
   }
   const approve = decision === "approve";
+  if (approve) {
+    try {
+      const pending = await listPendingCibaRequests(env, session.user.id);
+      const target = pending.find((item) => item.id === requestId);
+      if (!target) return cibaError(context, 409, "invalid_request");
+      const denied = await checkOidcAccess(env, target.clientId, session);
+      if (denied) return denied;
+    } catch {
+      return cibaError(context, 503, "temporarily_unavailable", "Authorization policy unavailable");
+    }
+  }
   const decided = await decideCibaRequest(env, requestId, session.user.id, approve, session.session.id).catch(() => false);
   await audit(env, {
     actor_user_id: session.user.id, target_user_id: session.user.id,

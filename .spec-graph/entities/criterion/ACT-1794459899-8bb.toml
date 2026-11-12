@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-8bb"
+type = "criterion"
+title = "New factors require trusted-factor proof"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "An account has one enrolled factor and a session without a session-bound proof"
+then = "It is rejected; first-ever enrollment (no enrolled factor, no challenge) remains allowed and bootstrap-complete"
+when = "The session attempts HOTP/OTP/TOTP enablement or confirmation or passkey registration"

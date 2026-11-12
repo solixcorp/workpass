@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794461164-m6c"
+type = "requirement"
+title = "Password-rule enforcement scope is explicit and server-verified where possible"
+description = "Server-received plaintext password writes (bootstrap, better-auth set-password / create-user / sign-up) are checked against bound password-entry policies server-side. OPAQUE activation and password-change flows are labeled BROWSER-ADVISORY in the rules payload and documentation because OPAQUE RegistrationRecords cannot reveal plaintext password complexity. Closes run-1 lead policies/opaque-client-only-password-enforcement honestly (no fake enforcement)."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-4mh"
+type = "has_criterion"

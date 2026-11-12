@@ -30,7 +30,7 @@
 
 1. SPA routes return the app shell and reload cleanly: `curl -s -o /dev/null -w "%{http_code} %{content_type}\n" $ORIGIN/login $ORIGIN/security $ORIGIN/admin/users` expects `200 text/html` for each.
 2. `web/public/_headers` took effect: `curl -sI $ORIGIN/` must show `content-security-policy`, `x-frame-options: DENY` and `strict-transport-security`; `curl -sI $ORIGIN/assets/<hashed file>` must show `cache-control: public, max-age=31536000, immutable`. If they are missing, static headers are not applied and the SPA is served without a CSP.
-3. Backend paths still reach the Worker: `curl -s -o /dev/null -w "%{http_code}\n" $ORIGIN/health` is 200 and `$ORIGIN/auth/login` redirects (302) to `/oauth2/v1/authorize`. Every path in `run_worker_first` must stay in sync with `BACKEND_PATHS` in `web/vite.config.ts`.
+3. Backend paths still reach the Worker: `curl -s -o /dev/null -w "%{http_code}\n" $ORIGIN/health` is 200 and `$ORIGIN/auth/login` redirects (302) to `/oauth2/v1/authorize`. Every path in `run_worker_first` must stay in sync with `BACKEND_PATHS` in `web/vite.config.ts`. The current lists cover `/api`, `/.well-known`, `/saml`, `/wsfed`, `/scim`, `/sign-in`, `/auth`, `/oauth2`, `/enduser`, `/idp`, `/health`, `/dev`, `/_internal` and `/application`: Wrangler uses `/*` descendants except for the exact `/sign-in` and `/health` entries; Vite uses segment-boundary prefixes for local proxying.
 4. Sign in as the first administrator from the activation link above, then open users, settings, policies and the security page; the browser console must show no Content-Security-Policy violation.
 5. Fingerprint, after the keys are set (`FINGERPRINT_SERVER_API_KEY`, `FINGERPRINT_PUBLIC_API_KEY`): keep `fingerprint.mode` at `observe` in the settings page, sign out and in once, and watch the console for CSP violations. The policy allows the loader host `fpnpmcdn.net`, `*.fpjs.io` and `*.workpass.solixllc.com` (the custom subdomain in `FINGERPRINT_ENDPOINT`). If you use another subdomain, change `script-src` and `connect-src` in `web/public/_headers` and redeploy. Switch to `enforce` only after the admin's own device check shows up (the settings page refuses otherwise).
 6. Mail: with the mail provider configured, create a user from the users page with "send email" and check `account.invitation.email` in the audit log. Without a provider the page shows the link once instead.
@@ -58,13 +58,15 @@
 
 The following wrangler.jsonc platform settings are in force; verify them at deploy:
 
-- `compatibility_date: 2026-11-10` — Node.js compatibility (v1+v2) and
-  AsyncLocalStorage are default-on at this date; the explicit `nodejs_als`
-  flag was removed as redundant.
+- `compatibility_date: 2026-11-09` with explicit
+  `compatibility_flags: ["nodejs_als"]` — narrow AsyncLocalStorage support,
+  not full Node.js compatibility.
 - `workers_dev: false` — internal IdP is served by a configured route only.
 - `upload_source_maps: true` — stack traces in Workers Logs resolve to source.
-- `observability: { enabled: true, head_sampling_rate: 1 }` — Workers Logs
-  persists every request (7-day retention).
+- `observability.enabled: true` with `logs.enabled: true`,
+  `logs.head_sampling_rate: 1` and `logs.invocation_logs: true` — request logs
+  are enabled at full sampling with `logs.storage.retention_days: 30`;
+  traces are enabled separately at `traces.head_sampling_rate: 0.01`.
 - `limits: { cpu_ms: 5000, subrequests: 1000 }` — runaway-cost protection with
   generous headroom (SAML RSA signing and OIDC crypto stay in single-digit ms).
 - `placement: { mode: "smart" }` — Smart Placement co-locates execution with
@@ -137,8 +139,9 @@ removed by the daily cron after 31 days.
   32 bytes base64); AKE keypair generated once and stored SEALED in
   opaque_server_material. Rotation requires a fresh OPAQUE_MASTER_KEY and
   re-enrollment of every credential record.
-- Legacy password sign-in remains available; migrate accounts by enrolling
-  OPAQUE per user (the smoke scripts/opaque-smoke.ts demonstrates the flow).
+- Legacy plaintext password sign-in fails closed unless `ALLOW_PLAINTEXT_PASSWORD_LOGIN=true`
+  is explicitly set; leave it unset in production. Enroll OPAQUE per user
+  (the smoke scripts/opaque-smoke.ts demonstrates the flow).
 
 ## Device-risk hardening: GeoIP history, step-up, session binding, lockdown (2026-11)
 
@@ -346,7 +349,7 @@ These were added after the sections above; each has a design note under `docs/de
 2. Sign-in places: leave the policy in `observe` first and read `authentication.location.observe` events before enforcing. Put the administrators' group in the exempt groups before enforcing. Browser location needs HTTPS (a secure context), which production has and plain local HTTP may not.
 3. E-mail and SMS: in "메시지 발송", save a provider and use "테스트 보내기" for each. Phone number verification and second-factor codes by text work only once SMS is configured.
 4. Back-channel logout: an OIDC app's logout address must first be approved in "연동 → 로그아웃 주소 승인". Delivery is best effort. The hostname check does not stop DNS rebinding; keep outbound egress controls in place.
-5. SCIM: after saving an app's target, use "연결 테스트" before "지금 동기화". An operation left unfinished for 10 minutes becomes "결과 불명" and stays blocking until an administrator checks the other system and presses "확인했음".
+5. SCIM: review [provisioning endpoint security](scim-provisioning-security.md) and establish operator-owned egress controls before sending authenticated traffic. After saving an app's target, use "연결 테스트" before "지금 동기화"; test success does not rule out DNS rebinding. An operation left unfinished for 10 minutes becomes "결과 불명" and stays blocking until an administrator checks the other system and presses "확인했음".
 6. Notifications: security notices cannot be switched off by the person; check one (for example change a password) reaches the notification page.
 
 **Known limits**

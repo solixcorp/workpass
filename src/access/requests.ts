@@ -488,6 +488,23 @@ export interface ReviewOutcome {
   newStatus: "approved" | "denied" | null;
 }
 
+/** Finish a previously recorded veto, including one left by an interrupted review. */
+async function finalizeRecordedVeto(env: Env, request: AccessRequestRow): Promise<ReviewOutcome | null> {
+  const veto = await env.DB.prepare(
+    `SELECT reviewer_id AS reviewerId, note, decided_at AS decidedAt FROM access_request_approvals
+     WHERE request_id = ? AND decision = 'denied' ORDER BY decided_at, reviewer_id LIMIT 1`,
+  ).bind(request.id).first<{ reviewerId: string; note: string | null; decidedAt: string }>();
+  if (!veto) return null;
+  const result = await env.DB.prepare(
+    `UPDATE access_requests SET status = 'denied', decided_at = ?, decided_by = ?, decision_note = ?
+     WHERE id = ? AND status = 'pending'
+       AND EXISTS (SELECT 1 FROM access_request_approvals WHERE request_id = ? AND reviewer_id = ? AND decision = 'denied')`,
+  ).bind(veto.decidedAt, veto.reviewerId, veto.note, request.id, request.id, veto.reviewerId).run();
+  if (result.meta.changes !== 1) return null;
+  await auditLifecycle(env, "access_request.denied", veto.reviewerId, request.userId);
+  return { request: { ...request, status: "denied", decidedAt: veto.decidedAt, decidedBy: veto.reviewerId, decisionNote: veto.note }, newStatus: "denied" };
+}
+
 /**
  * Record a review decision. A deny denies outright; approvals accumulate until
  * the rule's minimum-approver count is reached, at which point the request is
@@ -515,12 +532,17 @@ export async function reviewAccessRequest(
     throw new Error("The user is not a reviewer for this rule");
   }
   if (request.status !== "pending") return null;
+  const existingVeto = await finalizeRecordedVeto(env, request);
+  if (existingVeto) return existingVeto;
+  if (!(request.pendingExpiresAt > nowIso())) return null;
   const note = typeof input.note === "string" ? input.note.slice(0, MAX_JUSTIFICATION) : null;
 
-  await env.DB.prepare(
+  const vote = await env.DB.prepare(
     `INSERT INTO access_request_approvals (request_id, reviewer_id, decision, note, decided_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).bind(request.id, input.reviewerId, input.decision, note, nowIso()).run();
+     SELECT ?, ?, ?, ?, ? FROM access_requests
+     WHERE id = ? AND status = 'pending' AND pending_expires_at > ?`,
+  ).bind(request.id, input.reviewerId, input.decision, note, nowIso(), request.id, nowIso()).run();
+  if (vote.meta.changes !== 1) return await finalizeRecordedVeto(env, request);
 
   if (input.decision === "denied") {
     const result = await env.DB.prepare(
@@ -543,12 +565,13 @@ export async function reviewAccessRequest(
   const result = await env.DB.prepare(
     `UPDATE access_requests
      SET status = 'approved', granted_expires_at = ?, decided_at = ?, decided_by = ?, decision_note = ?
-     WHERE id = ? AND status = 'pending'
+     WHERE id = ? AND status = 'pending' AND pending_expires_at > ?
+       AND NOT EXISTS (SELECT 1 FROM access_request_approvals WHERE request_id = ? AND decision = 'denied')
        AND (SELECT COUNT(*) FROM access_request_approvals WHERE request_id = ? AND decision = 'approved')
-           >= (SELECT min_reviewers FROM request_rules WHERE id = (SELECT rule_id FROM request_rule_bindings WHERE id = binding_id))`,
-  ).bind(grantedExpiresAt, nowIso(), input.reviewerId, note, request.id, request.id).run();
+            >= (SELECT min_reviewers FROM request_rules WHERE id = (SELECT rule_id FROM request_rule_bindings WHERE id = binding_id))`,
+  ).bind(grantedExpiresAt, nowIso(), input.reviewerId, note, request.id, nowIso(), request.id, request.id).run();
   if (result.meta.changes !== 1) {
-    return { request, newStatus: null };
+    return (await finalizeRecordedVeto(env, request)) ?? { request, newStatus: null };
   }
   const existingGrant = await env.DB.prepare(
     "SELECT request_id FROM app_temporal_grants WHERE request_id = ?",

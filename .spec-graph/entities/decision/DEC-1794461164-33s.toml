@@ -1,0 +1,19 @@
+schema = 1
+id = "DEC-1794461164-33s"
+type = "decision"
+title = "Settings resolution: last-known-good retention with cold read propagation"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+date = "2026-11-12"
+rationale = "Silently caching an empty override set let an outage downgrade enforced security settings to deployment defaults. Serving last-known-good preserves administrator intent; without one, propagating the error keeps every consumer fail-closed. An explicit missing-table error is the only first-run exception."
+
+[[relations]]
+to = "REQ-1794461164-bqx"
+type = "references"
+
+[[relations]]
+to = "RSK-1794461164-mt6"
+type = "references"

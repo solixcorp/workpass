@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794462184-033"
+type = "requirement"
+title = "Audit hardening quick wins (six mechanical robustness fixes)"
+description = "Implement the mechanical hardening notes recorded by the two-pass audit: (1) icon sniffing recognizes WebP at RIFF offset 8; (2) icon uploads reject oversize before arrayBuffer allocation; (3) the shared AKQL parser requires full token consumption so legacy in-memory search cannot ignore a trailing suffix; (4) OIDC client grant validation uses Object.hasOwn so inherited names (toString/constructor) are rejected; (5) WebFinger advertises the same issuer as OIDC discovery (origin + /api/auth); (6) .gitignore covers broad .env* patterns. Also corrects the production-checklist legacy-password statement."
+status = "active"
+created_at = 2026-11-12T14:43:04+09:00
+updated_at = 2026-11-12T14:43:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "should"
+
+[[relations]]
+to = "ACT-1794462184-s8y"
+type = "has_criterion"

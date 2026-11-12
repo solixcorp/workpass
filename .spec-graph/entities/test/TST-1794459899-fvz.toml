@@ -1,0 +1,15 @@
+schema = 1
+id = "TST-1794459899-fvz"
+type = "test"
+title = "SMTP STARTTLS regressions"
+description = "Repository regression evidence: tests/mail/smtp-starttls.test.ts"
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794459899-9dd"
+type = "verifies"

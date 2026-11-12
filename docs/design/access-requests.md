@@ -37,11 +37,13 @@ recorded in the tamper-evident audit stream.
 - **Time-bounded by construction.** `max_granted_expiry_seconds` on the binding caps every
   grant; the requester may ask for less but never more. Pending requests themselves lapse
   after `pending_expiry_seconds` (status `lapsed`); the scheduled cleanup finalizes lapsed
-  rows, and reads also treat inactive grants as inactive without waiting for the scheduler.
+  rows; reviews reject expired requests without waiting for cleanup, and reads also treat
+  inactive grants as inactive without waiting for the scheduler.
 - **Reviewer integrity.** Minimum-approver counting uses an `access_request_approvals`
   table with one row per (request, reviewer); a deny by any matched reviewer denies the
   request outright; self-review is refused structurally; the approval writes the grant
-  only after the minimum is reached.
+  only after the minimum is reached and no denial has been recorded. A recorded veto
+  is finalized as denied even if the pending deadline has subsequently passed.
 - **One request at a time.** A partial unique index allows at most one `pending` request
   per (user, subject).
 - **Audit.** `access_request.created / approved / denied / cancelled / revoked / lapsed`

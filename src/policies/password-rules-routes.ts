@@ -23,6 +23,14 @@ export const passwordRulesRoutes = new Hono<{ Bindings: Env }>();
 
 const POLICY_NAME = "workpass-password-rules";
 
+// OPAQUE registration records do not reveal a password to the server; a
+// modified client can bypass browser checks, so this is not server enforcement.
+const ENFORCEMENT_SCOPE = {
+  plaintextPasswordWrites: "server_verified",
+  opaqueActivation: "browser_advisory",
+  opaquePasswordChange: "browser_advisory",
+} as const;
+
 const FIELDS = [
   { name: "minLength", label: "최소 길이", min: 8, max: 128, unit: "자" },
   { name: "minUpper", label: "대문자", min: 0, max: 16, unit: "개 이상" },
@@ -66,6 +74,7 @@ passwordRulesRoutes.get("/password-rules", async (context) => {
   const effective = await activeAndBoundPasswordRules(context.env);
   return context.json({
     title: "비밀번호 규칙",
+    enforcementScope: ENFORCEMENT_SCOPE,
     description: "계정 활성화와 비밀번호 설정 화면에 적용됩니다. 비밀번호는 서버로 전송되지 않아 브라우저에서 검사합니다.",
     fields: FIELDS.map((field) => ({ ...field, value: config[field.name] })),
     stored: own !== null,
@@ -131,7 +140,7 @@ passwordRulesRoutes.put("/password-rules", async (context) => {
       ).bind(crypto.randomUUID(), PASSWORD_ENTRY_REF, policyId, actor.userId, now).run();
     }
     return {
-      response: context.json({ saved: true, values: Object.fromEntries(FIELDS.map((field) => [field.name, validated[field.name]])) }),
+      response: context.json({ saved: true, enforcementScope: ENFORCEMENT_SCOPE, values: Object.fromEntries(FIELDS.map((field) => [field.name, validated[field.name]])) }),
       actorUserId: actor.userId,
       targetUserId: POLICY_NAME,
     };

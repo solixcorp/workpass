@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import mod from "../../src/index";
 import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
+import { openStepUpChallenge } from "../../src/security/step-up";
+import { recordSessionMfaProof } from "../../src/mfa/second-factor";
 
 const origin = "http://127.0.0.1:8787";
 const password = "Removal-7d9Kpw9zL2xQ";
@@ -65,5 +67,14 @@ describe("administrator offboarding guards", () => {
     expect((await post("/api/auth/admin/ban-user", { userId: user.id })).status).toBe(200);
     expect(await db.prepare("SELECT token FROM oauth1_access_tokens WHERE user_id = ? AND revoked = 0").bind(user.id).first()).toBeNull();
     expect(await db.prepare("SELECT token FROM oauth1_temporary_tokens WHERE user_id = ?").bind(user.id).first()).toBeNull();
+  });
+  test("proxy admin routes reject a pending challenge until this session verifies", async () => {
+    const session = await db.prepare('SELECT token FROM "session" WHERE "userId" = ?').bind(adminId).first<{ token: string }>();
+    expect(session).toBeTruthy();
+    await openStepUpChallenge({ env, userId: adminId, sessionToken: session!.token, reasons: [], requestPath: "/" });
+    expect((await post("/api/auth/admin/create-user", { email: "pending@removal.test", name: "Pending", password })).status).toBe(403);
+    expect(await db.prepare('SELECT id FROM "user" WHERE email = ?').bind("pending@removal.test").first()).toBeNull();
+    await recordSessionMfaProof(env, session!.token, adminId, "totp");
+    expect((await post("/api/auth/admin/create-user", { email: "pending@removal.test", name: "Pending", password })).status).toBe(200);
   });
 });

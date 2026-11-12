@@ -29,11 +29,10 @@ async function releaseFor(
   const userId = user?.id ?? null;
   const base = subject
     ? await oidcClaimReleaseForSubject(env, sessionId, userId, subject).catch(() =>
-        // A policy evaluation failure must not become an availability failure:
-        // the flag-only default still applies.
-        oidcClaimRelease(env, sessionId, userId),
+        // Never retry without the subject: that would bypass its release policy.
+        ({}),
       )
-    : await oidcClaimRelease(env, sessionId, userId);
+    : await oidcClaimRelease(env, sessionId, userId).catch(() => ({}));
   // Scope-gated claims (phone, groups) ride on top of the released base; they
   // never throw (a query failure leaves the claim absent).
   const scoped = await scopeClaimsForSubject(env, userId, subject, scopes, user).catch(() => ({}));

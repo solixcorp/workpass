@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794459899-c9m"
+type = "requirement"
+title = "Passkey sign-in evaluates the sign-in location policy before releasing the session (F9)"
+description = "A successful passkey authentication handled by the fingerprint-risk login branch evaluates the enforcing sign-in location policy BEFORE returning the session-bearing response; denials (and enforce-mode evaluation failures) revoke the newly issued session first. Evidence: audit codex-scan-1 F9 - the risk-login early return made enforceLocationAfterPasskeyLogin unreachable for POST /api/auth/passkey/verify-authentication."
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794459899-m7z"
+type = "has_criterion"

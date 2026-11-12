@@ -1,0 +1,44 @@
+schema = 1
+id = "TSK-1794459899-3ja"
+type = "task"
+title = "Fix F6: wire session binding enforcement with atomic revocation"
+description = "Close audit finding F6 (CWE-863): session network/GeoIP binding was recorded but never enforced."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:44+09:00
+
+[metadata]
+acceptance = ["Violation results in 401 and session + companion rows gone.", "Evaluation failure rejects; observe mode only records drift; missing envelopes stay allowed."]
+instructions = ["Evaluate the binding envelope before provider dispatch on get-session/authorize/consent (src/audit/auth-middleware.ts using src/security/session-geo-binding.ts).", "Fail closed on enforce-mode evaluation errors; durably revoke violating sessions and companion rows atomically."]
+must_not = ["Do not enforce on non-declared surfaces."]
+order = 7.0
+qa = [{command = "bun test tests/security tests/session-geo-binding.test.ts", evidence = "tests/security/session-geo-binding.test.ts", expected = "all pass, exit 0"}]
+references = ["src/audit/auth-middleware.ts", "src/security/session-geo-binding.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-3r9"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-a5g"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-cfq"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-3r9"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-a5g"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-cfq"
+type = "delivers"

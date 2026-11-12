@@ -104,7 +104,9 @@ export async function verifyPhoneCode(env: Env, userId: string, code: string): P
     }
     return { ok: false, reason: "wrong", attemptsLeft: left };
   }
-  await env.DB.prepare('UPDATE "user" SET "phoneNumberVerified" = 1, "updatedAt" = ? WHERE id = ?').bind(new Date().toISOString(), userId).run();
-  await env.DB.prepare("DELETE FROM phone_verifications WHERE user_id = ?").bind(userId).run();
+  // Bind the trusted write to the proved number, even if the profile changed after the read.
+  const updated = await env.DB.prepare('UPDATE "user" SET "phoneNumberVerified" = 1, "updatedAt" = ? WHERE id = ? AND "phoneNumber" = ?').bind(new Date().toISOString(), userId, row.phone).run();
+  if (updated.meta.changes !== 1) return { ok: false, reason: "no_code" };
+  await env.DB.prepare("DELETE FROM phone_verifications WHERE user_id = ? AND phone = ? AND code_hash = ?").bind(userId, row.phone, row.hash).run();
   return { ok: true };
 }

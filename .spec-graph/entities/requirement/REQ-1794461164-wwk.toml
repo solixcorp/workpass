@@ -1,0 +1,21 @@
+schema = 1
+id = "REQ-1794461164-wwk"
+type = "requirement"
+title = "Audit export stops before unfinalized rows"
+description = "The scheduled exporter exports only contiguous finalized rows and never advances the watermark past one whose outcome is still started, so the independent R2 backup never permanently snapshots a pre-finalization state. Closes run-1 lead audit/backup-exports-unfinalized-events."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-tdf"
+type = "has_criterion"
+
+[[relations]]
+to = "RSK-1794461164-yne"
+type = "references"

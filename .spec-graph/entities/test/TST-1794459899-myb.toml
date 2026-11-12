@@ -1,0 +1,15 @@
+schema = 1
+id = "TST-1794459899-myb"
+type = "test"
+title = "Proxy admin endpoint pending-session regression"
+description = "Repository regression evidence: tests/auth/user-removal-guards.test.ts"
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794459899-8k1"
+type = "verifies"

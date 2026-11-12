@@ -25,6 +25,15 @@ function lockdownRequestPath(userId: string): string {
   return `${REQUEST_PATH}/user/${encodeURIComponent(userId)}`;
 }
 
+async function lockdownOrConflict(input: Parameters<typeof performAccountLockdown>[0]) {
+  try {
+    return await performAccountLockdown(input);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("last administrator")) return null;
+    throw error;
+  }
+}
+
 function parseReason(context: { body: Record<string, unknown> }): string | null {
   const reason = typeof context.body.reason === "string" ? context.body.reason.trim() : "";
   if (reason.length < 1 || reason.length > 500) return null;
@@ -62,13 +71,17 @@ lockdownRoutes.post("/account-lockdown", async (context) => {
     "identity.user.lockdown",
     REQUEST_PATH,
     async () => {
-      const result = await performAccountLockdown({
+      const result = await lockdownOrConflict({
         env: context.env,
         userId: session.user.id,
         actorUserId: session.user.id,
         source: "self_service" as LockdownSource,
         reason,
       });
+      if (!result) return {
+        response: context.json({ error: "마지막 관리자는 차단할 수 없습니다." }, 409),
+        actorUserId: session.user.id, targetUserId: session.user.id,
+      };
       if (result.status === "performed") {
         return {
           response: context.json({ status: "locked", lockdownId: result.lockdownId }, 200),
@@ -107,13 +120,17 @@ lockdownRoutes.post("/account-lockdown/user/:userId", async (context) => {
     "identity.user.lockdown",
     lockdownRequestPath(userId),
     async () => {
-      const result = await performAccountLockdown({
+      const result = await lockdownOrConflict({
         env: context.env,
         userId,
         actorUserId: admin.userId,
         source: "admin" as LockdownSource,
         reason,
       });
+      if (!result) return {
+        response: context.json({ error: "마지막 관리자는 차단할 수 없습니다." }, 409),
+        actorUserId: admin.userId, targetUserId: userId,
+      };
       if (result.status === "performed") {
         return {
           response: context.json(

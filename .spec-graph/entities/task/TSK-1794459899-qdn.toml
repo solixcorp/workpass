@@ -1,0 +1,52 @@
+schema = 1
+id = "TSK-1794459899-qdn"
+type = "task"
+title = "Fix F4: policy+MFA at device/CIBA approval and redemption, consume-after-check"
+description = "Close audit finding F4 (CWE-863): device and CIBA grants issued tokens without application access or MFA enforcement."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:44+09:00
+
+[metadata]
+acceptance = ["Denied/under-assured users are rejected at approval and redemption.", "Transient errors preserve the grant for exactly one later redemption."]
+instructions = ["Extend shared OIDC policy decision to device/CIBA decide routes and redemption (src/oauth/extended-grants.ts, device-routes.ts, ciba-routes.ts).", "Move one-time consumption after the redemption checks so transient policy errors do not burn the grant."]
+must_not = ["Do not change interactive authorize/consent/continue behavior."]
+order = 6.0
+qa = [{command = "bun test tests/oauth tests/oidc", evidence = "tests/oauth/approval-routes.test.ts", expected = "all pass, exit 0"}]
+references = ["src/oauth/extended-grants.ts", "src/oauth/device-routes.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-k54"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-1p5"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-63w"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-hyt"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-k54"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-1p5"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-63w"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-hyt"
+type = "delivers"

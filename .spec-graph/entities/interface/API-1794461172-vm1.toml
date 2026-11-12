@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794461172-vm1"
+type = "interface"
+title = "Settings last-known-good reader (src/settings/store.ts)"
+description = "reqH"
+status = "draft"
+created_at = 2026-11-12T14:26:12+09:00
+updated_at = 2026-11-12T14:26:12+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794461164-bqx"
+type = "implements"

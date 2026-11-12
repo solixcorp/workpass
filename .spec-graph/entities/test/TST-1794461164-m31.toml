@@ -1,0 +1,15 @@
+schema = 1
+id = "TST-1794461164-m31"
+type = "test"
+title = "MFA enrollment suite under canonical references"
+description = "Repository regression evidence: tests/auth/mfa-enrollment.test.ts"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794461164-rvk"
+type = "verifies"

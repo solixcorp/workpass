@@ -38,10 +38,6 @@ export interface DeviceGrantIssuance {
   intervalSeconds: number;
 }
 
-function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000);
-}
-
 function randomToken(length: number): string {
   const bytes = crypto.getRandomValues(new Uint8Array(length));
   return Array.from(bytes, (byte) => byte % 64).map((value) => {
@@ -68,12 +64,6 @@ export async function sha256Hex(value: string): Promise<string> {
  * or a rate-limit error, not a new grant).
  */
 export async function createDeviceGrant(env: Env, clientId: string, scopes: string[]): Promise<DeviceGrantIssuance> {
-  const active = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM oauth_device_grants WHERE client_id = ? AND status = 'pending' AND expires_at > ?",
-  ).bind(clientId, nowSeconds()).first<{ count: number }>();
-  if ((active?.count ?? 0) >= MAX_ACTIVE_GRANTS_PER_CLIENT) {
-    throw new Error("device_grant_cap_reached");
-  }
   let userCode = randomUserCode();
   for (let attempts = 0; attempts < 8; attempts += 1) {
     // user_code is UNIQUE; on the (astronomically rare) collision, regenerate.
@@ -83,15 +73,21 @@ export async function createDeviceGrant(env: Env, clientId: string, scopes: stri
     userCode = randomUserCode();
   }
   const deviceCode = randomToken(43);
-  const now = nowSeconds();
+  const now = Date.now();
+  // Count and insert in one statement so concurrent issuers cannot exceed the
+  // cap. Stored timestamps and the pending predicate are both milliseconds.
   const result = await env.DB.prepare(
     `INSERT INTO oauth_device_grants
        (device_code_hash, user_code, client_id, scopes, status, interval_seconds,
         last_poll_at, created_at, expires_at)
-     VALUES (?, ?, ?, ?, 'pending', ?, 0, ?, ?)`,
+     SELECT ?, ?, ?, ?, 'pending', ?, 0, ?, ?
+     WHERE (SELECT COUNT(*) FROM oauth_device_grants
+            WHERE client_id = ? AND status = 'pending' AND expires_at > ?) < ?`,
   ).bind(await sha256Hex(deviceCode), userCode, clientId, JSON.stringify(scopes),
-    DEVICE_POLL_INTERVAL_SECONDS, Date.now(), (now + DEVICE_GRANT_TTL_SECONDS) * 1000).run();
-  if (!result.success) throw new Error("Device grant storage failed");
+    DEVICE_POLL_INTERVAL_SECONDS, now, now + DEVICE_GRANT_TTL_SECONDS * 1000,
+    clientId, now, MAX_ACTIVE_GRANTS_PER_CLIENT).run();
+  if (!result.success || typeof result.meta?.changes !== "number") throw new Error("Device grant storage failed");
+  if (result.meta.changes !== 1) throw new Error("device_grant_cap_reached");
   return { deviceCode, userCode, expiresInSeconds: DEVICE_GRANT_TTL_SECONDS, intervalSeconds: DEVICE_POLL_INTERVAL_SECONDS };
 }
 

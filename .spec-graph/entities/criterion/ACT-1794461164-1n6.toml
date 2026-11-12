@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794461164-1n6"
+type = "criterion"
+title = "Global bindings bind"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+given = "An administrator creates a login or password_entry binding"
+then = "Empty/omitted binds to the consumer-queried reference; nonempty aliases are rejected; the consumer evaluates the binding"
+when = "targetRef is omitted or empty (canonical) or a nonempty alias"

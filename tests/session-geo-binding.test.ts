@@ -52,7 +52,11 @@ const OFFICE_CF = { asn: 4766, country: "KR", city: "Seoul" };
 
 async function setup(): Promise<TestD1> {
   const db = new TestD1();
-  await ensureApplicationTables({ DB: db as unknown as Env["DB"] } as unknown as Env);
+  const env = { DB: db as unknown as Env["DB"] } as unknown as Env;
+  await ensureApplicationTables(env);
+  // revokeBoundSession deletes the better-auth session row; the minimal table
+  // shape follows the pattern used by tests/oauth/extended-grants.test.ts.
+  await db.exec('CREATE TABLE IF NOT EXISTS "session" (id TEXT PRIMARY KEY, token TEXT, "userId" TEXT)');
   return db;
 }
 
@@ -275,17 +279,26 @@ describe("session binding enforcement", () => {
       userId: "u1",
       path: "/api/auth/get-session",
     });
-    expect((await enforceSessionNetworkBinding({
-      request: requestWith({ url: "https://idp.test/api/auth/get-session", ip: "203.0.113.9", cf: { asn: 45090, country: "KR", city: "Seoul" } }),
-      env,
-      sessionToken: "tok-1",
-      userId: "u1",
-      path: "/api/auth/get-session",
-    }))?.status).toBe(401);
+    // The first evaluation terminated the session: the atomic revocation deleted
+    // the session row and its binding, so a repeat evaluation has no envelope and
+    // allows — the durable protection is the deleted session itself.
+    expect(
+      await enforceSessionNetworkBinding({
+        request: requestWith({ url: "https://idp.test/api/auth/get-session", ip: "203.0.113.9", cf: { asn: 45090, country: "KR", city: "Seoul" } }),
+        env,
+        sessionToken: "tok-1",
+        userId: "u1",
+        path: "/api/auth/get-session",
+      }),
+    ).toBeNull();
+    expect(await db.prepare('SELECT token FROM "session" WHERE token = ?').bind("tok-1").first()).toBeNull();
+    expect(
+      await db.prepare("SELECT session_token FROM session_network_bindings WHERE session_token = ?").bind("tok-1").first(),
+    ).toBeNull();
     const { verifyAuditEventChain } = await import("../src/audit/store");
     const verification = await verifyAuditEventChain(env);
     expect(verification.verified).toBe(true);
-    expect(verification.entries).toBe(2);
+    expect(verification.entries).toBe(1);
     expect(verification.firstProblem).toBeNull();
     const eventType = await db.prepare(`SELECT event_type FROM audit_events WHERE log_pos = 1`).bind().first<{ event_type: string }>();
     expect(eventType?.event_type).toBe("authentication.session.location_violation");

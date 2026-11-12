@@ -12,7 +12,7 @@ import { auditStandaloneOperation } from "../audit/store";
 import { duoAuthCall, duoConfig } from "./duo";
 import { sealString } from "../crypto/sealed";
 import { generateHotpSecret, hotpEnrollVerify, hotpVerify, userHasHotpToken } from "./hotp";
-import { recordSessionMfaProof } from "./second-factor";
+import { mayEnrollFactor, recordSessionMfaProof } from "./second-factor";
 import { mfaPolicy } from "./policy";
 import { sendOtpWithFallback } from "./otp-senders";
 
@@ -25,6 +25,7 @@ mfaRoutes.post("/mfa/duo/verify", async (context) => {
     return context.json({ error: "The Duo verification cannot be processed" }, 403);
   }
   if (!duoConfig(context.env)) return context.json({ error: "Duo secondary authentication is not configured" }, 503);
+  if (!mfaPolicy(context.env).allow.duo) return context.json({ error: "Duo secondary authentication is not allowed" }, 403);
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "The Duo verification cannot be processed" }, 401);
   let body: unknown;
@@ -65,6 +66,9 @@ mfaRoutes.post("/mfa/hotp/enroll", async (context) => {
   }
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "The hardware token enrollment cannot be processed" }, 401);
+  if (!mfaPolicy(context.env).allow.hotp || !await mayEnrollFactor(context.env, session)) {
+    return context.json({ error: "Additional verification is required or this method is unavailable" }, 403);
+  }
   let body: unknown;
   try { body = await context.req.json(); } catch { return context.json({ error: "The hardware token enrollment cannot be processed" }, 400); }
   const value = (body ?? {}) as Record<string, unknown>;
@@ -97,6 +101,14 @@ mfaRoutes.post("/mfa/hotp/verify", async (context) => {
   // The enrollment confirm step names its token; the sign-in proof path does
   // not (any verified token's code may satisfy it).
   const tokenId = typeof value.tokenId === "string" && value.tokenId.length > 0 ? value.tokenId.slice(0, 64) : null;
+  if (!mfaPolicy(context.env).allow.hotp) return context.json({ error: "Hardware tokens are not allowed" }, 403);
+  if (tokenId) {
+    const row = await context.env.DB.prepare('SELECT verified FROM mfa_hotp_tokens WHERE id = ? AND user_id = ?')
+      .bind(tokenId, session.user.id).first<{ verified: number }>();
+    if (row && !row.verified && !await mayEnrollFactor(context.env, session)) {
+      return context.json({ error: "Additional verification is required" }, 403);
+    }
+  }
   return auditStandaloneOperation(context.env, "mfa.hotp.verify", "/api/mfa/hotp/verify", async () => {
     const enrolled = tokenId
       ? await hotpEnrollVerify(context.env, session.user.id, tokenId, code)
@@ -136,6 +148,7 @@ mfaRoutes.post("/mfa/otp/start", async (context) => {
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);
   if (!mfaPolicy(context.env).allow.otp) return context.json({ error: "One-time codes are not allowed" }, 403);
+  if (!await mayEnrollFactor(context.env, session)) return context.json({ error: "Additional verification is required" }, 403);
   const user = await context.env.DB.prepare('SELECT email, twoFactorEnabled FROM "user" WHERE id = ?').bind(session.user.id)
     .first<{ email: string; twoFactorEnabled: number | boolean }>();
   if (!user?.email) return context.json({ error: "The enrollment cannot be processed" }, 400);
@@ -165,6 +178,7 @@ mfaRoutes.post("/mfa/otp/confirm", async (context) => {
   const session = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   if (!session) return context.json({ error: "Unauthorized" }, 401);
   if (!mfaPolicy(context.env).allow.otp) return context.json({ error: "One-time codes are not allowed" }, 403);
+  if (!await mayEnrollFactor(context.env, session)) return context.json({ error: "Additional verification is required" }, 403);
   let body: { code?: unknown; password?: unknown };
   try { body = await context.req.json(); } catch { return context.json({ error: "Invalid verification request" }, 400); }
   if (!body || typeof body.code !== "string" || (body.password !== undefined && typeof body.password !== "string")) return context.json({ error: "Invalid verification request" }, 400);

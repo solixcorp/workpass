@@ -1,0 +1,36 @@
+schema = 1
+id = "TSK-1794459899-8qe"
+type = "task"
+title = "Fix F8: STARTTLS fail-closed SMTP delivery"
+description = "Close audit finding F8 (CWE-757): STARTTLS silently degraded to plaintext SMTP."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:44+09:00
+
+[metadata]
+acceptance = ["No sensitive bytes on plaintext when STARTTLS required; explicit plaintext and implicit-TLS transports unaffected; failure propagates."]
+instructions = ["Abort starttls-selected SMTP sessions before AUTH/delivery when STARTTLS is missing or the upgrade fails/times out (src/mail/providers/smtp/client.ts)."]
+must_not = ["Do not force STARTTLS onto operators who selected plaintext."]
+order = 8.0
+qa = [{command = "bun test tests/mail", evidence = "tests/mail/smtp-starttls.test.ts", expected = "all pass, exit 0"}]
+references = ["src/mail/providers/smtp/client.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-9dd"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-fvz"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-9dd"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-fvz"
+type = "delivers"

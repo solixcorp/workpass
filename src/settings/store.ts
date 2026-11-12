@@ -28,18 +28,34 @@ async function readRows(env: Env): Promise<Map<string, StoredSetting>> {
     const result = await env.DB.prepare(
       "SELECT key, value, updated_by AS updatedBy, updated_at AS updatedAt FROM app_settings",
     ).all<{ key: string; value: string; updatedBy: string; updatedAt: string }>();
+    // Only an explicitly reported failure is an outage; result shapes that omit
+    // `success` (minimal test doubles) still count as successful reads.
+    if ((result as { success?: unknown }).success === false) throw new Error("Settings read failed");
+    if (!Array.isArray(result.results)) throw new Error("Settings read returned an invalid shape");
     for (const row of result.results) {
       if (settingDefinition(row.key)) rows.set(row.key, row);
     }
-  } catch {
-    // The table does not exist before the first migration: environment values apply.
+  } catch (error) {
+    // Keep administrator policy during an outage; retry after the usual TTL.
+    if (hit) {
+      cache.set(env.DB, { at: Date.now(), rows: hit.rows });
+      return hit.rows;
+    }
+    // Only an explicit missing-table error permits first-run migrations. Do not
+    // cache this startup fallback; a migrated, empty table is a successful read.
+    if (error instanceof Error && /^(?:D1_ERROR: )?no such table: (?:main\.)?app_settings(?:: SQLITE_ERROR)?$/.test(error.message)) {
+      return rows;
+    }
+    throw error;
   }
   cache.set(env.DB, { at: Date.now(), rows });
   return rows;
 }
 
 export function invalidateSettings(env: Env): void {
-  if (env.DB) cache.delete(env.DB);
+  const hit = env.DB && cache.get(env.DB);
+  // Force a refresh without discarding the last-known-good outage fallback.
+  if (hit) hit.at = Number.NEGATIVE_INFINITY;
 }
 
 /**

@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794461164-4mh"
+type = "criterion"
+title = "Password scope is labeled"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+given = "A client reads the password rules configuration"
+then = "Server-verified scopes are enforced in code; OPAQUE flows are labeled browser-advisory and documented"
+when = "Enforcement scope metadata is present"

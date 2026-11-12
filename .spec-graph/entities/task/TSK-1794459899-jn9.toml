@@ -1,0 +1,36 @@
+schema = 1
+id = "TSK-1794459899-jn9"
+type = "task"
+title = "Fix F9: passkey location enforcement in the risk-login branch"
+description = "Close audit finding F9 (CWE-863): passkey login returned before its location-policy enforcement."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:44+09:00
+
+[metadata]
+acceptance = ["Disallowed-location passkey login is denied with the session revoked; observe mode permits with drift recorded."]
+instructions = ["Evaluate the enforcing sign-in location policy before returning a successful passkey authentication response (src/audit/auth-middleware.ts risk branch + src/security/location-gate.ts).", "Revoke the issued session before returning a denial; enforce-mode evaluation failures also deny."]
+must_not = ["Do not bypass downstream issuance location gates' own semantics."]
+order = 9.0
+qa = [{command = "bun test tests/security", evidence = "tests/security/session-geo-binding.test.ts", expected = "all pass, exit 0"}]
+references = ["src/security/risk-auth-middleware.ts", "src/security/location-gate.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-c9m"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-cfq"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-c9m"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-cfq"
+type = "delivers"

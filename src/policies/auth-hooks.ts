@@ -115,10 +115,10 @@ function reject(messages: string[]): never {
 const LOGIN_PATHS = new Set(["/sign-in/email", "/sign-in/username", "/passkey/verify-authentication"]);
 
 /** Password write paths better-auth serves directly. */
-const PASSWORD_ENTRY_PATHS = new Set(["/change-password", "/admin/set-user-password", "/reset-password"]);
+const PASSWORD_ENTRY_PATHS = new Set(["/change-password", "/set-password", "/admin/set-user-password", "/reset-password", "/admin/create-user", "/sign-up/email"]);
 const PASSWORD_LOGIN_PATHS = new Set(["/sign-in/email", "/sign-in/username"]);
 /** Paths whose successful responses complete a password change. */
-const PASSWORD_SUCCESS_PATHS = new Set(["/change-password", "/admin/set-user-password", "/reset-password"]);
+const PASSWORD_SUCCESS_PATHS = new Set(["/change-password", "/set-password", "/admin/set-user-password", "/reset-password"]);
 
 const AFTER_RESULT = { headers: undefined, response: undefined } as {
   headers: Headers | undefined;
@@ -136,7 +136,8 @@ export function createPasswordPolicyHooks(env: Env): {
     if (PASSWORD_ENTRY_PATHS.has(path)) {
       const password = pickPassword(body);
       if (!password) return undefined; // No password in this request; nothing to validate.
-      const userId = pickTargetUser(body, actingOrTargetUser);
+      const userId = path === "/admin/create-user" || path === "/sign-up/email"
+        ? null : pickTargetUser(body, actingOrTargetUser);
       const outcome = await enforcePasswordEntry(env, userId, password, { clientIp: clientIp(headers), requestPath: path });
       if (!outcome.passing) reject(outcome.messages);
       return undefined;

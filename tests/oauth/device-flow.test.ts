@@ -83,4 +83,20 @@ describe("device grant store", () => {
     // Other clients are unaffected.
     await expect(createDeviceGrant(e, "cli-2", ["openid"])).resolves.toBeDefined();
   });
+
+  test("concurrent issuance cannot exceed the client cap", async () => {
+    const e = await env();
+    const results = await Promise.allSettled(Array.from({ length: 30 }, () => createDeviceGrant(e, "cli-race", ["openid"])));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(20);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(10);
+    expect(await e.DB.prepare("SELECT COUNT(*) AS c FROM oauth_device_grants WHERE client_id = 'cli-race'").first("c")).toBe(20);
+  });
+
+  test("expired pending grants free quota before cleanup", async () => {
+    const e = await env();
+    for (let i = 0; i < 20; i++) await createDeviceGrant(e, "cli-1", ["openid"]);
+    await e.DB.prepare("UPDATE oauth_device_grants SET expires_at = ?").bind(Date.now() - 1000).run();
+    await expect(createDeviceGrant(e, "cli-1", ["openid"])).resolves.toBeDefined();
+    expect(await e.DB.prepare("SELECT COUNT(*) AS c FROM oauth_device_grants").first("c")).toBe(21);
+  });
 });

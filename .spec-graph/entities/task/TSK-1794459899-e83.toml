@@ -1,0 +1,44 @@
+schema = 1
+id = "TSK-1794459899-e83"
+type = "task"
+title = "Fix F5: trusted-factor enrollment guard + method switches + TOTP/passkey endpoint closure"
+description = "Close audit finding F5 (CWE-287): a pending-MFA session could enroll and confirm a new HOTP factor to mint its own second-factor proof."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:43+09:00
+
+[metadata]
+acceptance = ["Confirmation of a brand-new factor does not satisfy a pre-existing required challenge.", "Verifying an already-verified factor still completes pending challenges.", "First-ever enrollment remains allowed."]
+instructions = ["Gate HOTP/OTP enrollment and confirmation on an existing session-bound proof when a factor is already enrolled (src/mfa/duo-routes.ts, src/mfa/second-factor.ts, src/mfa/policy.ts).", "Extend the guard to better-auth twoFactor pending-TOTP confirmation, OTP-verification-that-enables-two-factor, and passkey registration at the proxy middleware (src/audit/auth-middleware.ts). Enforce method-allow switches server-side."]
+must_not = ["Do not block legitimate challenge completion via an existing verified factor."]
+order = 2.0
+qa = [{command = "bun test tests/mfa tests/auth tests/security", evidence = "tests/auth/mfa-enrollment.test.ts", expected = "all pass, exit 0"}]
+references = ["src/mfa/duo-routes.ts", "src/audit/auth-middleware.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-bex"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-nnb"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-xvf"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-bex"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-nnb"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-xvf"
+type = "delivers"

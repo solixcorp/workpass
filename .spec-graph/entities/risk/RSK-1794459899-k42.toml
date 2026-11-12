@@ -1,0 +1,13 @@
+schema = 1
+id = "RSK-1794459899-k42"
+type = "risk"
+title = "Revocation storage failure withholds the response but may leave the session"
+description = "F6/F9 revocations are atomic batches; if storage prevents revocation the response is withheld but the session may persist until storage recovers. Response-withholding is the fail-closed posture."
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+impact = "low"
+kind = "open"
+likelihood = "low"

@@ -3,6 +3,7 @@ import mod from "../../src/index";
 import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
 import { userHasHotpToken, hotpVerify } from "../../src/mfa/hotp";
+import { openStepUpChallenge } from "../../src/security/step-up";
 
 /** Second-factor enrollment and the administrator's controls, against a real Better Auth. */
 
@@ -117,7 +118,8 @@ describe("second-factor enrollment", () => {
       expect(await confirm.json()).toMatchObject({ method: "otp" });
       expect((await db.prepare('SELECT twoFactorEnabled FROM "user" WHERE id = ?').bind(id).first<any>()).twoFactorEnabled).toBe(1);
       expect(await db.prepare("SELECT * FROM mfa_enroll_verifications WHERE user_id = ?").bind(id).first()).toBeNull();
-      expect((await call("/api/mfa/otp/start", { method: "POST" })).status).toBe(409);
+      // An enrolled factor now requires session-bound proof before enrollment is retried.
+      expect((await call("/api/mfa/otp/start", { method: "POST" })).status).toBe(403);
       expect((await call("/api/auth/two-factor/disable", { method: "POST", body: { password: PASSWORD } })).status).toBe(200);
     } finally { globalThis.fetch = originalFetch; }
   });
@@ -146,6 +148,32 @@ describe("second-factor enrollment", () => {
     expect(after.enabled).toBeTrue();
     expect(after.methods.find((m: any) => m.key === "totp").state).toBe("enrolled");
     expect(after.backupCodes.available).toBeTrue();
+
+    // Exercise both administrator boundaries with a password-only session and
+    // an existing verified factor, then complete the real plugin verification.
+    await setSetting("mfa.require", "admins");
+    const me = await (await call("/api/auth/get-session")).json() as any;
+    const token = me.session.token as string;
+    await db.prepare("DELETE FROM session_mfa_proofs WHERE session_token = ?").bind(token).run();
+    await openStepUpChallenge({ env, sessionToken: token, userId: me.user.id, reasons: ["risk"], requestPath: "/" });
+    const adminPath = `/api/admin/attributes/user/${me.user.id}`;
+    expect((await call(adminPath)).status).toBe(403);
+    expect((await call(adminPath, { method: "PUT", body: { attributes: {} } })).status).toBe(403);
+    expect((await call("/api/auth/admin/list-users")).status).toBe(403);
+    expect((await call("/api/auth/two-factor/enable", { method: "POST", body: { password: PASSWORD } })).status).toBe(403);
+    expect((await call("/api/auth/passkey/generate-register-options")).status).toBe(403);
+    expect((await call("/api/auth/passkey/verify-registration", { method: "POST", body: {} })).status).toBe(403);
+    await db.prepare('UPDATE "twoFactor" SET verified = 0 WHERE "userId" = ?').bind(me.user.id).run();
+    expect((await call("/api/auth/two-factor/verify-totp", { method: "POST", body: { code } })).status).toBe(403);
+    await db.prepare('UPDATE "twoFactor" SET verified = 1 WHERE "userId" = ?').bind(me.user.id).run();
+    await db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').bind(me.user.id).run();
+    expect((await call("/api/auth/two-factor/verify-otp", { method: "POST", body: { code: "000000" } })).status).toBe(403);
+    await db.prepare('UPDATE "user" SET "twoFactorEnabled" = 1 WHERE id = ?').bind(me.user.id).run();
+    expect((await call("/api/auth/two-factor/verify-totp", { method: "POST", body: { code } })).status).toBe(200);
+    expect((await call(adminPath)).status).toBe(200);
+    expect((await call(adminPath, { method: "PUT", body: { attributes: {} } })).status).toBe(200);
+    expect((await call("/api/auth/admin/list-users")).status).toBe(200);
+    await setSetting("mfa.require", "off");
   });
 
   test("a hardware token can be enrolled, verified and removed by its owner", async () => {
@@ -199,11 +227,17 @@ describe("second-factor enrollment", () => {
     expect(status).toMatchObject({ required: true, enrolled: true, authenticatorApp: true });
 
     expect((await call(`/api/admin/users/${me.user.id}/mfa/reset`, { method: "POST", body: {} })).status).toBe(200);
-    const cleared = await (await call(`/api/admin/users/${me.user.id}/mfa`)).json() as any;
-    expect(cleared).toMatchObject({ enrolled: false, authenticatorApp: false, hotpTokens: [] });
+    // Reset revokes the acting session's proof, so admin routes remain closed
+    // until the administrator enrolls and verifies a new factor.
+    expect((await call(`/api/admin/users/${me.user.id}/mfa`)).status).toBe(403);
     const after = await (await call("/api/mfa/enrollment")).json() as any;
     expect(after).toMatchObject({ required: true, mustEnroll: true, enabled: false });
+    const enable = await call("/api/auth/two-factor/enable", { method: "POST", body: { method: "totp", password: PASSWORD } });
+    const { totpURI } = await enable.json() as { totpURI: string };
+    const code = await hotp(base32Decode(new URL(totpURI).searchParams.get("secret")!), Math.floor(Date.now() / 30000));
+    expect((await call("/api/auth/two-factor/verify-totp", { method: "POST", body: { code } })).status).toBe(200);
     await setSetting("mfa.require", "off");
+    expect((await call(`/api/admin/users/${me.user.id}/mfa/reset`, { method: "POST", body: {} })).status).toBe(200);
   });
 
   test("an OPAQUE-only account (no server-side password) enrolls without one", async () => {
@@ -294,7 +328,7 @@ describe("second-factor enrollment", () => {
     const policy = (await created.json() as any).policy;
     expect((await call("/api/admin/policies", { method: "POST", body: { name: "rep", type: "reputation", config: { check: "ip" } } })).status).toBe(409);
 
-    const bound = await call("/api/admin/policy-bindings", { method: "POST", body: { target: "login", targetRef: "default", policyId: policy.id, order: 0 } });
+    const bound = await call("/api/admin/policy-bindings", { method: "POST", body: { target: "login", targetRef: "", policyId: policy.id, order: 0 } });
     expect(bound.status).toBe(201);
     const binding = (await bound.json() as any).binding;
     expect((await call(`/api/admin/policies/${policy.id}`, { method: "DELETE" })).status).toBe(409);

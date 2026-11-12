@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794460026-dya"
+type = "interface"
+title = "Step-up satisfaction scoping (satisfyPendingStepUpChallenges)"
+description = "Enforcement module: src/security/step-up.ts + src/mfa/second-factor.ts. Session-scoped satisfaction with explicit rotation-lineage transfer and digest audit event."
+status = "draft"
+created_at = 2026-11-12T14:07:06+09:00
+updated_at = 2026-11-12T14:07:06+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794459899-ebe"
+type = "implements"

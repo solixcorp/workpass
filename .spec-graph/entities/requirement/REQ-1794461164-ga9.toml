@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794461164-ga9"
+type = "requirement"
+title = "SCIM provisioning DNS residual is documented as deployment-owned"
+description = "The URL guard's limits (no DNS resolution or egress control) and the operator mitigations are documented in docs/operations/scim-provisioning-security.md with a pointer from validProvisioningUrl; production-checklist drift is corrected. Closes run-1 lead scim.provisioning.dns-rebinding as operational guidance (source-only pinning is not possible in Workers)."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-z5x"
+type = "has_criterion"

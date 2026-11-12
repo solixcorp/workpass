@@ -1,0 +1,12 @@
+schema = 1
+id = "QST-1794459899-2eq"
+type = "question"
+title = "Does the deployed provider keep the refresh-token storage layout the pre-handler lookup assumes?"
+description = "The F2 pre-handler resolves hashed refresh tokens via the provider's current default token format and hashing configuration; a provider upgrade could move token storage."
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+due_at = ""
+owner = "operator"

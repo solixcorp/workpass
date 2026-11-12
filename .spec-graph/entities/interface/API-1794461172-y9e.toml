@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794461172-y9e"
+type = "interface"
+title = "Atomic grant caps (src/oauth/device-flow.ts, src/oauth/ciba.ts)"
+description = "reqI"
+status = "draft"
+created_at = 2026-11-12T14:26:12+09:00
+updated_at = 2026-11-12T14:26:12+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794461164-yvp"
+type = "implements"

@@ -17,7 +17,7 @@ interface Target { slug: string; base_url: string; sealed_token: string; enabled
 const load = (env: Env, slug: string) => env.DB.prepare("SELECT * FROM app_provisioning_targets WHERE slug = ?").bind(slug).first<Target>();
 const leaseCutoff = () => new Date(Date.now() - 5 * 60_000).toISOString();
 
-/** Reject IP literals except public IPv4. DNS resolution and rebinding require network-level controls. */
+/** Reject IP literals except public IPv4. DNS resolution and rebinding require network-level controls; see docs/operations/scim-provisioning-security.md. */
 export function validProvisioningUrl(value: string): boolean {
   try {
     const u = new URL(value);

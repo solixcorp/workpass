@@ -15,6 +15,7 @@ import {
 import { upsertClaimReleasePolicy } from "../../src/claims/release-policy";
 import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
+import { claimReleaseExtension } from "../../src/claims/extension";
 
 async function seededEnv(flags: { account: boolean; attributes: boolean }): Promise<Env> {
   const testD1 = createTestD1();
@@ -74,6 +75,26 @@ describe("user attributes claim", () => {
 });
 
 describe("merged OIDC release", () => {
+  test("extension honors subject policy and never retries subjectless after a helper failure", async () => {
+    const env = await seededEnv({ account: true, attributes: true });
+    await upsertClaimReleasePolicy(env, { subject: "oidc:app-1", allowAccountClaims: false, allowUserAttributes: false, allowAccountAttributes: false, allowGroupAttributes: true }, "u1");
+    const invoke = async (e: Env, clientId: string) => await claimReleaseExtension(e).claims!.accessToken!({ sessionId: "sess-1", user: { id: "u1" }, client: { clientId }, scopes: [] } as never);
+    expect(Object.keys(await invoke(env, "app-2"))).toHaveLength(2);
+    expect(await invoke(env, "app-1")).toEqual({});
+    const db = env.DB;
+    let failures = 0;
+    const failingDb = { ...db, prepare(sql: string) {
+      if (sql.includes("SELECT g.id, o.attributes") && failures++ === 0) throw new Error("transient group query failure");
+      return db.prepare(sql);
+    } } as D1Database;
+    expect(await invoke({ ...env, DB: failingDb }, "app-1")).toEqual({});
+    expect(failures).toBe(1);
+    const policyFailureDb = { ...db, prepare(sql: string) {
+      if (sql.includes("FROM claim_release_policies")) throw new Error("policy unavailable");
+      return db.prepare(sql);
+    } } as D1Database;
+    expect(await invoke({ ...env, DB: policyFailureDb }, "app-1")).toEqual({});
+  });
   test("combines both claims, keyed per surface", async () => {
     const env = await seededEnv({ account: true, attributes: true });
     const claims = await oidcClaimRelease(env, "sess-1", "u1");

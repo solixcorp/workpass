@@ -4,6 +4,7 @@ import { createAuth } from "../auth/config";
 import { auditStandaloneOperation } from "../audit/store";
 import { constantTimeTokenMatches } from "../security/tokens";
 import { activationUrl, issueActivationLink } from "../security/account-activation";
+import { enforcePasswordEntry } from "../policies/password-entry";
 
 export const bootstrapRoutes = new Hono<{ Bindings: Env }>();
 
@@ -60,6 +61,13 @@ bootstrapRoutes.post("/bootstrap", async (context) => {
             { status: 409 },
           ),
         };
+      }
+
+      // Bootstrap receives plaintext, unlike OPAQUE registration; validate it
+      // before claiming the one-shot bootstrap slot.
+      const passwordPolicy = await enforcePasswordEntry(context.env, null, password, { requestPath: "/api/admin/bootstrap" });
+      if (!passwordPolicy.passing) {
+        return { response: Response.json({ error: "Password violates policy", messages: passwordPolicy.messages }, { status: 400 }) };
       }
 
       const claim = await context.env.DB.prepare(

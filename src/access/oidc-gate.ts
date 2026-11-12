@@ -2,7 +2,6 @@ import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import type { Env } from "../env";
 import type { AuthInstance } from "../auth/config";
 import { evaluateAppAccess, loadAppAccessPolicy } from "./policies";
-import { hasActiveTemporalGrant } from "./requests";
 import { sessionSatisfiesRequireMfa } from "../mfa/second-factor";
 import { userMustUseMfa, workpassMfaRequired } from "../mfa/policy";
 import { appMfaChallenge, usableSecondFactors } from "../security/step-up";
@@ -38,6 +37,14 @@ export async function enforceOidcPolicy(request: Request, env: Env, auth: AuthIn
     }
     if (params.getAll("client_id").length !== 1 || !params.get("client_id")) return Response.json({ error: "invalid_request" }, { status: 400 });
     const clientId = params.get("client_id")!;
+    return await checkOidcAccess(env, clientId, session);
+  } catch {
+    return Response.json({ error: "Authorization policy unavailable" }, { status: 503 });
+  }
+}
+
+/** Shared issuance policy; callers translate denials for their protocol. */
+export async function checkOidcAccess(env: Env, clientId: string, session: { user: { id: string; role?: unknown }; session?: { token?: unknown } | null }): Promise<Response | null> {
     const sessionUser = session.user as { id: string; role?: unknown };
     if (clientId === (await workpassClientId(env))) {
       // WorkPass itself: a user who can complete a second factor must have done
@@ -61,8 +68,5 @@ export async function enforceOidcPolicy(request: Request, env: Env, auth: AuthIn
         return Response.json({ error: "access_denied" }, { status: 403 });
       }
     }
-    return null;
-  } catch {
-    return Response.json({ error: "Authorization policy unavailable" }, { status: 503 });
-  }
+  return null;
 }

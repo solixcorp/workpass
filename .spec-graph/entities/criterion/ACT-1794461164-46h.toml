@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794461164-46h"
+type = "criterion"
+title = "Outage preserves administrator overrides"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+given = "app_settings SELECT fails transiently after a successful prior read"
+then = "Last-known-good rows are served; a cold failure propagates as a request error instead of silently reverting to deployment defaults"
+when = "Subsequent reads occur during the outage window"

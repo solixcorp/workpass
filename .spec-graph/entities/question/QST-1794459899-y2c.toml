@@ -1,0 +1,12 @@
+schema = 1
+id = "QST-1794459899-y2c"
+type = "question"
+title = "Does the legitimate OAuth resumption complete through a gated path after the F1 strip?"
+description = "Investigated: the SPA posts the signed query to the gated /api/auth/oauth2/continue endpoint; worker-level regression covers tampering, denied assignment, and allowed continuation."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:34+09:00
+
+[metadata]
+due_at = ""
+owner = "operator"

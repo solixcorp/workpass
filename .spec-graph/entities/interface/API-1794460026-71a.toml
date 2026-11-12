@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794460026-71a"
+type = "interface"
+title = "oauth_query strip in the auth proxy"
+description = "Enforcement module: src/auth/routes.ts proxy — strips oauth_query outside authorize/consent/continue so the provider before hook cannot persist it."
+status = "draft"
+created_at = 2026-11-12T14:07:06+09:00
+updated_at = 2026-11-12T14:07:06+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794459899-ndg"
+type = "implements"

@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794460026-9gx"
+type = "interface"
+title = "Administrator MFA/challenge guard (requireAdministrator + auth proxy admin gating)"
+description = "Enforcement module: src/security/authorization.ts (shared administrator guard) and src/audit/auth-middleware.ts (better-auth admin proxy endpoints). Implements the pending-session rejection and session-bound MFA proof requirement."
+status = "draft"
+created_at = 2026-11-12T14:07:06+09:00
+updated_at = 2026-11-12T14:07:06+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794459899-8k1"
+type = "implements"

@@ -6,7 +6,11 @@ There is no SMTP library dependency: the SMTP transport is an in-repo client
 adapted from the MIT-licensed [worker-mailer](https://github.com/zou-yu/worker-mailer)
 (zou-yu, Copyright (c) zou-yu) — one message per connection, implicit TLS
 (465) or STARTTLS (587), AUTH PLAIN / AUTH LOGIN, negotiated only against what
-the server advertises.
+the server advertises. When STARTTLS is selected (including the port 587
+default), the server must advertise STARTTLS and the TLS upgrade must succeed
+before authentication or message delivery. Missing STARTTLS or a failed
+handshake throws a delivery error; there is no plaintext fallback. Implicit
+TLS and deliberately selected plaintext transports are unchanged.
 
 ## Selection
 

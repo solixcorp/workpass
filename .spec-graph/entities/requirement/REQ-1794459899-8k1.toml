@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794459899-8k1"
+type = "requirement"
+title = "Privileged administration rejects challenge-pending sessions (F3)"
+description = "A session that has not completed a required MFA/step-up challenge must not reach privileged effects. Enforced centrally in requireAdministrator (covers ~30 /api/admin/* subrouters and separately mounted guarded routes) and in the auth proxy middleware for better-auth admin endpoints. Attack chain (F3): OPAQUE login creates a real session plus a pending challenge (src/auth/opaque-routes.ts:401-460); requireAdministrator checked only session+role+origin (src/security/authorization.ts:26-42)."
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794459899-9y0"
+type = "has_criterion"

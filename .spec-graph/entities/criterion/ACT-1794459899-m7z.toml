@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-m7z"
+type = "criterion"
+title = "Passkey login location-checked"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "An enforcing sign-in location policy and a valid passkey authentication from a disallowed place"
+then = "The session is revoked before the response and the login is denied; observe mode permits with drift recorded"
+when = "The risk-login branch handles the success"

@@ -1,0 +1,15 @@
+schema = 1
+id = "TST-1794459899-6cn"
+type = "test"
+title = "Session-scoped satisfaction + rotation lineage + audit digests"
+description = "Repository regression evidence: tests/security/step-up-challenge.test.ts"
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794459899-ebe"
+type = "verifies"

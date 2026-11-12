@@ -1,0 +1,52 @@
+schema = 1
+id = "TSK-1794459899-gax"
+type = "task"
+title = "Fix F3: central pending-MFA gate for privileged administration"
+description = "Close audit finding F3 (CWE-306): an administrator session awaiting a required MFA challenge could exercise administrator APIs."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:43+09:00
+
+[metadata]
+acceptance = ["A challenge-pending admin session gets 403 on custom admin routes and gated better-auth admin endpoints.", "A verified session-bound proof or non-MFA-subject admin retains access."]
+instructions = ["Add a fail-closed MFA/challenge check to requireAdministrator in src/security/authorization.ts covering ~30 admin subrouters and guarded mounted routes.", "Gate better-auth admin proxy endpoints in src/audit/auth-middleware.ts reusing the exported proof helper."]
+must_not = ["Do not restrict the user's own account surfaces (enrollment/verification) by design.", "Do not break first-enrollment bootstrap."]
+order = 1.0
+qa = [{command = "bun test tests/mfa tests/auth tests/security", evidence = "tests/mfa/admin-mfa-guard.test.ts", expected = "all pass, exit 0"}]
+references = ["src/security/authorization.ts", "src/audit/auth-middleware.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-8k1"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-3tf"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-c74"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-myb"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-8k1"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-3tf"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-c74"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-myb"
+type = "delivers"

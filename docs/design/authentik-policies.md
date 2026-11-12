@@ -54,12 +54,29 @@ of wall-clock timeouts** (Workers cannot kill synchronous execution).
   negate, failure_result (`fail`|`pass`), enabled.
 - Evaluation: ordered (order asc), disabled skipped, empty set passes, messages
   collected across bindings, negate flips only the boolean.
+- `login` and `password_entry` are global: their canonical `targetRef` is `""`;
+  omission means the same thing, while nonempty aliases are rejected. Existing
+  nonempty bindings must be reviewed and recreated with the empty reference.
+  Notification bindings instead use the notification rule ID.
 - Login-pipeline integration: the login gate (fingerprint/risk pipeline) consults
   `login` bindings before issuing; application access consults `application`
   bindings in `evaluateAppAccess` (account gate → group gate/temporal grant →
   bound policies).
-- Password integration points: admin bootstrap/set-password, better-auth password
-  change and reset (server hooks), recovery redemption.
+- Password integration points: plaintext bootstrap and better-auth password
+  create, set, change and reset are checked by the server against bound policies.
+  Plaintext login checks the login surface, not password quality on every login.
+
+### OPAQUE password enforcement scope
+
+OPAQUE activation and password change send a registration record, not plaintext;
+the server cannot cryptographically infer or verify its password complexity or
+reuse. Browser checks are advisory and a modified client can bypass them; this
+residual risk is intentional and visible to policy owners. Activation currently
+does not itself call the browser password checker. The administration rules API
+reports `enforcementScope` separately for plaintext writes and each OPAQUE flow.
+Server verification is subject to the configured binding mode and failure result;
+no bindings means pass. Admin user creation issues an activation link without
+accepting a password.
 
 ## Typed policies
 

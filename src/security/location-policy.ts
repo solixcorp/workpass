@@ -50,7 +50,7 @@ export const PROOF_TTL_SECONDS = 15 * 60;
 const MODES = new Set(["off", "observe", "enforce"]);
 const SIGNALS = new Set(["network", "browser", "network_or_browser"]);
 
-export async function loadLocationPolicy(env: Env): Promise<LocationPolicy> {
+export async function loadLocationPolicy(env: Env, strict = false): Promise<LocationPolicy> {
   try {
     const row = await env.DB.prepare(
       "SELECT mode, signal, network_margin_km AS networkMarginKm, max_accuracy_m AS maxAccuracyM, exempt_groups AS exemptGroups FROM location_policy WHERE id = 1",
@@ -63,6 +63,7 @@ export async function loadLocationPolicy(env: Env): Promise<LocationPolicy> {
     } catch { /* unreadable: no exemptions */ }
     return { mode: row.mode as LocationMode, signal: row.signal as LocationSignal, networkMarginKm: row.networkMarginKm, maxAccuracyM: row.maxAccuracyM, exemptGroups: exempt };
   } catch {
+    if (strict) throw new Error("Location policy unavailable");
     // Not migrated yet: the policy is off.
     return DEFAULT_LOCATION_POLICY;
   }
@@ -77,13 +78,14 @@ export async function saveLocationPolicy(env: Env, policy: LocationPolicy, admin
   ).bind(policy.mode, policy.signal, policy.networkMarginKm, policy.maxAccuracyM, JSON.stringify(policy.exemptGroups), adminId, new Date().toISOString()).run();
 }
 
-export async function listPlaces(env: Env, onlyEnabled = false): Promise<Place[]> {
+export async function listPlaces(env: Env, onlyEnabled = false, strict = false): Promise<Place[]> {
   try {
     const rows = await env.DB.prepare(
       `SELECT id, name, latitude, longitude, radius_m AS radiusM, enabled FROM location_places ${onlyEnabled ? "WHERE enabled = 1" : ""} ORDER BY name ASC LIMIT 200`,
     ).all<{ id: string; name: string; latitude: number; longitude: number; radiusM: number; enabled: number }>();
     return rows.results.map((row) => ({ ...row, enabled: row.enabled === 1 }));
   } catch {
+    if (strict) throw new Error("Location places unavailable");
     return [];
   }
 }
@@ -186,7 +188,7 @@ export async function evaluateLocation(
     }
     if (rules.length) scopedIds = [...new Set(rules.flat())];
   }
-  const places = (await listPlaces(env, true)).filter((place) => scopedIds === null || scopedIds.includes(place.id));
+  const places = (await listPlaces(env, true, true)).filter((place) => scopedIds === null || scopedIds.includes(place.id));
   if (places.length === 0) return result(scopedIds === null, { reason: "no_places" });
 
   const point = policy.signal === "browser" ? null : networkPoint(input.request);

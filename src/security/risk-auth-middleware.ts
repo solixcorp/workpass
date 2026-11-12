@@ -3,6 +3,7 @@ import type { AuthInstance } from "../auth/config";
 import { updateAuditEvent, insertAuditEvent } from "../audit/store";
 import { getSessionMfaProof } from "../mfa/second-factor";
 import { stepUpUi } from "./step-up-ui";
+import { enforceLocationAfterPasskeyLogin } from "./location-gate";
 import {
   getStepUpChallenge,
   openStepUpChallenge,
@@ -441,7 +442,7 @@ export async function handleFingerprintRiskLogin(
       ? (sessionValue as { token: string }).token
       : null;
 
-  if (mode !== "disabled" && authSucceeded && (!sessionToken || !userId)) {
+  if ((mode !== "disabled" || path === "/api/auth/passkey/verify-authentication") && authSucceeded && (!sessionToken || !userId)) {
     try {
       const sessionFromCookie = await findNewSessionFromResponse(env, authResponse);
       sessionToken = sessionToken ?? sessionFromCookie?.token ?? null;
@@ -453,6 +454,33 @@ export async function handleFingerprintRiskLogin(
         return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
       }
       signalError = signalError ?? "session_lookup_unavailable";
+    }
+  }
+
+  if (path === "/api/auth/passkey/verify-authentication") {
+    try {
+      const issued = await findNewSessionFromResponse(env, authResponse);
+      if (issued) {
+        sessionToken = issued.token;
+        userId = issued.userId;
+      } else if (sessionToken) {
+        const stored = await env.DB.prepare('SELECT token, "userId" FROM "session" WHERE token = ? LIMIT 1')
+          .bind(sessionToken).first<{ token: string; userId: string }>();
+        if (!stored || (userId && stored.userId !== userId)) throw new Error("Session mismatch");
+        userId = stored.userId;
+      }
+    } catch {
+      await finalizeAudit(env, auditId, userId, null, "failure");
+      return Response.json({ error: "Session verification is unavailable" }, { status: 503 });
+    }
+    if (!userId || !sessionToken) {
+      await finalizeAudit(env, auditId, userId, null, "failure");
+      return Response.json({ error: "Session verification is unavailable" }, { status: 503 });
+    }
+    const denied = await enforceLocationAfterPasskeyLogin(env, request, authResponse, userId, path, sessionToken);
+    if (denied) {
+      await finalizeAudit(env, auditId, userId, null, "failure");
+      return denied;
     }
   }
 

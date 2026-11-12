@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794461164-tdf"
+type = "criterion"
+title = "Backup never crosses unfinalized rows"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+given = "A started audit row sits at the export boundary"
+then = "The watermark stops before it; after finalization the row exports with final fields"
+when = "The scheduled export runs"

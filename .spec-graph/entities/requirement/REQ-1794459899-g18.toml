@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794459899-g18"
+type = "requirement"
+title = "Refresh issuance re-evaluates entitlement fail-closed; entitlement loss revokes tokens (F2)"
+description = "POST /api/auth/oauth2/token grant_type=refresh_token re-evaluates the CURRENT oidc:<clientId> application access policy for the token's user before provider issuance; denials and evaluation errors are rejected fail-closed and audited. Group-membership removal and application assignment changes revoke the affected users' tokens for that client atomically. Evidence: audit codex-scan-1 F2 - refresh never re-checked policy and membership/assignment changes did not revoke (src/admin/directory.ts:176-192, src/applications/integration-routes.ts:213-255)."
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794459899-tet"
+type = "has_criterion"

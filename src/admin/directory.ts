@@ -11,6 +11,7 @@ import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
 import { auditStandaloneOperation } from "../audit/store";
 import { getObjectAttributes } from "../objects/attributes";
+import { oidcTokenDeletionStatements } from "../db/oidc-offboarding";
 
 export const directoryRoutes = new Hono<{ Bindings: Env }>();
 
@@ -127,13 +128,17 @@ directoryRoutes.delete("/directory-groups/:id", async (context) => {
   if (!id || id.length > ID_LIMIT) return context.json({ error: "Group not found" }, 404);
   return auditStandaloneOperation(context.env, "directory.group.delete", context.req.path, async () => {
     const removed = await context.env.DB.batch([
+      ...["oauthAccessToken", "oauthRefreshToken"].map((table) => context.env.DB.prepare(
+        `DELETE FROM "${table}" WHERE "userId" IN (SELECT user_id FROM directory_group_members WHERE group_id = ?)
+         AND "clientId" IN (SELECT substr(subject, 6) FROM app_policy_groups WHERE group_id = ? AND substr(subject, 1, 5) = 'oidc:')`,
+      ).bind(id, id)),
       context.env.DB.prepare("DELETE FROM directory_group_members WHERE group_id = ?").bind(id),
       context.env.DB.prepare(
         "DELETE FROM object_attributes WHERE object_type = 'group' AND object_id = ?",
       ).bind(id),
       context.env.DB.prepare("DELETE FROM directory_groups WHERE id = ?").bind(id),
     ]);
-    if (removed[2]!.meta.changes < 1) {
+    if (removed[4]!.meta.changes < 1) {
       return { response: Response.json({ error: "Group not found" }, { status: 404 }), actorUserId: actor.userId };
     }
     return { response: Response.json({ deleted: true }), actorUserId: actor.userId, targetUserId: id };
@@ -182,9 +187,16 @@ directoryRoutes.delete("/directory-groups/:id/members/:userId", async (context) 
     return context.json({ error: "Group not found" }, 404);
   }
   return auditStandaloneOperation(context.env, "directory.member.remove", context.req.path, async () => {
-    const removed = await context.env.DB.prepare(
-      "DELETE FROM directory_group_members WHERE group_id = ? AND user_id = ?",
-    ).bind(groupId, userId).run();
+    const clients = await context.env.DB.prepare(
+      "SELECT substr(subject, 6) AS clientId FROM app_policy_groups WHERE group_id = ? AND substr(subject, 1, 5) = 'oidc:'",
+    ).bind(groupId).all<{ clientId: string }>();
+    // Conservatively revoke even when another group would still grant access;
+    // deletion and revocation commit together, so failure cannot leave a grant.
+    const results = await context.env.DB.batch([
+      context.env.DB.prepare("DELETE FROM directory_group_members WHERE group_id = ? AND user_id = ?").bind(groupId, userId),
+      ...clients.results.flatMap(({ clientId }) => oidcTokenDeletionStatements(context.env, clientId, userId)),
+    ]);
+    const removed = results[0]!;
     if (removed.meta.changes !== 1) {
       return { response: Response.json({ error: "Membership not found" }, { status: 404 }), actorUserId: actor.userId };
     }

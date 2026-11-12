@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794460026-4d0"
+type = "interface"
+title = "Risk-login location gate for passkey authentication"
+description = "Enforcement module: src/audit/auth-middleware.ts risk branch + src/security/location-gate.ts — evaluate and revoke-before-deny on passkey authentication success."
+status = "draft"
+created_at = 2026-11-12T14:07:06+09:00
+updated_at = 2026-11-12T14:07:06+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794459899-c9m"
+type = "implements"

@@ -91,6 +91,10 @@ describe("approval pages data", () => {
     expect((await post("/api/device/flow/approve", { user_code: first.userCode })).status).toBe(409);
 
     const second = await createDeviceGrant(env, clientId, ["openid"]);
+    // Assignment still restricts the app to the sales group, so this admin (not in
+    // sales) is denied at approval by the OIDC access gate — and the grant survives.
+    expect((await json(await post("/api/device/flow/approve", { user_code: second.userCode })))).toEqual({ error: "access_denied" });
+    await call("/api/admin/applications/wiki/assignment", { method: "PUT", body: { mode: "everyone" } });
     expect((await json(await post("/api/device/flow/approve", { user_code: second.userCode })))).toEqual({ status: "approved" });
   });
 

@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794461172-kfp"
+type = "interface"
+title = "Access-request veto-aware approval (src/access/requests.ts)"
+description = "reqD"
+status = "draft"
+created_at = 2026-11-12T14:26:12+09:00
+updated_at = 2026-11-12T14:26:12+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794461164-1aq"
+type = "implements"

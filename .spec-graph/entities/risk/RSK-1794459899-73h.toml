@@ -1,0 +1,13 @@
+schema = 1
+id = "RSK-1794459899-73h"
+type = "risk"
+title = "Bounded TOCTOU between refresh-time entitlement check and provider issuance"
+description = "Entitlement can change between the pre-handler policy check and provider issuance; assignment rewrites are also non-atomic. Revocation-on-loss plus future atomic policy evaluation would narrow this."
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+impact = "medium"
+kind = "accepted"
+likelihood = "low"

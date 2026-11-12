@@ -1,0 +1,15 @@
+schema = 1
+id = "TST-1794461164-v3n"
+type = "test"
+title = "Settings outage/last-known-good/TTL regressions"
+description = "Repository regression evidence: tests/settings/settings.test.ts"
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794461164-bqx"
+type = "verifies"

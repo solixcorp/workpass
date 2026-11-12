@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-sh6"
+type = "criterion"
+title = "Binding enforced with atomic revocation"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "SESSION_BINDING_MODE=enforce and a bound session"
+then = "The request is rejected and the session plus companion rows are deleted atomically; observe mode only records drift"
+when = "get-session/authorize/consent arrives from outside the envelope or binding evaluation fails"

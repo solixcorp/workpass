@@ -1,0 +1,13 @@
+schema = 1
+id = "RSK-1794461164-mt6"
+type = "risk"
+title = "Last-known-good settings may go stale during prolonged outages"
+description = "Serving stale administrator overrides beats reverting to defaults, but very long outages serve outdated policy values until recovery."
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+impact = "low"
+kind = "accepted"
+likelihood = "low"

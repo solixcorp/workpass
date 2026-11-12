@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794461164-4jb"
+type = "requirement"
+title = "Access-request review honors pending expiry"
+description = "reviewAccessRequest rejects reviews past pending_expires_at, and the atomic approval finalization predicate includes pending validity so an expired request can never mint a grant. Closes run-1 lead access/requests/pending-expiry-not-enforced."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-8ah"
+type = "has_criterion"

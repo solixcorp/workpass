@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794461164-z5x"
+type = "criterion"
+title = "Operator guidance exists"
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+given = "An operator configures SCIM provisioning"
+then = "Guard limits, DNS-rebinding residual, and deployment mitigations are explicit; checklist matches wrangler.jsonc"
+when = "They read the security documentation"

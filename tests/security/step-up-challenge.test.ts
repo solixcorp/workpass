@@ -12,6 +12,9 @@ import {
   validateStepUpConfig,
 } from "../../src/security/step-up";
 import { recordSessionMfaProof } from "../../src/mfa/second-factor";
+import { handleTwoFactorVerification } from "../../src/audit/auth-middleware";
+import type { AuthInstance } from "../../src/auth/config";
+import { verifyAuditEventChain } from "../../src/audit/store";
 
 function envWith(db: TestD1, extra: Record<string, string> = {}): Env {
   return {
@@ -40,6 +43,52 @@ describe("step-up configuration", () => {
 });
 
 describe("challenge lifecycle", () => {
+  test("verified rotation transfers only the authenticated predecessor challenge", async () => {
+    const db = await setup();
+    const env = envWith(db);
+    db.exec(`CREATE TABLE "session" (token TEXT PRIMARY KEY, "userId" TEXT);
+      INSERT INTO "session" VALUES ('old', 'u1'), ('independent', 'u1');`);
+    for (const sessionToken of ["old", "independent"]) {
+      await openStepUpChallenge({ env, sessionToken, userId: "u1", reasons: ["risk"], requestPath: "/p" });
+    }
+    const auth = {
+      api: { getSession: async () => ({ user: { id: "u1" }, session: { token: "old" } }) },
+      handler: async () => {
+        db.exec(`DELETE FROM "session" WHERE token = 'old'; INSERT INTO "session" VALUES ('new', 'u1');`);
+        return Response.json({ token: "old" }, { headers: { "Set-Cookie": "better-auth.session_token=new.signature; Path=/" } });
+      },
+    } as unknown as AuthInstance;
+    const response = await handleTwoFactorVerification(new Request("https://idp.test/api/auth/two-factor/verify-otp", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    }), env, auth);
+    expect(response.status).toBe(200);
+    expect((await getStepUpChallenge(env, "old")).state).toBe("satisfied");
+    expect((await getStepUpChallenge(env, "new")).satisfiedMethod).toBe("mfa_rotation");
+    expect((await getStepUpChallenge(env, "independent")).state).toBe("pending");
+    const events = await db.prepare("SELECT actor_user_id, target_user_id, event_context FROM audit_events WHERE event_type = ?")
+      .bind("authentication.session.rotation_transfer").all<{ actor_user_id: string; target_user_id: string; event_context: string }>();
+    expect(events.results).toHaveLength(1);
+    const digest = async (token: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))))
+      .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    expect(events.results[0]).toMatchObject({ actor_user_id: "u1", target_user_id: "u1" });
+    expect(JSON.parse(events.results[0]!.event_context)).toEqual({ predecessorDigest: await digest("old"), successorDigest: await digest("new") });
+    expect((await verifyAuditEventChain(env)).verified).toBe(true);
+  });
+
+  test("a newly issued session is not treated as rotation while the predecessor remains live", async () => {
+    const db = await setup();
+    const env = envWith(db);
+    db.exec(`CREATE TABLE "session" (token TEXT PRIMARY KEY, "userId" TEXT);
+      INSERT INTO "session" VALUES ('old', 'u1'), ('new', 'u1');`);
+    await openStepUpChallenge({ env, sessionToken: "old", userId: "u1", reasons: [], requestPath: "/p" });
+    const auth = {
+      api: { getSession: async () => ({ user: { id: "u1" }, session: { token: "old" } }) },
+      handler: async () => Response.json({}, { headers: { "Set-Cookie": "better-auth.session_token=new.signature" } }),
+    } as unknown as AuthInstance;
+    expect((await handleTwoFactorVerification(new Request("https://idp.test/api/auth/two-factor/verify-otp", { method: "POST", body: "{}" }), env, auth)).status).toBe(200);
+    expect((await getStepUpChallenge(env, "old")).state).toBe("pending");
+  });
+
   test("open → pending → satisfied(when proof recorded) → allow", async () => {
     const db = await setup();
     const env = envWith(db);
@@ -51,9 +100,12 @@ describe("challenge lifecycle", () => {
     expect(status.reasons).toEqual(["impossible_travel"]);
     expect(status.expiresAt).not.toBeNull();
 
-    // Recording a durable proof satisfies every open challenge of the user.
+    // A different session's proof must not satisfy this challenge.
     const recorded = await recordSessionMfaProof(env, "tok-rotated", "u1");
     expect(recorded).toBe(true);
+    status = await getStepUpChallenge(env, "tok-1");
+    expect(status.state).toBe("pending");
+    expect(await recordSessionMfaProof(env, "tok-1", "u1")).toBe(true);
     status = await getStepUpChallenge(env, "tok-1");
     expect(status.state).toBe("satisfied");
     expect(status.satisfiedMethod).toBe("mfa_proof");
@@ -87,7 +139,7 @@ describe("challenge lifecycle", () => {
     await db.prepare(`UPDATE session_step_up_requirements SET challenge_expires_at = ? WHERE session_token = 'tok-b'`)
       .bind(new Date(Date.now() - 1000).toISOString())
       .run();
-    const satisfied = await satisfyPendingStepUpChallenges(env, "u1");
+    const satisfied = await satisfyPendingStepUpChallenges(env, "u1", "tok-a");
     expect(satisfied).toBe(1);
     expect((await getStepUpChallenge(env, "tok-a")).state).toBe("satisfied");
     expect((await getStepUpChallenge(env, "tok-b")).state).toBe("expired");

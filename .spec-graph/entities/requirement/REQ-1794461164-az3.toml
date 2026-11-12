@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794461164-az3"
+type = "requirement"
+title = "Claim release never falls back to a subjectless computation"
+description = "The claims extension removes the subjectless retry: a subject-aware claim-computation failure yields no extra claims (fail-closed) instead of a flag-only release that the relying party's deny row would not constrain. Closes run-1 lead claims/subjectless-retry-bypasses-release-policy."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-pm7"
+type = "has_criterion"

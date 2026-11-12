@@ -64,6 +64,13 @@ describe("AKQL operators", () => {
     expect(() => akqlMatch('nonexistent.field = 1', PROJECTION)).toThrow("does not exist");
     expect(() => akqlParse('action = "login" and')).toThrow();
   });
+
+  test("rejects trailing tokens in direct and in-memory matching", () => {
+    for (const query of ['action = "login" extra AND', '(action = "login") )', 'action = "login" and']) {
+      expect(() => akqlParse(query)).toThrow();
+      expect(() => akqlMatch(query, PROJECTION)).toThrow();
+    }
+  });
 });
 
 describe("event matcher policy", () => {

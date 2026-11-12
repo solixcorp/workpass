@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794461164-bqx"
+type = "requirement"
+title = "Settings resolution retains last-known-good and fails closed without one"
+description = "readRows serves the last cached rows during an app_settings outage and propagates a cold-read failure instead of caching an empty override set (except an explicit missing-table startup error), so administrator security overrides survive transient failures instead of silently reverting to deployment defaults. Closes run-1 lead settings/app_settings-read-failure-disables-fingerprint."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-46h"
+type = "has_criterion"

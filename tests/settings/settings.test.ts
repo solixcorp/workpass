@@ -1,8 +1,11 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import mod from "../../src/index";
 import type { Env } from "../../src/env";
 import { normalizeSettingValue, settingDefinition } from "../../src/settings/registry";
 import { createTestD1 } from "../test-d1";
+import { applySettings, invalidateSettings, resolveSettings, saveSetting } from "../../src/settings/store";
+import { ensureApplicationTables } from "../../src/db/schema";
+import { mfaPolicy, passkeyAllowed } from "../../src/mfa/policy";
 
 const ORIGIN = "http://127.0.0.1:8787";
 
@@ -37,6 +40,86 @@ describe("normalizeSettingValue", () => {
     const mode = settingDefinition("fingerprint.mode")!;
     expect(normalizeSettingValue(mode, "observe")).toBe("observe");
     expect(() => normalizeSettingValue(mode, "yolo")).toThrow();
+  });
+});
+
+describe("settings read failures", () => {
+  async function fixture() {
+    const { db } = createTestD1();
+    let failing = false;
+    let reads = 0;
+    const env = testEnv(new Proxy(db, { get(target, key) {
+      if (key === "prepare") return (sql: string) => {
+        if (sql.includes("FROM app_settings")) {
+          reads++;
+          if (failing) throw new Error("D1 temporarily unavailable");
+        }
+        return target.prepare(sql);
+      };
+      return Reflect.get(target, key);
+    } }));
+    env.FINGERPRINT_MODE = "disabled";
+    await ensureApplicationTables(env);
+    return { env, fail(value: boolean) { failing = value; }, reads: () => reads };
+  }
+
+  test("cold read failure rejects requests, is not cached, and recovers", async () => {
+    const f = await fixture();
+    f.fail(true);
+    await expect(applySettings(f.env)).rejects.toThrow("unavailable");
+    await expect(resolveSettings(f.env)).rejects.toThrow("unavailable");
+    const response = await run(new Request(`${ORIGIN}/api/config/login`), f.env);
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Internal server error" });
+    expect(f.reads()).toBe(3);
+    f.fail(false);
+    await saveSetting(f.env, "fingerprint.mode", "enforce", "admin");
+    expect((await applySettings(f.env)).FINGERPRINT_MODE).toBe("enforce");
+  });
+
+  test("expired cache and forced refresh retain administrator security overrides", async () => {
+    const f = await fixture();
+    for (const [key, value] of [
+      ["fingerprint.mode", "enforce"], ["mfa.require", "everyone"],
+      ["login.allow_passkey", "off"], ["mfa.allow_totp", "off"],
+      ["step_up.challenge_ttl_seconds", "300"], ["activation.token_ttl_minutes", "5"],
+    ]) await saveSetting(f.env, key!, value!, "admin");
+    await applySettings(f.env);
+    f.fail(true);
+    const now = Date.now();
+    const clock = spyOn(Date, "now").mockReturnValue(now + 31_000);
+    try {
+      const effective = await applySettings(f.env);
+      expect(effective.FINGERPRINT_MODE).toBe("enforce");
+      expect(mfaPolicy(effective)).toMatchObject({ require: "everyone", allow: { totp: false } });
+      expect(passkeyAllowed(effective)).toBe(false);
+      expect(effective.STEP_UP_CHALLENGE_TTL_SECONDS).toBe("300");
+      expect(effective.ACTIVATION_TOKEN_TTL_MINUTES).toBe("5");
+      const reads = f.reads();
+      await applySettings(f.env);
+      expect(f.reads()).toBe(reads); // outage retry is also bounded by the TTL
+      expect((await resolveSettings(f.env)).find((s) => s.definition.key === "fingerprint.mode"))
+        .toMatchObject({ value: "enforce", source: "admin" });
+      invalidateSettings(f.env);
+      expect((await applySettings(f.env)).MFA_REQUIRE).toBe("everyone");
+      f.fail(false);
+      await saveSetting(f.env, "fingerprint.mode", "observe", "admin");
+      expect((await applySettings(f.env)).FINGERPRINT_MODE).toBe("observe");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("explicit missing table permits migration but never caches startup defaults", async () => {
+    const { db } = createTestD1();
+    const env = testEnv(db);
+    expect(await applySettings(env)).toBe(env);
+    await ensureApplicationTables(env);
+    await db.prepare("INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ('fingerprint.mode', 'enforce', 'admin', 'now')").run();
+    expect((await applySettings(env)).FINGERPRINT_MODE).toBe("enforce");
+    await db.prepare("DROP TABLE app_settings").run();
+    invalidateSettings(env);
+    expect((await applySettings(env)).FINGERPRINT_MODE).toBe("enforce");
   });
 });
 

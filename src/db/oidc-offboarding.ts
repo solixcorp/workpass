@@ -1,5 +1,17 @@
 import type { Env } from "../env";
 
+/** Delete client-bound tokens, including cached refresh-rotation responses. */
+export function oidcTokenDeletionStatements(env: Env, clientId: string, userId?: string): D1PreparedStatement[] {
+  const where = userId === undefined ? '"clientId" = ?' : '"clientId" = ? AND "userId" = ?';
+  const args = userId === undefined ? [clientId] : [clientId, userId];
+  return ["oauthAccessToken", "oauthRefreshToken"].map((table) =>
+    env.DB.prepare(`DELETE FROM "${table}" WHERE ${where}`).bind(...args));
+}
+
+export async function revokeOidcTokens(env: Env, clientId: string, userId?: string): Promise<void> {
+  await env.DB.batch(oidcTokenDeletionStatements(env, clientId, userId));
+}
+
 // These triggers run in the same SQLite write transaction as the account
 // update or token insert. Do not revoke on ordinary session deletion: offline
 // access is intentionally allowed to survive a normal sign-out.

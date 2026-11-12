@@ -36,7 +36,7 @@ const fail = (message: string, position: number | null, detail: string): never =
 type Token = { text: string; pos: number; kind: string };
 
 // Validate the entire input before using the shared parser, which intentionally
-// accepts trailing tokens for its legacy callers. Bound nesting before parsing.
+// The shared parser requires full token consumption (audit hardening). Bound nesting before parsing.
 function validate(input: string): string {
   if (input.length > 4096) fail("검색식이 너무 복잡합니다.", null, "query is too long");
   const tokens: Token[] = [];

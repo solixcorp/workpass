@@ -1,0 +1,36 @@
+schema = 1
+id = "TSK-1794459899-yfv"
+type = "task"
+title = "Fix F2: refresh-time entitlement re-evaluation + revocation on entitlement loss"
+description = "Close audit finding F2 (CWE-863): refresh grants retained application access after entitlement removal."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:43+09:00
+
+[metadata]
+acceptance = ["Refresh denied + audited for policy-denied users or evaluation errors; entitled refresh unaffected.", "Entitlement loss deletes the affected users' token rows for that client."]
+instructions = ["Add a refresh-token pre-handler on the token route evaluating current oidc:<clientId> access policy fail-closed (src/auth/routes.ts), audited on denial/error.", "Add client-scoped token revocation helpers (src/db/oidc-offboarding.ts) and call them on membership removal (src/admin/directory.ts) and assignment rewrite incl. shared providers (src/applications/integration-routes.ts)."]
+must_not = ["Do not weaken the provider ban-trigger revocation behavior."]
+order = 4.0
+qa = [{command = "bun test tests/oidc tests/oauth tests/access", evidence = "tests/oidc/refresh-entitlement.test.ts", expected = "all pass, exit 0"}]
+references = ["src/auth/routes.ts", "src/db/oidc-offboarding.ts", "src/admin/directory.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-g18"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-sm1"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-g18"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-sm1"
+type = "delivers"

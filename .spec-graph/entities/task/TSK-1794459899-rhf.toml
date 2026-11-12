@@ -1,0 +1,36 @@
+schema = 1
+id = "TSK-1794459899-rhf"
+type = "task"
+title = "Fix F7: session-scoped satisfaction + audited rotation lineage"
+description = "Close audit finding F7 (CWE-613): a victim's MFA completion satisfied an attacker's independent challenge."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:43+09:00
+
+[metadata]
+acceptance = ["Independent session B stays pending when A verifies.", "Rotation transfer satisfies the successor and writes a digest audit event that verifies in the chain."]
+instructions = ["Scope satisfyPendingStepUpChallenges to the verified session token (src/security/step-up.ts, src/mfa/second-factor.ts).", "Transfer challenges explicitly for verified same-user rotations and record one audit event with SHA-256 predecessor/successor token digests."]
+must_not = ["Never write raw session tokens into audit fields."]
+order = 3.0
+qa = [{command = "bun test tests/security/step-up-challenge.test.ts", evidence = "tests/security/step-up-challenge.test.ts", expected = "all pass, exit 0"}]
+references = ["src/security/step-up.ts", "src/mfa/second-factor.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-ebe"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-6cn"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-ebe"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-6cn"
+type = "delivers"

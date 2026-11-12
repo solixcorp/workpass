@@ -38,6 +38,9 @@ login-time GeoIP history checks in [device risk policy](device-risk-and-trust.md
   and writes the audit event `authentication.session.location_violation`; observe writes
   `authentication.session.location_drift.observe`. Session termination is the durable protection;
   the audit row is best-effort.
+- An evaluation or revocation storage failure in `enforce` rejects the request with 503;
+  operators must restore storage before the session can be evaluated again. A missing envelope
+  is distinct from a storage error and remains allowed.
 
 ## Documented deviations from authentik
 

@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-v72"
+type = "criterion"
+title = "No plaintext under STARTTLS"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "The starttls transport is selected"
+then = "No AUTH or message bytes are sent; the delivery fails observably through the dispatcher"
+when = "The peer omits STARTTLS or the upgrade fails or times out"

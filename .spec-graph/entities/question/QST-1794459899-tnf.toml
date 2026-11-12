@@ -1,0 +1,12 @@
+schema = 1
+id = "QST-1794459899-tnf"
+type = "question"
+title = "Deployment-level verification of remediated flows against the live provider version"
+description = "Local bun tests pass offline, but browser-level end-to-end sign-in/authorize/refresh flows and the deployed better-auth provider behavior should be verified by the owner before rollout."
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+due_at = ""
+owner = "operator"

@@ -238,6 +238,47 @@ describe("request lifecycle", () => {
     expect(row?.status).toBe("lapsed");
   });
 
+  test("expired pending requests reject reviews without recording votes or grants", async () => {
+    const { env } = await scenario();
+    const created = await createAccessRequest(env as never, { subject: SUBJECT, userId: "requester-1", justification: "Deploy" });
+    await env.DB.prepare("UPDATE access_requests SET pending_expires_at = ? WHERE id = ?")
+      .bind("2000-01-01T00:00:00.000Z", created.id).run();
+    expect(await reviewAccessRequest(env as never, { requestId: created.id, reviewerId: "reviewer-1", decision: "approved" })).toBeNull();
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM access_request_approvals WHERE request_id = ?").bind(created.id).first()).count).toBe(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM app_temporal_grants WHERE request_id = ?").bind(created.id).first()).count).toBe(0);
+  });
+
+  test("a veto recorded between review and approval finalization wins the race", async () => {
+    const { env } = await scenario();
+    const created = await createAccessRequest(env as never, { subject: SUBJECT, userId: "requester-1", justification: "Deploy" });
+    const db = env.DB as any;
+    const prepare = db.prepare.bind(db);
+    db.prepare = (sql: string) => {
+      if (sql.includes("SET status = 'approved'")) {
+        prepare("INSERT INTO access_request_approvals (request_id, reviewer_id, decision, note, decided_at) VALUES (?, ?, 'denied', ?, ?)")
+          .bind(created.id, "reviewer-2", "veto", new Date().toISOString()).run();
+      }
+      return prepare(sql);
+    };
+    const outcome = await reviewAccessRequest(env as never, { requestId: created.id, reviewerId: "reviewer-1", decision: "approved" });
+    expect(outcome?.newStatus).toBe("denied");
+    expect((await prepare("SELECT status FROM access_requests WHERE id = ?").bind(created.id).first()).status).toBe("denied");
+    expect((await prepare("SELECT COUNT(*) AS count FROM access_request_approvals WHERE request_id = ?").bind(created.id).first()).count).toBe(2);
+    expect((await prepare("SELECT COUNT(*) AS count FROM app_temporal_grants WHERE request_id = ?").bind(created.id).first()).count).toBe(0);
+  });
+
+  test("a recorded veto takes precedence over pending expiry", async () => {
+    const { env } = await scenario();
+    const created = await createAccessRequest(env as never, { subject: SUBJECT, userId: "requester-1", justification: "Deploy" });
+    await env.DB.prepare("INSERT INTO access_request_approvals (request_id, reviewer_id, decision, note, decided_at) VALUES (?, ?, 'denied', ?, ?)")
+      .bind(created.id, "reviewer-2", "veto", new Date().toISOString()).run();
+    await env.DB.prepare("UPDATE access_requests SET pending_expires_at = ? WHERE id = ?").bind("2000-01-01T00:00:00.000Z", created.id).run();
+    const outcome = await reviewAccessRequest(env as never, { requestId: created.id, reviewerId: "reviewer-1", decision: "approved" });
+    expect(outcome?.newStatus).toBe("denied");
+    expect((await env.DB.prepare("SELECT status FROM access_requests WHERE id = ?").bind(created.id).first()).status).toBe("denied");
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM app_temporal_grants WHERE request_id = ?").bind(created.id).first()).count).toBe(0);
+  });
+
   test("audit rows record the request lifecycle events", async () => {
     const { env } = await scenario();
     const created = await createAccessRequest(env as never, { subject: SUBJECT, userId: "requester-1", justification: "Deploy window" });

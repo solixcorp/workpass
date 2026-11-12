@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794460026-mmh"
+type = "interface"
+title = "Refresh entitlement pre-handler"
+description = "Enforcement module: src/auth/routes.ts (token-route pre-handler) + src/db/oidc-offboarding.ts revocation helpers called from src/admin/directory.ts and src/applications/integration-routes.ts."
+status = "draft"
+created_at = 2026-11-12T14:07:06+09:00
+updated_at = 2026-11-12T14:07:06+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794459899-g18"
+type = "implements"

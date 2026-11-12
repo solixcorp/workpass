@@ -1,0 +1,31 @@
+schema = 1
+id = "DEC-1794459899-1sm"
+type = "decision"
+title = "Refresh enforces access policy fail-closed but does not re-prove MFA"
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:06:01+09:00
+
+[metadata]
+date = "2026-11-12"
+rationale = "Refresh requests are non-session-scoped so no trustworthy session-bound proof exists at issuance; MFA is enforced at interactive authorization. The residual offline-access-outlives-assurance window is recorded as risk R2 with a documented owner decision path."
+
+[[relations]]
+to = "QST-1794459899-2eq"
+type = "references"
+
+[[relations]]
+to = "QST-1794459899-tnf"
+type = "references"
+
+[[relations]]
+to = "REQ-1794459899-g18"
+type = "references"
+
+[[relations]]
+to = "RSK-1794459899-73h"
+type = "references"
+
+[[relations]]
+to = "RSK-1794459899-mck"
+type = "references"

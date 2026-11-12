@@ -22,6 +22,7 @@ import {
 import { importSamlServiceProviderTrustedKey } from "../saml/certificates";
 import { setWsfedRelyingPartyEnabled, validateWsfedRelyingParty } from "../wsfed/relying-parties";
 import { setSwaApplicationEnabled } from "../swa/applications";
+import { revokeOidcTokens } from "../db/oidc-offboarding";
 
 export const integrationRoutes = new Hono<{ Bindings: Env }>();
 
@@ -231,6 +232,10 @@ integrationRoutes.put("/applications/:slug/assignment", async (context) => {
   }
   const before = new Set(await appAudience(context.env, app.slug));
   return auditStandaloneOperation(context.env, "app.assignment.update", context.req.path, async () => {
+    // A protocol subject may be shared by multiple dashboard apps. Revoke by
+    // the actual provider binding, conservatively including still-entitled users.
+    // Do this before the policy rewrite so an error cannot leave old grants.
+    if (app.protocol === "oidc" && app.binding) await revokeOidcTokens(context.env, app.binding);
     // The dashboard card and the protocol's own gate read different subjects;
     // both follow the same groups so an assignment cannot be bypassed by a direct link.
     for (const subject of [`app:${app.slug}`, protocolSubject(app)]) {

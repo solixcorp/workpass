@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794459899-ndg"
+type = "requirement"
+title = "oauth_query is accepted only on the gated authorize/consent/continue paths (F1)"
+description = "The provider's before hook must never receive a signable oauth_query on ungated endpoints. The proxy strips the oauth_query body field from every /api/auth/* request outside the three externally gated paths (authorize/consent/continue), which remain covered by enforceOidcPolicy. Legitimate resumption: the SPA posts the signed query to the gated /api/auth/oauth2/continue path, so no auto-issuance outside the gate exists."
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794459899-7ev"
+type = "has_criterion"

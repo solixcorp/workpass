@@ -1,0 +1,15 @@
+schema = 1
+id = "TST-1794462184-v3q"
+type = "test"
+title = "Hardening batch regressions"
+description = "Repository regression evidence: tests/applications/hardening.test.ts (+ tests/oidc/webfinger.test.ts, tests/policies/event-matcher.test.ts, tests/applications/oidc-launch.test.ts)"
+status = "active"
+created_at = 2026-11-12T14:43:04+09:00
+updated_at = 2026-11-12T14:43:04+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794462184-033"
+type = "verifies"

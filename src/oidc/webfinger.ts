@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
+import { oidcIssuer } from "../auth/config";
 
 const ISSUER_RELATION = "http://openid.net/specs/connect/1.0/issuer";
 
@@ -43,7 +44,7 @@ webfingerRoutes.get("/webfinger", (context) => {
   const requestedRelation = requestUrl.searchParams.get("rel");
   const links = requestedRelation && requestedRelation !== ISSUER_RELATION
     ? []
-    : [{ rel: ISSUER_RELATION, href: new URL(context.env.AUTH_BASE_URL).origin }];
+    : [{ rel: ISSUER_RELATION, href: oidcIssuer(context.env) }];
 
   return new Response(
     JSON.stringify({

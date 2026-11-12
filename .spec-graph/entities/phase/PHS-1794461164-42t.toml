@@ -1,0 +1,16 @@
+schema = 1
+id = "PHS-1794461164-42t"
+type = "phase"
+title = "Phase 11: Residual audit lead remediation (run-1 needs_validation leads)"
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:17+09:00
+
+[metadata]
+exit_criteria = ["Every residual lead either fixed with regression tests or explicitly moved to owner-owned deployment guidance with documentation", "Full bun test suite passes (672 tests) and tsc --noEmit is clean"]
+goal = "Fix the remaining run-1 needs_validation leads that were not covered by the codex-scan findings (policy binding reference, password-rule enforcement scope, access-request approval races, phone-verification binding, audit export barrier, claims subjectless retry, settings outage fallback, device/CIBA atomic caps, SCIM DNS residual documentation)."
+order = 13.0
+
+[[relations]]
+to = "PLN-1794159216-par"
+type = "belongs_to"

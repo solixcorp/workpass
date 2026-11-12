@@ -168,6 +168,9 @@ policyRoutes.post("/policy-bindings", async (context) => {
   if (!body || typeof body !== "object" || Array.isArray(body)) return context.json({ error: "Invalid body" }, 400);
   const value = body as Record<string, unknown>;
   const target = typeof value.target === "string" ? value.target : "";
+  if (value.targetRef !== undefined && typeof value.targetRef !== "string") {
+    return context.json({ error: "targetRef must be a string" }, 400);
+  }
   let targetRef = typeof value.targetRef === "string" ? value.targetRef : "";
   if (!TARGET_PATTERN.test(target)) {
     return context.json({ error: "target must be application, login, password_entry, user_write or notification_rule" }, 400);
@@ -190,6 +193,9 @@ policyRoutes.post("/policy-bindings", async (context) => {
     if (!policySubject && !swaApp && !samlSp && !wsfedRp) {
       return context.json({ error: "targetRef must be a registered application subject or an existing policy subject" }, 400);
     }
+  } else if (target === "login" || target === "password_entry") {
+    // These are global surfaces; omission and the empty string are equivalent.
+    if (targetRef !== "") return context.json({ error: "targetRef must be empty for global targets" }, 400);
   } else if (targetRef.length === 0 || targetRef.length > 128) {
     return context.json({ error: "targetRef is required" }, 400);
   }

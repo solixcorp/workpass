@@ -49,12 +49,11 @@ export async function recordSessionMfaProof(env: Env, sessionToken: string, user
          user_id = excluded.user_id,
          verified_at = excluded.verified_at`,
     ).bind(sessionToken, userId, new Date().toISOString(), ["totp", "hotp", "duo", "passkey", "email", "sms"].includes(method ?? "") ? method : "unknown").run();
-    // A durable proof also completes any open step-up challenge for the user
-    // (verification may rotate the session, leaving the flagged token behind).
+    // Never satisfy another independent session's challenge.
     try {
       const { satisfyPendingStepUpChallenges } = await import("../security/step-up");
       // A passkey proof answers an app policy, never the separate risk gate.
-      if (method !== "passkey") await satisfyPendingStepUpChallenges(env, userId);
+      if (method !== "passkey") await satisfyPendingStepUpChallenges(env, userId, sessionToken);
     } catch {
       // Record-keeping only; the proof itself remains the durable evidence.
     }
@@ -68,11 +67,12 @@ export async function recordSessionMfaProof(env: Env, sessionToken: string, user
 export async function getSessionMfaProof(
   env: Env,
   sessionToken: string,
+  strict = false,
 ): Promise<{ userId: string; verifiedAt: string; methods: string[] } | null> {
   if (!sessionToken || sessionToken.length > PROOF_TOKEN_MAX_LENGTH) return null;
   const row = await env.DB.prepare(
     "SELECT user_id AS userId, verified_at AS verifiedAt, methods FROM session_mfa_proofs WHERE session_token = ?",
-  ).bind(sessionToken).first<{ userId: string; verifiedAt: string; methods: string }>().catch(() => null);
+  ).bind(sessionToken).first<{ userId: string; verifiedAt: string; methods: string }>().catch((error) => { if (strict) throw error; return null; });
   if (!row) return null;
   return { userId: row.userId, verifiedAt: row.verifiedAt, methods: (row.methods ?? "unknown").split(",") };
 }
@@ -88,6 +88,33 @@ export async function sessionSatisfiesRequireMfa(env: Env, session: MfaCheckedSe
   const proof = await getSessionMfaProof(env, sessionToken);
   return proof !== null && proof.userId === session.user.id &&
     (requiredMethods.length === 0 || requiredMethods.some((method) => proof.methods.includes(method)));
+}
+
+/** Enrollment is bootstrap-only without proof; check again at confirmation. */
+export async function mayEnrollFactor(env: Env, session: MfaCheckedSession): Promise<boolean> {
+  try {
+    const token = proofSessionToken(session);
+    if (!token) return false;
+    const { getStepUpChallenge } = await import("../security/step-up");
+    const challenge = await getStepUpChallenge(env, token, true);
+    if (challenge.state === "pending" || challenge.state === "expired") return false;
+    const proof = await getSessionMfaProof(env, token, true);
+    if (proof?.userId === session.user.id) {
+      return true;
+    }
+    if (challenge.state !== "none") return false;
+    const user = await env.DB.prepare('SELECT "twoFactorEnabled" AS enabled FROM "user" WHERE id = ?')
+      .bind(session.user.id).first<{ enabled: number | boolean | null }>();
+    if (!user || user.enabled) return false;
+    if (await userHasHotpToken(env, session.user.id)) return false;
+    const passkey = await env.DB.prepare('SELECT id FROM "passkey" WHERE "userId" = ? LIMIT 1')
+      .bind(session.user.id).first<{ id: string }>();
+    if (passkey) return false;
+    const { duoConfig } = await import("./duo");
+    return !duoConfig(env);
+  } catch {
+    return false;
+  }
 }
 
 /** Remove proofs whose backing session can no longer be active. */

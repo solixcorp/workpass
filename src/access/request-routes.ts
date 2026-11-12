@@ -302,18 +302,18 @@ accessRequestUserRoutes.post(`${USER_PREFIX}/:id/review`, async (context) => {
   if (outcome.newStatus !== null) {
     await notifyUser(context.env, outcome.request.userId, {
       kind: "access_request",
-      title: decision === "approved" ? "접근 요청이 승인되었습니다" : "접근 요청이 거절되었습니다",
+      title: outcome.newStatus === "approved" ? "접근 요청이 승인되었습니다" : "접근 요청이 거절되었습니다",
       body: `${await appNameForSubject(context.env, outcome.request.subject)}${outcome.request.decisionNote ? ` · ${outcome.request.decisionNote}` : ""}`,
       link: "/requests",
     });
     // Best-effort; the audit event is written by the engine.
     await notifyAccessRequestEvent(context.env, {
-      type: decision === "approved" ? "access_request.approved" : "access_request.denied",
+      type: outcome.newStatus === "approved" ? "access_request.approved" : "access_request.denied",
       requestId: id,
       subject: outcome.request.subject,
       requesterId: outcome.request.userId,
       justification: outcome.request.justification,
-      decision: { reviewerId: actor.userId, decision, note: outcome.request.decisionNote, newStatus: outcome.newStatus },
+      decision: { reviewerId: outcome.request.decidedBy ?? actor.userId, decision: outcome.newStatus, note: outcome.request.decisionNote, newStatus: outcome.newStatus },
     });
   }
   return context.json({ request: outcome.request, statusApplied: outcome.newStatus });

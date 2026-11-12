@@ -1,8 +1,8 @@
 import { insertAuditEvent } from "../audit/store";
 import type { Env } from "../env";
-import { evaluateLocation, type LocationVerdict } from "./location-policy";
+import { evaluateLocation, loadLocationPolicy, type LocationVerdict, type LocationPolicy } from "./location-policy";
 import { notifySecurity } from "../users/notifications";
-import { findNewSessionFromResponse } from "./risk-auth-middleware";
+import { revokeBoundSession } from "./session-geo-binding";
 
 /**
  * Check a sign-in against the place policy and leave an audit event when it
@@ -15,10 +15,13 @@ export async function locationGate(
   input: { request: Request; userId: string | null; path: string; subject?: string },
 ): Promise<LocationVerdict> {
   let verdict: LocationVerdict;
+  let policy: LocationPolicy | undefined;
   try {
-    verdict = await evaluateLocation(env, { request: input.request, userId: input.userId, subject: input.subject });
+    policy = await loadLocationPolicy(env, true);
+    verdict = await evaluateLocation(env, { request: input.request, userId: input.userId, subject: input.subject, policy });
   } catch {
-    return { allowed: false, pass: false, mode: "enforce", method: "none", needsBrowser: false, reason: "no_signal", placeName: null, distanceM: null };
+    const mode = policy?.mode ?? "enforce";
+    return { allowed: mode !== "enforce", pass: false, mode, method: "none", needsBrowser: false, reason: "no_signal", placeName: null, distanceM: null };
   }
   if (verdict.pass || verdict.mode === "off") return verdict;
   try {
@@ -43,11 +46,16 @@ export async function notifyLocationDenied(env: Env, userId: string): Promise<vo
 }
 
 /** The passkey proof succeeded; revoke its newly issued session if location denies it. */
-export async function enforceLocationAfterPasskeyLogin(env: Env, request: Request, response: Response, userId: string, path: string): Promise<Response | null> {
+export async function enforceLocationAfterPasskeyLogin(env: Env, request: Request, response: Response, userId: string, path: string, sessionToken?: string | null): Promise<Response | null> {
   const place = await locationGate(env, { request, userId, path });
   if (place.allowed) return null;
-  const issued = await findNewSessionFromResponse(env, response).catch(() => null);
-  if (issued) await env.DB.prepare('DELETE FROM "session" WHERE token = ?').bind(issued.token).run().catch(() => null);
-  await notifyLocationDenied(env, userId);
+  try {
+    const issued = sessionToken ? { token: sessionToken, userId } : await (await import("./risk-auth-middleware")).findNewSessionFromResponse(env, response);
+    if (!issued || issued.userId !== userId) throw new Error("Issued session unavailable");
+    await revokeBoundSession(env, issued.token, userId);
+  } catch {
+    return Response.json({ error: "Session revocation is unavailable" }, { status: 503 });
+  }
+  await notifyLocationDenied(env, userId).catch(() => {});
   return Response.json({ error: "Sign-in is not allowed from this location", code: "location_denied" }, { status: 403 });
 }

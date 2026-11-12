@@ -82,13 +82,16 @@ export async function backupAuditEvents(env: Env, atMs: number, maxBatch = 5000)
             content_hash, client_ip, event_context, COALESCE(hash_version, 1) AS hash_version
      FROM audit_events WHERE log_pos > ? ORDER BY log_pos ASC LIMIT ?`,
   ).bind(watermark, maxBatch).all<AuditBackupPayload & AuditBackupRow>();
-  if (rows.results.length === 0) return { exported: 0, watermark, backup: true };
+  // Finalization mutates started rows in place; never advance past one.
+  const pendingIndex = rows.results.findIndex((row) => row.outcome !== "success" && row.outcome !== "failure");
+  const finalized = pendingIndex < 0 ? rows.results : rows.results.slice(0, pendingIndex);
+  if (finalized.length === 0) return { exported: 0, watermark, backup: true };
 
   const key = `${AUDIT_BACKUP_PREFIX}${dayKey(atMs)}.jsonl`;
   const bucket = env.AUDIT_BACKUP;
-  const exported = rows.results.length;
-  const nextWatermark = rows.results[rows.results.length - 1]!.log_pos;
-  const payload = rows.results
+  const exported = finalized.length;
+  const nextWatermark = finalized[finalized.length - 1]!.log_pos;
+  const payload = finalized
     .map((row) => JSON.stringify({
       id: row.id, occurred_at: row.occurred_at, actor_user_id: row.actor_user_id,
       target_user_id: row.target_user_id, event_type: row.event_type,

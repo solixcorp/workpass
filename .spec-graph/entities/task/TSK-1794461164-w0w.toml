@@ -1,0 +1,30 @@
+schema = 1
+id = "TSK-1794461164-w0w"
+type = "task"
+title = "Document SCIM DNS residual + fix production-checklist drift"
+description = "Close run-1 lead scim.provisioning.dns-rebinding as operational guidance."
+status = "resolved"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:27:12+09:00
+amendment_forced = true
+amendment_reason = "Correct the docs-only task QA command at resolution time (initial contract seeded a placeholder command)"
+
+[metadata]
+acceptance = ["Operators have explicit deployment-side mitigations documented.", "Checklist matches the committed configuration."]
+instructions = ["Add docs/operations/scim-provisioning-security.md covering guard limits, DNS-rebinding residual, and owner mitigations; point validProvisioningUrl comments at it.", "Correct docs/operations/production-checklist.md drift (compatibility date 2026-11-09, nodejs_als explicit, 30-day log retention, backend path correspondence)."]
+must_not = ["Do not claim source-side DNS pinning exists."]
+order = 10.0
+qa = [{command = "test -s docs/operations/scim-provisioning-security.md && test -s docs/operations/production-checklist.md", evidence = "docs/operations/scim-provisioning-security.md", expected = "all pass, exit 0"}]
+references = ["docs/operations/scim-provisioning-security.md", "docs/operations/production-checklist.md"]
+
+[[relations]]
+to = "PHS-1794461164-42t"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794461164-ga9"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794461164-ga9"
+type = "delivers"

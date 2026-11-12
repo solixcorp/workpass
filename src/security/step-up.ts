@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { insertAuditEvent } from "../audit/store";
 
 /**
  * Step-up challenge for risky interactive logins (authentik-style: bind the
@@ -13,10 +14,8 @@ import type { Env } from "../env";
  * - No enrollable factors: fail closed — the session is withheld (unchanged
  *   pre-challenge behavior).
  * - Satisfaction: a session-bound MFA proof (`src/mfa/second-factor.ts` —
- *   TOTP/OTP/backup-code verify, Duo push, hardware OTP) marks all unexpired
- *   pending challenges of that user satisfied. Sessions are rotated on
- *   verification, so the new session carries the proof itself; the gate at
- *   authorization honors a proof on the acting session directly.
+ *   TOTP/OTP/backup-code verify, Duo push, hardware OTP) marks only the
+ *   acting session's unexpired pending challenge satisfied.
  * - Expiry: an open challenge is valid for `STEP_UP_CHALLENGE_TTL_SECONDS`
  *   (default 900). A satisfied requirement continues to authorize the session
  *   for 24 hours, after which a new risky decision challenges again. The cron
@@ -106,7 +105,7 @@ async function readChallengeRow(
 }
 
 /** Current challenge state for a session token (no DB errors surfaced). */
-export async function getStepUpChallenge(env: Env, sessionToken: string): Promise<StepUpChallenge> {
+export async function getStepUpChallenge(env: Env, sessionToken: string, strict = false): Promise<StepUpChallenge> {
   const none: StepUpChallenge = {
     state: "none",
     reasons: [],
@@ -148,28 +147,57 @@ export async function getStepUpChallenge(env: Env, sessionToken: string): Promis
       satisfiedAt: null,
       satisfiedMethod: null,
     };
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     // Fail closed: an unreadable challenge state must not authorize issuance.
     return { ...none, state: "expired" };
   }
 }
 
 /**
- * Mark every unexpired pending challenge of the user satisfied. Called after a
- * durable session-bound MFA proof is recorded; challenge rows may reference
- * rotated-away sessions, so satisfying is user-scoped on purpose.
+ * Mark only the proven session's unexpired challenge satisfied.
  */
-export async function satisfyPendingStepUpChallenges(env: Env, userId: string): Promise<number> {
-  if (!userId) return 0;
+export async function satisfyPendingStepUpChallenges(env: Env, userId: string, sessionToken: string): Promise<number> {
+  if (!userId || !sessionToken) return 0;
   const now = new Date().toISOString();
   const result = await env.DB.prepare(
     `UPDATE session_step_up_requirements
      SET satisfied_at = ?, satisfied_method = 'mfa_proof'
-     WHERE user_id = ? AND satisfied_at IS NULL AND challenge_expires_at > ?`,
+     WHERE user_id = ? AND session_token = ? AND satisfied_at IS NULL AND challenge_expires_at > ?`,
   )
-    .bind(now, userId, now)
+    .bind(now, userId, sessionToken, now)
     .run();
   return result.meta.changes;
+}
+
+/** Called only at the verified, authenticated rotation boundary, never for ordinary sign-ins. */
+export async function transferVerifiedStepUpChallenge(env: Env, userId: string, predecessor: string, successor: string): Promise<void> {
+  if (!userId || !predecessor || !successor || predecessor === successor) return;
+  const now = new Date().toISOString();
+  const results = await env.DB.batch([
+    env.DB.prepare(`INSERT INTO session_step_up_requirements
+      (session_token, user_id, reasons, request_path, created_at, challenge_expires_at, satisfied_at, satisfied_method)
+      SELECT ?, user_id, reasons, request_path, created_at, challenge_expires_at,
+        CASE WHEN challenge_expires_at > ? THEN ? ELSE NULL END,
+        CASE WHEN challenge_expires_at > ? THEN 'mfa_rotation' ELSE NULL END
+      FROM session_step_up_requirements
+      WHERE session_token = ? AND user_id = ? AND satisfied_at IS NULL
+      ON CONFLICT(session_token) DO NOTHING`).bind(successor, now, now, now, predecessor, userId),
+    env.DB.prepare(`UPDATE session_step_up_requirements SET satisfied_at = ?, satisfied_method = 'mfa_rotation'
+      WHERE session_token = ? AND user_id = ? AND satisfied_at IS NULL AND challenge_expires_at > ?`)
+      .bind(now, predecessor, userId, now),
+  ]);
+  if (results[0]?.meta.changes) {
+    const digest = async (token: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))))
+      .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    await insertAuditEvent(env, {
+      id: crypto.randomUUID(), actor_user_id: userId, target_user_id: userId,
+      event_type: "authentication.session.rotation_transfer", outcome: "success",
+      request_path: "/api/auth/two-factor/verify", event_context: {
+        predecessorDigest: await digest(predecessor), successorDigest: await digest(successor),
+      },
+    });
+  }
 }
 
 /**

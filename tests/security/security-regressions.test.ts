@@ -18,7 +18,7 @@ const execution = {} as ExecutionContext;
 describe("security regressions", () => {
   test("OPAQUE login endpoints are served and gated", async () => {
     const { default: worker } = await import("../../src/index");
-    const env = { AUTH_SECRET: "security-review-secret-0123456789abcdef", AUTH_BASE_URL: "https://idp.test", DB: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({ meta: { changes: 0 } }), all: async () => ({ results: [] }) }) }) } } as unknown as Env;
+    const env = { AUTH_SECRET: "security-review-secret-0123456789abcdef", AUTH_BASE_URL: "https://idp.test", DB: { prepare: () => ({ all: async () => ({ results: [] }), bind: () => ({ first: async () => null, run: async () => ({ meta: { changes: 0 } }), all: async () => ({ results: [] }) }) }) } } as unknown as Env;
     const headers = { "Content-Type": "application/json", Origin: "https://idp.test" };
     // Registration requires a session; with the bare stub the session
     // lookup itself fails, so only assert the route is mounted (not 404).

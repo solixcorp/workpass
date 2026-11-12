@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794459899-ebe"
+type = "requirement"
+title = "Step-up satisfaction is session-scoped with audited rotation lineage (F7)"
+description = "A step-up challenge may only be satisfied by the acting session's own verification. When a verified session rotation happens (same-user successor after a verified predecessor is deleted), the pending challenge is explicitly transferred to the successor and one audit event records the SHA-256 digests of the predecessor/successor tokens. Independent sessions of the same user never satisfy each other's challenges."
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794459899-ksa"
+type = "has_criterion"

@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-w7p"
+type = "criterion"
+title = "Alternative grants gated like interactive"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "A pending device/CIBA grant owned by a policy-denied user or evaluated under a policy error"
+then = "It is rejected and the grant is not consumed; entitled users with satisfied MFA approve and redeem normally"
+when = "Approval or redemption is requested"

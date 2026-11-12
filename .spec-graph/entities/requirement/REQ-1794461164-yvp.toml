@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794461164-yvp"
+type = "requirement"
+title = "Device/CIBA pending caps are atomic with consistent expiry units"
+description = "Grant creation enforces per-client/per-user pending caps inside the INSERT statement itself (conditional INSERT ... SELECT) and compares expiry in the stored unit, so concurrent issuers cannot exceed caps and expired rows no longer count. Closes run-1 lead oauth.device-ciba.nonatomic-pending-cap."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-c4d"
+type = "has_criterion"

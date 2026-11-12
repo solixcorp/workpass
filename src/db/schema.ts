@@ -1,6 +1,28 @@
 import type { Env } from "../env";
 
 export async function ensureApplicationTables(env: Env): Promise<void> {
+  // Some isolated callers initialise application tables without Better Auth.
+  // The real migration creates its user table first.
+  const userColumns = await env.DB.prepare('PRAGMA table_info("user")').all<{ name: string }>();
+  if (["id", "role", "banned"].every((name) => userColumns.results.some((column) => column.name === name))) {
+    // Match comma-separated roles, including whitespace around role names.
+    const isAdmin = (role: string) => `EXISTS (WITH RECURSIVE roles(value, rest) AS (
+      SELECT '', COALESCE(${role}, '') || ',' UNION ALL
+      SELECT substr(rest, 1, instr(rest, ',') - 1), substr(rest, instr(rest, ',') + 1)
+      FROM roles WHERE rest != ''
+    ) SELECT 1 FROM roles WHERE trim(value, char(9,10,11,12,13,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279)) = 'admin')`;
+    const otherAdmin = `EXISTS (SELECT 1 FROM "user" WHERE id != OLD.id AND COALESCE(banned, 0) = 0 AND ${isAdmin('role')})`;
+    await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS protect_last_active_admin_update
+      BEFORE UPDATE OF role, banned ON "user"
+      WHEN COALESCE(OLD.banned, 0) = 0 AND ${isAdmin('OLD.role')}
+        AND (COALESCE(NEW.banned, 0) != 0 OR NOT (${isAdmin('NEW.role')}))
+        AND NOT ${otherAdmin}
+      BEGIN SELECT RAISE(ABORT, 'last administrator'); END`).run();
+    await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS protect_last_active_admin_delete
+      BEFORE DELETE ON "user"
+      WHEN COALESCE(OLD.banned, 0) = 0 AND ${isAdmin('OLD.role')} AND NOT ${otherAdmin}
+      BEGIN SELECT RAISE(ABORT, 'last administrator'); END`).run();
+  }
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS opaque_server_material (
       id TEXT PRIMARY KEY NOT NULL,

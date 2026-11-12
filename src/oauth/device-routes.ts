@@ -12,6 +12,7 @@ import { Hono, type Context } from "hono";
 import type { Env } from "../env";
 import { insertAuditEvent } from "../audit/store";
 import { createAuth } from "../auth/config";
+import { checkOidcAccess } from "../access/oidc-gate";
 import {
   createDeviceGrant, decideDeviceGrant, loadDeviceGrantByUserCode, normalizeUserCode,
 } from "./device-flow";
@@ -126,6 +127,16 @@ async function decide(context: Context<{ Bindings: Env }>, approve: boolean): Pr
   const userCodeRaw = form.user_code as string | undefined;
   const userCode = typeof userCodeRaw === "string" ? normalizeUserCode(userCodeRaw) : "";
   if (!userCode) return context.json({ error: "invalid_request" }, 400);
+  if (approve) {
+    try {
+      const grant = await loadDeviceGrantByUserCode(env, userCode);
+      if (!grant || grant.status !== "pending") return context.json({ error: "invalid_request" }, 409);
+      const denied = await checkOidcAccess(env, grant.clientId, session);
+      if (denied) return denied;
+    } catch {
+      return context.json({ error: "Authorization policy unavailable" }, 503);
+    }
+  }
   const decided = await decideDeviceGrant(env, userCode, approve, session.user.id, session.session.id).catch(() => false);
   await audit(env, {
     actor_user_id: session.user.id, target_user_id: session.user.id,

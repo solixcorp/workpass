@@ -1,0 +1,19 @@
+schema = 1
+id = "DEC-1794461164-nfb"
+type = "decision"
+title = "Password rules: server-verified for plaintext writes, browser-advisory for OPAQUE flows"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+date = "2026-11-12"
+rationale = "OPAQUE RegistrationRecords cryptographically cannot reveal password complexity, so a claimed server-side check would be fake enforcement. The honest fix enforces rules where the server receives plaintext and labels OPAQUE flows advisory in the API payload and docs; the residual risk stays owner-visible."
+
+[[relations]]
+to = "REQ-1794461164-m6c"
+type = "references"
+
+[[relations]]
+to = "RSK-1794461164-6y7"
+type = "references"

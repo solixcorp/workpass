@@ -11,14 +11,17 @@ import { revokeTrustedDevices } from "../security/trusted-device-store";
 import { enforceOidcPolicy } from "../access/oidc-gate";
 import { recordOAuthGrant } from "../security/app-grants";
 import { recordLogin } from "../users/login-history";
-import { enforceLocationAfterPasskeyLogin, locationGate } from "../security/location-gate";
+import { locationGate } from "../security/location-gate";
 import { notifySecurity } from "../users/notifications";
 import { mfaEnrolledNotice, mfaRemovedNotice } from "../users/security-notices";
-import { recordSessionMfaProof } from "../mfa/second-factor";
+import { mayEnrollFactor, recordSessionMfaProof } from "../mfa/second-factor";
 import { findNewSessionFromResponse } from "../security/risk-auth-middleware";
 import { enforceMfaPolicy } from "../mfa/policy";
 import { appSessionSnapshot, logoutUserFromApps } from "../oauth/app-logout";
 import { revokeOAuth1UserTokens } from "../oauth1/store";
+import { enforceSessionGeoBinding } from "../security/session-geo-binding";
+import { administratorMfaAllowed } from "../security/authorization";
+import { transferVerifiedStepUpChallenge } from "../security/step-up";
 
 const auditEventTypes: Record<string, string> = {
   "POST /api/auth/sign-up/email": "identity.user.public_registration.denied",
@@ -67,6 +70,24 @@ function getResponseUserId(value: unknown): string | null {
   return typeof id === "string" ? id : null;
 }
 
+// Better Auth can wrap a database trigger abort in its own generic error
+// response. Recheck the invariant after a failed mutation so a racing caller
+// receives the same conflict as the pre-check, without masking a success.
+async function lastAdminConflict(env: Env, path: string, targetUserId: string | null, body: { role?: unknown } | null): Promise<Response | null> {
+  if (!targetUserId || !["/api/auth/admin/ban-user", "/api/auth/admin/set-role"].includes(path)) return null;
+  if (path.endsWith("set-role")) {
+    const roles = typeof body?.role === "string" ? body.role.split(",") : Array.isArray(body?.role) ? body.role : [];
+    if (roles.some((role) => typeof role === "string" && role.trim() === "admin")) return null;
+  }
+  const target = await env.DB.prepare('SELECT role, banned FROM "user" WHERE id = ?').bind(targetUserId)
+    .first<{ role: string | null; banned: number | null }>();
+  if (!target || target.banned || !target.role?.split(",").some((role) => role.trim() === "admin")) return null;
+  const others = await env.DB.prepare('SELECT role FROM "user" WHERE id != ? AND COALESCE(banned, 0) = 0')
+    .bind(targetUserId).all<{ role: string | null }>();
+  if (others.results.some((row) => row.role?.split(",").some((role) => role.trim() === "admin"))) return null;
+  return Response.json({ error: path.endsWith("ban-user") ? "마지막 관리자는 차단할 수 없습니다." : "마지막 관리자는 권한을 변경할 수 없습니다." }, { status: 409 });
+}
+
 export async function auditAuthRequest(request: Request, env: Env): Promise<Response> {
   const auth = createAuth(env);
   const path = new URL(request.url).pathname;
@@ -80,13 +101,45 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
+  const bindingRejection = await enforceSessionGeoBinding({ request, env, auth });
+  if (bindingRejection) return bindingRejection;
+
+  if (path.startsWith("/api/auth/admin/")) {
+    const actor = await auth.api.getSession({ headers: request.headers }).catch(() => null);
+    if (!actor) return Response.json({ error: "Unauthorized" }, { status: 401 });
+    if (!await administratorMfaAllowed(env, actor)) {
+      return Response.json({ error: "Additional verification is required" }, { status: 403 });
+    }
+  }
+
   const policyRejection = await enforceOidcPolicy(request, env, auth);
   if (policyRejection) return policyRejection;
 
-  if (request.method === "POST" && (path.startsWith("/api/auth/two-factor/") || path.startsWith("/api/auth/passkey/"))) {
+  if ((request.method === "POST" && (path.startsWith("/api/auth/two-factor/") || path.startsWith("/api/auth/passkey/"))) ||
+      (request.method === "GET" && path === "/api/auth/passkey/generate-register-options")) {
     const actor = await auth.api.getSession({ headers: request.headers }).catch(() => null);
     const mfaRejection = await enforceMfaPolicy(request, env, actor);
     if (mfaRejection) return mfaRejection;
+    if (actor) {
+      try {
+        let enrollment = path === "/api/auth/passkey/generate-register-options" || path === "/api/auth/passkey/verify-registration";
+        if (path === "/api/auth/two-factor/verify-totp") {
+          const factor = await env.DB.prepare('SELECT verified FROM "twoFactor" WHERE "userId" = ? LIMIT 1')
+            .bind(actor.user.id).first<{ verified: number | boolean | null }>();
+          enrollment = !!factor && factor.verified !== 1 && factor.verified !== true;
+        } else if (path === "/api/auth/two-factor/verify-otp") {
+          const user = await env.DB.prepare('SELECT "twoFactorEnabled" AS enabled FROM "user" WHERE id = ?')
+            .bind(actor.user.id).first<{ enabled: number | boolean | null }>();
+          if (!user) throw new Error("Missing user");
+          enrollment = !user.enabled;
+        }
+        if (enrollment && !await mayEnrollFactor(env, actor)) {
+          return Response.json({ error: "Additional verification is required before adding a factor." }, { status: 403 });
+        }
+      } catch {
+        return Response.json({ error: "Factor enrollment could not be checked" }, { status: 503 });
+      }
+    }
   }
 
   if (request.method === "POST" && twoFactorVerifyPaths.has(path)) {
@@ -242,7 +295,11 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
     } catch {
       // Keep the started event for operational reconciliation.
     }
-    return Response.json({ error: "Authentication operation failed" }, { status: 500 });
+    return await lastAdminConflict(env, path, targetUserId, adminBody).catch(() => null)
+      ?? Response.json({ error: "Authentication operation failed" }, { status: 500 });
+  }
+  if (response.status >= 500) {
+    response = await lastAdminConflict(env, path, targetUserId, adminBody).catch(() => null) ?? response;
   }
   if (response.ok && targetUserId && (path === "/api/auth/admin/ban-user" || path === "/api/auth/admin/revoke-user-sessions")) {
     await logoutUserFromApps(env, targetUserId, { reason: path, snapshot: appLogout });
@@ -292,15 +349,6 @@ export async function auditAuthRequest(request: Request, env: Env): Promise<Resp
       ) {
         actorUserId = responseUserId;
         targetUserId = null;
-        if (path === "/api/auth/passkey/verify-authentication") {
-          // The passkey signed in; a place the policy does not allow takes the session back.
-          const denied = await enforceLocationAfterPasskeyLogin(env, request, response, responseUserId, path);
-          if (denied) {
-            await updateAuditEvent(env, eventId, { actor_user_id: responseUserId, target_user_id: null, outcome: "failure" }).catch(() => null);
-            return denied;
-          }
-          await recordLogin(env, request, responseUserId, "passkey");
-        }
       }
     } catch {
       // Some successful endpoints have no JSON body.
@@ -401,6 +449,18 @@ async function performTwoFactorVerification(request: Request, env: Env, auth: Au
     : userId && otpCode ? await (await import("../mfa/otp-channel")).otpChannel(env, userId, otpCode) : undefined;
   if (!token || !userId || !(await recordSessionMfaProof(env, token, userId, method))) {
     return { response: Response.json({ error: "The verification could not be recorded" }, { status: 503 }), userId: userId ?? undefined, method };
+  }
+  const previousToken = priorSession?.session?.token;
+  if (issuedSession && priorSession?.user.id === userId && typeof previousToken === "string" && previousToken !== token) {
+    try {
+      // The verification endpoint authenticated the predecessor and issued this
+      // successor; deletion distinguishes actual rotation from another login.
+      if (await sessionUserIdForToken(env, previousToken) === null) {
+        await transferVerifiedStepUpChallenge(env, userId, previousToken, token);
+      }
+    } catch {
+      return { response: Response.json({ error: "The verification could not be recorded" }, { status: 503 }), userId, method };
+    }
   }
   if (issuedSession && !priorSession) await recordLogin(env, request, userId, "password", token);
   if (enrolling && enrolling.user.id === userId && wasEnabled && !wasEnabled.enabled) {

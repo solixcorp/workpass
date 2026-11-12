@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794459899-bex"
+type = "requirement"
+title = "New factor enrollment/confirmation requires a proof from an existing trusted factor (F5)"
+description = "Adding or confirming a second factor on an account that already has one enrolled factor requires a current session-bound proof from a trusted factor; a brand-new factor's confirmation must not satisfy a pre-existing required challenge. First-ever enrollment (zero factors, no challenge) stays allowed. Covers self-service HOTP/OTP/Duo routes (src/mfa/duo-routes.ts) and better-auth twoFactor/passkey plugin endpoints at the proxy middleware. Method-allow switches enforced server-side."
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794459899-8bb"
+type = "has_criterion"

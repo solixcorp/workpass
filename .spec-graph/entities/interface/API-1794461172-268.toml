@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794461172-268"
+type = "interface"
+title = "Password-entry enforcement + rules scope metadata (auth-hooks, bootstrap, password-rules-routes)"
+description = "reqB"
+status = "draft"
+created_at = 2026-11-12T14:26:12+09:00
+updated_at = 2026-11-12T14:26:12+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794461164-m6c"
+type = "implements"

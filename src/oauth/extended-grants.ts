@@ -20,6 +20,7 @@ import { APIError } from "better-auth/api";
 import type { OAuthProviderExtension, OAuthExtensionGrantHandlerInput, SchemaClient, Scope } from "@better-auth/oauth-provider";
 import type { Env } from "../env";
 import { insertAuditEvent } from "../audit/store";
+import { checkOidcAccess } from "../access/oidc-gate";
 import {
   consumeDeviceGrant, deviceGrantPollIntervalViolated, loadDeviceGrantByCode, DEVICE_CODE_GRANT,
 } from "./device-flow";
@@ -43,7 +44,7 @@ function clientAllowsGrant(client: { grantTypes?: string[] }, grantType: string)
 }
 
 /** Shared poll state machine. Returns the response for the grant issuer. */
-type GrantState = { kind: "issue"; userId: string; sessionId: string; scopes: string[] };
+type GrantState = { kind: "issue"; userId: string; sessionId: string; scopes: string[]; consume: () => Promise<boolean> };
 
 async function pollState(env: Env, state: {
   status: "pending" | "approved" | "denied" | "consumed";
@@ -56,9 +57,9 @@ async function pollState(env: Env, state: {
   if (state.intervalViolated) invalid("slow_down");
   if (state.status === "pending") invalid("authorization_pending");
   if (state.status === "denied") reject("access_denied", "The end user denied the request");
-  if (state.status !== "approved" || !(await state.consume())) invalid("invalid_grant");
+  if (state.status !== "approved") invalid("invalid_grant");
   if (!state.userId || !state.sessionId) invalid("invalid_grant"); // corrupt row: fail closed
-  return { kind: "issue", userId: state.userId, sessionId: state.sessionId, scopes: state.scopes };
+  return { kind: "issue", userId: state.userId, sessionId: state.sessionId, scopes: state.scopes, consume: state.consume };
 }
 
 async function issueForUser(
@@ -72,8 +73,29 @@ async function issueForUser(
   const account = await env.DB.prepare('SELECT banned FROM "user" WHERE id = ? LIMIT 1')
     .bind(state.userId).first<{ banned: number | null }>();
   if (!account || (account.banned !== 0 && account.banned !== null)) return invalid("invalid_grant");
+  try {
+    const row = await env.DB.prepare('SELECT token, "userId", "expiresAt" FROM "session" WHERE id = ? LIMIT 1')
+      .bind(state.sessionId).first<{ token: string; userId: string; expiresAt: string | number }>();
+    const expires = typeof row?.expiresAt === "number"
+      ? (row.expiresAt < 100_000_000_000 ? row.expiresAt * 1000 : row.expiresAt)
+      : Date.parse(row?.expiresAt ?? "");
+    if (!row || row.userId !== state.userId || !Number.isFinite(expires) || expires <= Date.now()) return invalid("invalid_grant");
+    const policyUser = await env.DB.prepare('SELECT role FROM "user" WHERE id = ? LIMIT 1')
+      .bind(state.userId).first<{ role: string | null }>();
+    if (!policyUser) return invalid("invalid_grant");
+    const denied = await checkOidcAccess(env, client.clientId, { user: { id: state.userId, role: policyUser.role }, session: { token: row.token } });
+    if (denied) return invalid("access_denied");
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError("SERVICE_UNAVAILABLE", { error: "temporarily_unavailable", error_description: "Authorization policy unavailable" });
+  }
   const user = await input.ctx.context.internalAdapter.findUserById(state.userId);
   if (!user) return invalid("invalid_grant");
+  // Policy/MFA failures must leave the one-time grant retryable. The conditional
+  // UPDATE still checks approved status and expiry and admits only one redeemer.
+  // Policy can change between this check and consumption (bounded TOCTOU);
+  // policy evaluation and grant consumption do not share a DB transaction.
+  if (!(await state.consume())) return invalid("invalid_grant");
   // Before issuance: if audit is unavailable, do not mint a token (the same
   // discipline as the token-exchange grant).
   await insertAuditEvent(env, { id: crypto.randomUUID(), actor_user_id: state.userId,

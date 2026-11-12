@@ -77,4 +77,39 @@ describe("ciba request store", () => {
     const remaining = await e.DB.prepare("SELECT COUNT(*) AS c FROM oauth_ciba_requests").first<{ c: number }>();
     expect(remaining?.c).toBe(0);
   });
+
+  test("concurrent issuance atomically caps one user across clients", async () => {
+    const e = await env();
+    const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => createCibaRequest(e, {
+      clientId: `cli-${i}`, userId: "u1", scopes: ["openid"], bindingMessage: "",
+    })));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(5);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(5);
+    expect(await e.DB.prepare("SELECT COUNT(*) AS c FROM oauth_ciba_requests").first("c")).toBe(5);
+  });
+
+  test("concurrent issuance atomically caps one client across users", async () => {
+    const e = await env();
+    const results = await Promise.allSettled(Array.from({ length: 30 }, (_, i) => createCibaRequest(e, {
+      clientId: "cli-1", userId: `u-${i}`, scopes: ["openid"], bindingMessage: "",
+    })));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(20);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(10);
+    await expect(createCibaRequest(e, { clientId: "cli-1", userId: "another-user", scopes: [], bindingMessage: "" }))
+      .rejects.toThrow("ciba_client_cap_reached");
+    expect(await e.DB.prepare("SELECT COUNT(*) AS c FROM oauth_ciba_requests").first("c")).toBe(20);
+  });
+
+  test("expired requests leave pending lists and free both quotas before cleanup", async () => {
+    const e = await env();
+    for (let i = 0; i < 20; i++) await createCibaRequest(e, {
+      clientId: "cli-1", userId: `u-${Math.floor(i / 5)}`, scopes: [], bindingMessage: "",
+    });
+    await e.DB.prepare("UPDATE oauth_ciba_requests SET expires_at = ?").bind(Date.now() - 1000).run();
+    expect(await listPendingCibaRequests(e, "u-0")).toEqual([]);
+    await expect(createCibaRequest(e, { clientId: "cli-1", userId: "u-0", scopes: [], bindingMessage: "" }))
+      .resolves.toBeDefined();
+    expect(await listPendingCibaRequests(e, "u-0")).toHaveLength(1);
+    expect(await e.DB.prepare("SELECT COUNT(*) AS c FROM oauth_ciba_requests").first("c")).toBe(21);
+  });
 });

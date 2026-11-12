@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794461164-2bx"
+type = "criterion"
+title = "Vetoes deny outright"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+given = "Two eligible reviewers decide concurrently and one denial is recorded before approval finalization"
+then = "Terminal state is denied with no grant despite enough approvals"
+when = "The approval UPDATE runs"

@@ -60,7 +60,7 @@ class SmtpSession {
   private readonly decoder = new TextDecoder();
   private readonly encoder = new TextEncoder();
   private readonly timeoutMs: number;
-  /** Does this connection still want a STARTTLS upgrade? Cleared after one. */
+  /** Does this connection still require STARTTLS? Cleared only after TLS opens. */
   private wantsStartTls: boolean;
 
   constructor(socket: SmtpSocket, private readonly ehloName: string, wantsStartTls: boolean, timeoutMs: number) {
@@ -118,15 +118,19 @@ class SmtpSession {
     return response;
   }
 
-  /** TLS upgrade when required and advertised; re-EHLO per RFC 3207. */
+  /** Fail closed when STARTTLS is required; re-EHLO after TLS opens per RFC 3207. */
   private async maybeStartTls(ehloResponse: string): Promise<string> {
-    if (!this.wantsStartTls || !ehloResponse.includes("STARTTLS")) return ehloResponse;
+    if (!this.wantsStartTls) return ehloResponse;
+    if (!/^250[ -]STARTTLS(?:[ \t]|\r?$)/im.test(ehloResponse)) {
+      throw new Error("SMTP STARTTLS required but not offered by the server");
+    }
     await this.command("STARTTLS", "2", "STARTTLS");
     this.reader.releaseLock();
     this.writer.releaseLock();
     this.socket = this.socket.startTls();
     this.reader = this.socket.readable.getReader() as SocketReader;
     this.writer = this.socket.writable.getWriter() as SocketWriter;
+    await this.withTimeout(this.socket.opened, "STARTTLS handshake");
     this.wantsStartTls = false;
     return this.ehlo();
   }

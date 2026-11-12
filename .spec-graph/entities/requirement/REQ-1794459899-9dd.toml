@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794459899-9dd"
+type = "requirement"
+title = "STARTTLS-selected SMTP requires a successful TLS upgrade before AUTH/delivery (F8)"
+description = "When the starttls transport is selected (explicitly or by port 587), a missing STARTTLS advertisement or a failed/timed-out upgrade aborts before any AUTH or message bytes; delivery failures propagate observably. Explicit plaintext transports and implicit-TLS ports are unaffected. Evidence: audit codex-scan-1 F8 - maybeStartTls returned plaintext EHLO capabilities and deliver proceeded (CWE-757)."
+status = "active"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794459899-v72"
+type = "has_criterion"

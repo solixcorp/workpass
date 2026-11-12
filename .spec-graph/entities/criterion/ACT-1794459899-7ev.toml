@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-7ev"
+type = "criterion"
+title = "oauth_query only through the gate"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "Any /api/auth/* request outside authorize/consent/continue carrying oauth_query"
+then = "oauth_query is stripped before the provider hook while the three gated paths keep it and enforce the access/MFA decision"
+when = "It reaches the proxy"

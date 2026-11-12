@@ -39,7 +39,7 @@ function contentTypeFromMagicBytes(bytes: Uint8Array): string | null {
   if (startsWith([0xff, 0xd8, 0xff])) return "image/jpeg";
   if (startsWith([0x47, 0x49, 0x46, 0x38])) return "image/gif";
   if (bytes.length >= 12 && startsWith([0x52, 0x49, 0x46, 0x46]) &&
-      startsWith([0x57, 0x45, 0x42, 0x50])) {
+      [0x57, 0x45, 0x42, 0x50].every((byte, index) => bytes[index + 8] === byte)) {
     return "image/webp";
   }
   return null;
@@ -68,6 +68,11 @@ export function sniffImageType(bytes: Uint8Array): { contentType: string; ext: s
 
 export function iconsBucket(env: Env): R2Bucket | null {
   return env.APPLICATION_ICONS ?? null;
+}
+
+export async function readIconBytes(file: Blob): Promise<Uint8Array | null> {
+  if (file.size > ICON_MAX_BYTES) return null;
+  return new Uint8Array(await file.arrayBuffer());
 }
 
 export async function putApplicationIcon(

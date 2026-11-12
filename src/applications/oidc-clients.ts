@@ -124,7 +124,7 @@ export function validateClientInput(raw: unknown, mode: "create" | "patch"): Par
   const type = out.applicationType ?? (value.applicationType as ClientType | undefined) ?? "web";
 
   if (value.grants !== undefined) {
-    if (!Array.isArray(value.grants) || value.grants.some((g) => typeof g !== "string" || !(g in GRANTS))) {
+    if (!Array.isArray(value.grants) || value.grants.some((g) => typeof g !== "string" || !Object.hasOwn(GRANTS, g))) {
       throw new Error("지원하지 않는 부여 방식이 있습니다.");
     }
     out.grants = [...new Set(value.grants as GrantKey[])];

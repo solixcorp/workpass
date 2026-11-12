@@ -19,11 +19,23 @@ Two blockers must be resolved before enabling deletion:
   removal of the last account administrator; user deletion needs an equivalent
   invariant. Do not infer a rule about account creators or sole ordinary members.
 
-The last-active-platform-administrator checks for ban and role change are
-pre-checks, not transactional invariants: concurrent operations can both pass.
-They require database-level serialization or an equivalent atomic guard before
-they can guarantee the invariant. Other administrative user-write paths must
-also be reviewed for bypasses.
+After the application migration, SQLite triggers prevent an update or delete
+of the last active platform administrator. The HTTP pre-check remains for a
+clear conflict response. In a concurrent ban, the losing administrator may
+instead receive 401 if the winning ban has already revoked their session.
+The same invariant prevents emergency lockdown of the last administrator;
+the lockdown endpoint returns 409 without locking the account. Establish a
+second active administrator first. This is a security/availability tradeoff:
+it also prevents a sole administrator from self-locking a compromised account.
+The triggers must be installed by running the migration before relying on this
+invariant; installations that have not run it still have only the pre-check.
+
+SCIM transport classifies HTTP 500, 408, 409, network errors and invalid
+responses as outcome unknown. A 500 can follow a committed remote change, so
+automatically retrying it conflicts with the requirement to stop until an
+administrator reconciles unknown outcomes. A safe deletion design must use
+the existing SCIM resolve workflow before continuing, not silently retry.
+The proposed automatic recovery from a stubbed 500 needs product clarification.
 
 Audit events are retained. A future implementation must preserve their existing
 hashes, capture the deleted email/name with the agreed limits, revoke all tokens

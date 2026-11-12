@@ -231,10 +231,20 @@ export async function enforceSessionNetworkBinding(input: {
     // session termination itself is the durable protection.
   }
   if (verdict.action === "observe") return null;
+  await revokeBoundSession(env, input.sessionToken!, input.userId!);
   return Response.json(
     { error: "Session was terminated because the network or location changed" },
     { status: 401 },
   );
+}
+
+/** Atomically revoke a session and its token-bound application state. */
+export async function revokeBoundSession(env: Env, token: string, userId: string): Promise<void> {
+  await env.DB.batch([
+    ...["session_mfa_proofs", "session_step_up_requirements", "session_network_bindings", "account_session_contexts"]
+      .map((table) => env.DB.prepare(`DELETE FROM ${table} WHERE session_token = ? AND user_id = ?`).bind(token, userId)),
+    env.DB.prepare('DELETE FROM "session" WHERE token = ? AND "userId" = ?').bind(token, userId),
+  ]);
 }
 
 async function evaluateSessionBinding(input: {
@@ -331,8 +341,8 @@ export function sessionTokenFromRequest(request: Request): string | null {
 
 /**
  * Resolve the acting session once and evaluate its network/location envelope.
- * Called from auditAuthRequest for every Better Auth request; unauthenticated
- * visitors and binding-evaluation failures never block the underlying flow.
+ * Called from auditAuthRequest; unauthenticated visitors remain allowed.
+ * Evaluation failures fail closed in enforce mode.
  * Binding data is only checked on interactive identity surfaces (session
  * validation and OAuth authorization/consent), matching the codebase policy
  * of evaluating risk at identity boundaries rather than on every request.
@@ -358,15 +368,15 @@ export async function enforceSessionGeoBinding(input: {
   try {
     const session = await input.auth.api.getSession({ headers: input.request.headers });
     if (!session) return null;
+    if (!session.session?.token) throw new Error("Session token unavailable");
     return await enforceSessionNetworkBinding({
       request: input.request,
       env: input.env,
-      sessionToken: sessionTokenFromRequest(input.request),
+      sessionToken: session.session.token,
       userId: session.user.id,
       path,
     });
   } catch {
-    // A binding evaluation failure must not become an availability failure.
-    return null;
+    return mode === "enforce" ? Response.json({ error: "Session binding verification is unavailable" }, { status: 503 }) : null;
   }
 }

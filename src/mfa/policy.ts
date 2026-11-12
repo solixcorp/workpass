@@ -67,7 +67,7 @@ const TOTP_PATHS = new Set([
 export async function enforceMfaPolicy(
   request: Request,
   env: Env,
-  session: { user: { id: string; role?: unknown } } | null,
+  session: { user: { id: string; role?: unknown }; session?: { token?: unknown } | null } | null,
 ): Promise<Response | null> {
   if (request.method !== "POST") return null;
   const path = new URL(request.url).pathname;
@@ -82,6 +82,9 @@ export async function enforceMfaPolicy(
     return deny("일회용 코드는 사용할 수 없습니다.");
   }
   if (path === "/api/auth/two-factor/enable") {
+    if (session && !(await (await import("./second-factor")).mayEnrollFactor(env, session))) {
+      return deny("Additional verification is required before adding a factor.");
+    }
     let method = "totp";
     try {
       const body = await request.clone().json() as { method?: unknown };

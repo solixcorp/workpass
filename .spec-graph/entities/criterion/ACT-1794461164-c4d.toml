@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794461164-c4d"
+type = "criterion"
+title = "Caps hold under concurrency"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+given = "Pending grants reach the configured cap (or contain expired rows)"
+then = "The single INSERT SELECT enforces the quota atomically with unit-consistent expiry comparisons"
+when = "Another createDeviceGrant/createCibaRequest runs"

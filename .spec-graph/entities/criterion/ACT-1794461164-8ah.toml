@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794461164-8ah"
+type = "criterion"
+title = "Expired requests cannot be approved"
+status = "draft"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+given = "A pending request past pending_expires_at"
+then = "The review is rejected and no vote/grant exists; finalization predicate independently re-verifies expiry"
+when = "A reviewer submits a decision"

@@ -1,0 +1,17 @@
+schema = 1
+id = "REQ-1794461164-1aq"
+type = "requirement"
+title = "Approval honors a recorded reviewer veto"
+description = "The atomic approval finalization excludes requests with a recorded denied vote (and reconciles vetoes to denied terminal state), implementing the documented any-reviewer veto. Closes run-1 lead access/requests/approval-ignores-recorded-denial."
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "non_functional"
+owner = "security-remediation"
+priority = "must"
+
+[[relations]]
+to = "ACT-1794461164-2bx"
+type = "has_criterion"

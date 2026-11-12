@@ -1,0 +1,15 @@
+schema = 1
+id = "TST-1794461164-92s"
+type = "test"
+title = "Password-rule scope + bootstrap enforcement regressions"
+description = "Repository regression evidence: tests/policies/security-regression.test.ts"
+status = "active"
+created_at = 2026-11-12T14:26:04+09:00
+updated_at = 2026-11-12T14:26:04+09:00
+
+[metadata]
+kind = "integration"
+
+[[relations]]
+to = "REQ-1794461164-m6c"
+type = "verifies"

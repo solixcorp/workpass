@@ -21,10 +21,14 @@ async function fixture(options: { deviceFlow: boolean; ciba: boolean }) {
   await ensureApplicationTables(env);
   // The grant handlers re-check the user's ban state at the token moment.
   await env.DB.prepare(
-    'CREATE TABLE IF NOT EXISTS "user" (id TEXT PRIMARY KEY NOT NULL, email TEXT, username TEXT, banned INTEGER)',
+    'CREATE TABLE IF NOT EXISTS "user" (id TEXT PRIMARY KEY NOT NULL, email TEXT, username TEXT, banned INTEGER, role TEXT)',
   ).run();
   await env.DB.prepare('INSERT INTO "user" (id, banned) VALUES (\'u1\', 0)').run();
   await env.DB.prepare('INSERT INTO "user" (id, banned) VALUES (\'u2\', 0)').run();
+  await env.DB.prepare('CREATE TABLE "session" (id TEXT PRIMARY KEY, token TEXT, "userId" TEXT, "expiresAt" INTEGER)').run();
+  for (const id of ["sess-1", "sess-7", "sess-9"]) {
+    await env.DB.prepare('INSERT INTO "session" VALUES (?, ?, ?, ?)').bind(id, `token-${id}`, "u1", Date.now() + 600_000).run();
+  }
   let issued = 0;
   let issuedParams: Record<string, unknown> | null = null;
   let client: Record<string, unknown> = {
@@ -172,3 +176,61 @@ describe("ciba token grant", () => {
     expect(f.issued()).toBe(0);
   });
 });
+
+for (const kind of ["device", "ciba"] as const) {
+  test(`${kind} rechecks session MFA at redemption`, async () => {
+    for (const proof of [false, true]) {
+      const f = await fixture({ deviceFlow: true, ciba: true });
+      f.env.MFA_REQUIRE = "everyone";
+      if (proof) await f.env.DB.prepare(
+        'INSERT INTO session_mfa_proofs (session_token, user_id, verified_at, methods) VALUES (?, ?, ?, ?)',
+      ).bind("token-sess-1", "u1", new Date().toISOString(), "totp").run();
+      let run: Promise<unknown>;
+      if (kind === "device") {
+        const grant = await createDeviceGrant(f.env, "cli-1", ["openid"]);
+        await decideDeviceGrant(f.env, grant.userCode, true, "u1", "sess-1");
+        run = handleDeviceCodeGrant(f.env, f.makeArgs({ grant_type: DEVICE_GRANT, device_code: grant.deviceCode, client_id: "cli-1" }));
+      } else {
+        f.setClient({ clientId: "cli-1", grantTypes: [CIBA_GRANT_TYPE], tokenEndpointAuthMethod: "client_secret_basic" });
+        const grant = await createCibaRequest(f.env, { clientId: "cli-1", userId: "u1", scopes: ["openid"], bindingMessage: "" });
+        await decideCibaRequest(f.env, await sha256Hex(grant.authReqId), "u1", true, "sess-1");
+        run = handleCibaGrant(f.env, f.makeArgs({ grant_type: CIBA_GRANT_TYPE, auth_req_id: grant.authReqId }));
+      }
+      if (proof) await run;
+      else {
+        expect(await rejectsError(run)).toBe("access_denied");
+        const table = kind === "device" ? "oauth_device_grants" : "oauth_ciba_requests";
+        expect(await f.env.DB.prepare(`SELECT status FROM ${table}`).first("status")).toBe("approved");
+      }
+      expect(f.issued()).toBe(proof ? 1 : 0);
+    }
+  });
+  test(`${kind} fails closed when policy storage is unavailable`, async () => {
+    const f = await fixture({ deviceFlow: true, ciba: true });
+    let args: OAuthExtensionGrantHandlerInput;
+    if (kind === "device") {
+      const grant = await createDeviceGrant(f.env, "cli-1", ["openid"]);
+      await decideDeviceGrant(f.env, grant.userCode, true, "u1", "sess-1");
+      args = f.makeArgs({ grant_type: DEVICE_GRANT, device_code: grant.deviceCode, client_id: "cli-1" });
+    } else {
+      f.setClient({ clientId: "cli-1", grantTypes: [CIBA_GRANT_TYPE], tokenEndpointAuthMethod: "client_secret_basic" });
+      const grant = await createCibaRequest(f.env, { clientId: "cli-1", userId: "u1", scopes: ["openid"], bindingMessage: "" });
+      await decideCibaRequest(f.env, await sha256Hex(grant.authReqId), "u1", true, "sess-1");
+      args = f.makeArgs({ grant_type: CIBA_GRANT_TYPE, auth_req_id: grant.authReqId });
+    }
+    await f.env.DB.prepare("DROP TABLE app_access_policies").run();
+    expect(await rejectsError(kind === "device" ? handleDeviceCodeGrant(f.env, args) : handleCibaGrant(f.env, args))).toBe("temporarily_unavailable");
+    expect(f.issued()).toBe(0);
+    const table = kind === "device" ? "oauth_device_grants" : "oauth_ciba_requests";
+    expect(await f.env.DB.prepare(`SELECT status FROM ${table}`).first("status")).toBe("approved");
+    // Repair the transient failure, respect the poll interval, and retry the
+    // very same grant: policy errors must not burn its single-use capability.
+    await ensureApplicationTables(f.env);
+    await f.elapsePollInterval();
+    await (kind === "device" ? handleDeviceCodeGrant(f.env, args) : handleCibaGrant(f.env, args));
+    expect(f.issued()).toBe(1);
+    await f.elapsePollInterval();
+    expect(await rejectsError(kind === "device" ? handleDeviceCodeGrant(f.env, args) : handleCibaGrant(f.env, args))).toBe("invalid_grant");
+    expect(f.issued()).toBe(1);
+  });
+}

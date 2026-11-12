@@ -41,11 +41,13 @@ describe("security route origins", () => {
       expect(wrong.status).toBe(403);
       expect(await wrong.json()).toEqual({ error: "Invalid origin" });
     }
-    // Enrollment proceeds to the disabled-risk policy; the other operations succeed.
+    // Enrollment proceeds to the disabled-risk policy; device operations succeed.
     expect((await call(routes[0][1], routes[0][0], routes[0][2])).status).toBe(404);
-    for (const [method, path, body] of routes.slice(1)) {
+    for (const [method, path, body] of routes.slice(1, -1)) {
       expect((await call(path, method, body)).status).toBe(200);
     }
+    // Locking the only administrator would remove the last active admin.
+    expect((await call(routes[4][1], routes[4][0], routes[4][2])).status).toBe(409);
   });
 });
 

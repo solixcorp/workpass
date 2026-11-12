@@ -1,0 +1,15 @@
+schema = 1
+id = "API-1794460026-w9k"
+type = "interface"
+title = "Factor enrollment guard (self-service routes + proxy middleware)"
+description = "Enforcement module: src/mfa/duo-routes.ts, src/mfa/second-factor.ts, src/mfa/policy.ts, src/audit/auth-middleware.ts. Requires trusted-factor proof for new-factor enrollment/confirmation; gates better-auth twoFactor/pending-TOTP/passkey registration."
+status = "draft"
+created_at = 2026-11-12T14:07:06+09:00
+updated_at = 2026-11-12T14:07:06+09:00
+
+[metadata]
+kind = "module"
+
+[[relations]]
+to = "REQ-1794459899-bex"
+type = "implements"

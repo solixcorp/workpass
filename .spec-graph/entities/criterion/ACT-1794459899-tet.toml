@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-tet"
+type = "criterion"
+title = "Refresh re-checks entitlement"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "A client with refresh_token + offline_access and a retained refresh token"
+then = "Refresh is rejected fail-closed and audited; entitlement-loss revocation deletes the user's token rows for that client"
+when = "The user loses entitlement or the entitlement/eval check errors"

@@ -1,0 +1,23 @@
+schema = 1
+id = "CHG-1794462184-4rp"
+type = "change"
+title = "Patch: audit hardening quick wins (six items)"
+description = "Non-finding hardening notes from the two-pass audit implemented as mechanical robustness fixes. Completed after Phases 10/11; the remediation phases' task sets were already fixed, so this ships as an independent change unit. QA: bun test tests/applications tests/oidc tests/policies -> 82 passed, 0 failed; full suite 678 passed, 0 failed (2026-11-12)."
+status = "draft"
+created_at = 2026-11-12T14:43:04+09:00
+updated_at = 2026-11-12T14:43:04+09:00
+
+[metadata]
+changed_entities = ["src/applications/icons.ts", "src/applications/admin.ts", "src/applications/oidc-clients.ts", "src/policies/akql.ts", "src/audit/query.ts", "src/oidc/webfinger.ts", ".gitignore", "docs/operations/production-checklist.md"]
+
+[[relations]]
+to = "REQ-1794462184-033"
+type = "covers"
+
+[[relations]]
+to = "TST-1794462184-v3q"
+type = "covers"
+
+[[relations]]
+to = "API-1794462184-4sg"
+type = "references"

@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-ksa"
+type = "criterion"
+title = "Satisfaction stays session-scoped; rotation audited"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "Sessions A and B of one user with a pending challenge on B"
+then = "Only A (or the explicit rotation pair) satisfies challenges; B remains pending; the transfer writes one audit event with SHA-256 token digests that verifies in the chain"
+when = "A completes a non-passkey verification (or a verified rotation creates successor S)"

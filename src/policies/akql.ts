@@ -240,7 +240,9 @@ export function akqlParse(query: string): AkqlNode {
     };
   }
 
-  return parseOr();
+  const root = parseOr();
+  if (peek().type !== "eof") throw new Error("unexpected token in AKQL query");
+  return root;
 }
 
 // The negated-value path above needs `op` in scope; restructure explicitly.

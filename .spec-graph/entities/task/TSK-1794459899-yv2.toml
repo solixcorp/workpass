@@ -1,0 +1,36 @@
+schema = 1
+id = "TSK-1794459899-yv2"
+type = "task"
+title = "Fix F1: strip oauth_query outside gated paths (verified resumption)"
+description = "Close audit finding F1 (CWE-863): the provider's post-login continuation skipped the external application authorization gate."
+status = "resolved"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:05:43+09:00
+
+[metadata]
+acceptance = ["The provider before hook cannot persist oauth_query on ungated endpoints.", "Signed continuation to gated paths still works and the gate enforces assignment/MFA."]
+instructions = ["Strip the oauth_query body field in the proxy (src/auth/routes.ts) for every /api/auth/* request outside authorize/consent/continue.", "Verify the legitimate resumption uses the gated /api/auth/oauth2/continue path (worker-level regression with tampering, denied assignment, allowed continuation)."]
+must_not = ["Do not strip or weaken the gate on authorize/consent/continue.", "Do not edit node_modules."]
+order = 5.0
+qa = [{command = "bun test tests/oidc tests/oauth tests/access", evidence = "tests/oidc/oauth-query-boundary.test.ts", expected = "all pass, exit 0"}]
+references = ["src/auth/routes.ts", "src/access/oidc-gate.ts"]
+
+[[relations]]
+to = "PHS-1794459899-cx3"
+type = "belongs_to"
+
+[[relations]]
+to = "REQ-1794459899-ndg"
+type = "covers"
+
+[[relations]]
+to = "TST-1794459899-jh6"
+type = "covers"
+
+[[relations]]
+to = "REQ-1794459899-ndg"
+type = "delivers"
+
+[[relations]]
+to = "TST-1794459899-jh6"
+type = "delivers"

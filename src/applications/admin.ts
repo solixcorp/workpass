@@ -28,6 +28,7 @@ import {
   iconObjectKey,
   ICON_MAX_BYTES,
   putApplicationIcon,
+  readIconBytes,
 } from "./icons";
 
 export const applicationAdminRoutes = new Hono<{ Bindings: Env }>();
@@ -178,8 +179,8 @@ applicationAdminRoutes.post("/applications/:slug/icon", async (context) => {
     if (!application) {
       return { response: await applicationNotFound(context), actorUserId: actor.userId };
     }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const stored = await putApplicationIcon(context.env, application, bytes);
+    const bytes = await readIconBytes(file);
+    const stored = bytes && await putApplicationIcon(context.env, application, bytes);
     if (!stored) {
       return {
         response: Response.json(

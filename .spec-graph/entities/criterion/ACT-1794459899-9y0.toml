@@ -1,0 +1,12 @@
+schema = 1
+id = "ACT-1794459899-9y0"
+type = "criterion"
+title = "Admin surfaces reject pending sessions"
+status = "draft"
+created_at = 2026-11-12T14:04:59+09:00
+updated_at = 2026-11-12T14:04:59+09:00
+
+[metadata]
+given = "An administrator subject to a required MFA factor holds a password-only session with a pending challenge"
+then = "The request is rejected fail-closed and only a valid session-bound proof admits it"
+when = "They call any requireAdministrator route or a gated better-auth admin proxy endpoint"

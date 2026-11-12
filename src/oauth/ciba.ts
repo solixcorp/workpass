@@ -37,10 +37,6 @@ export interface CibaIssuance {
   intervalSeconds: number;
 }
 
-function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000);
-}
-
 function randomToken(length: number): string {
   const bytes = crypto.getRandomValues(new Uint8Array(length));
   return Array.from(bytes, (byte) => byte % 64).map((value) => {
@@ -68,24 +64,30 @@ export async function createCibaRequest(
   env: Env,
   input: { clientId: string; userId: string; scopes: string[]; bindingMessage: string },
 ): Promise<CibaIssuance> {
-  const pendingForUser = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM oauth_ciba_requests WHERE user_id = ? AND status = 'pending' AND expires_at > ?",
-  ).bind(input.userId, nowSeconds()).first<{ count: number }>();
-  if ((pendingForUser?.count ?? 0) >= MAX_PENDING_CIBA_PER_USER) throw new Error("ciba_user_cap_reached");
-  const pendingForClient = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM oauth_ciba_requests WHERE client_id = ? AND status = 'pending' AND expires_at > ?",
-  ).bind(input.clientId, nowSeconds()).first<{ count: number }>();
-  if ((pendingForClient?.count ?? 0) >= MAX_PENDING_CIBA_PER_CLIENT) throw new Error("ciba_client_cap_reached");
   const authReqId = randomToken(43);
-  const now = nowSeconds();
+  const now = Date.now();
+  // Both quotas are enforced atomically with insertion, excluding expired rows
+  // using the same millisecond units as the stored timestamps.
   const result = await env.DB.prepare(
     `INSERT INTO oauth_ciba_requests
        (auth_req_id_hash, client_id, user_id, scopes, binding_message, status,
         interval_seconds, last_poll_at, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?)`,
+     SELECT ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?
+     WHERE (SELECT COUNT(*) FROM oauth_ciba_requests
+            WHERE user_id = ? AND status = 'pending' AND expires_at > ?) < ?
+       AND (SELECT COUNT(*) FROM oauth_ciba_requests
+            WHERE client_id = ? AND status = 'pending' AND expires_at > ?) < ?`,
   ).bind(await sha256Hex(authReqId), input.clientId, input.userId, JSON.stringify(input.scopes),
-    input.bindingMessage, CIBA_POLL_INTERVAL_SECONDS, Date.now(), (now + CIBA_REQUEST_TTL_SECONDS) * 1000).run();
-  if (!result.success) throw new Error("CIBA request storage failed");
+    input.bindingMessage, CIBA_POLL_INTERVAL_SECONDS, now, now + CIBA_REQUEST_TTL_SECONDS * 1000,
+    input.userId, now, MAX_PENDING_CIBA_PER_USER, input.clientId, now, MAX_PENDING_CIBA_PER_CLIENT).run();
+  if (!result.success || typeof result.meta?.changes !== "number") throw new Error("CIBA request storage failed");
+  if (result.meta.changes !== 1) {
+    // Diagnostic only: the INSERT above already refused issuance atomically.
+    const pendingForUser = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM oauth_ciba_requests WHERE user_id = ? AND status = 'pending' AND expires_at > ?",
+    ).bind(input.userId, now).first<{ count: number }>();
+    throw new Error((pendingForUser?.count ?? 0) >= MAX_PENDING_CIBA_PER_USER ? "ciba_user_cap_reached" : "ciba_client_cap_reached");
+  }
   return { authReqId, expiresInSeconds: CIBA_REQUEST_TTL_SECONDS, intervalSeconds: CIBA_POLL_INTERVAL_SECONDS };
 }
 
@@ -128,7 +130,7 @@ export async function listPendingCibaRequests(env: Env, userId: string): Promise
     `SELECT auth_req_id_hash, ${CIBA_COLUMNS} FROM oauth_ciba_requests
      WHERE user_id = ? AND status = 'pending' AND expires_at > ?
      ORDER BY created_at ASC LIMIT ${MAX_PENDING_CIBA_PER_USER}`,
-  ).bind(userId, nowSeconds()).all<CibaRow & { auth_req_id_hash: string }>();
+  ).bind(userId, Date.now()).all<CibaRow & { auth_req_id_hash: string }>();
   return result.results.map((row) => ({ ...rowToRequest(row), id: row.auth_req_id_hash }));
 }
 

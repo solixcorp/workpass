@@ -10,7 +10,7 @@
 import { describe, expect, test } from "bun:test";
 import { TestD1 } from "../helpers/test-d1";
 import { ensureApplicationTables } from "../../src/db/schema";
-import { insertAuditEvent } from "../../src/audit/store";
+import { insertAuditEvent, updateAuditEvent } from "../../src/audit/store";
 import { AUDIT_BACKUP_PREFIX, backupAuditEvents, verifyAuditBackup } from "../../src/audit/backup";
 
 class FakeR2Bucket {
@@ -51,6 +51,21 @@ async function seedAuditRows(db: TestD1, count: number): Promise<void> {
 }
 
 describe("audit backup export", () => {
+  test("stops at an unfinished event and exports its final fields after finalization", async () => {
+    const { env, db, bucket } = stub();
+    await ensureApplicationTables(env);
+    await seedAuditRows(db, 1);
+    await insertAuditEvent(env, { id: "pending", actor_user_id: null, target_user_id: null, event_type: "test.pending", outcome: "started", request_path: "/test" });
+    await seedAuditRows(db, 2);
+    const at = Date.parse("2026-11-10T09:00:00Z");
+    expect(await backupAuditEvents(env, at)).toEqual({ exported: 1, watermark: 1, backup: true });
+    expect(await backupAuditEvents(env, at)).toEqual({ exported: 0, watermark: 1, backup: true });
+    await updateAuditEvent(env, "pending", { actor_user_id: "actor-final", target_user_id: "target-final", outcome: "failure" });
+    expect(await backupAuditEvents(env, at)).toEqual({ exported: 3, watermark: 4, backup: true });
+    const lines = bucket.store.get(`${AUDIT_BACKUP_PREFIX}2026-11-10.jsonl`)!.trim().split("\n").map((line) => JSON.parse(line));
+    expect(lines[1]).toMatchObject({ id: "pending", outcome: "failure", actor_user_id: "actor-final", target_user_id: "target-final" });
+    expect(await verifyAuditBackup(env)).toEqual({ rows: 4, verified: true, firstProblem: null });
+  });
   test("exports new rows into a dated object keyed by log position", async () => {
     const { env, db, bucket } = stub();
     await ensureApplicationTables(env);
