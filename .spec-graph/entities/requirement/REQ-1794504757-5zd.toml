@@ -1,0 +1,8 @@
+schema = 1
+id = "REQ-1794504757-5zd"
+type = "requirement"
+title = "Reading the browser position is resilient on desktop"
+description = "When the precise browser position is unavailable (macOS CoreLocation kCLErrorLocationUnknown), the app retries with a coarse network fix and explains the cause in plain Korean instead of a generic failure."
+status = "active"
+created_at = 2026-11-13T02:32:37+09:00
+updated_at = 2026-11-13T02:32:37+09:00

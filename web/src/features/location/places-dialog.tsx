@@ -9,7 +9,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { ApiError, apiFetch } from '@/lib/api'
-import { currentPosition } from '@/lib/location'
+import { currentPosition, positionFailureMessage } from '@/lib/location'
 import type { Place } from './types'
 
 /** One allowed place: a name, a centre and a radius. */
@@ -43,8 +43,8 @@ export function PlaceDialog({ open, place, onClose }: { open: boolean; place: Pl
       const position = await currentPosition()
       setLatitude(position.coords.latitude.toFixed(5))
       setLongitude(position.coords.longitude.toFixed(5))
-    } catch {
-      setFailure('현재 위치를 가져오지 못했습니다. 브라우저의 위치 권한을 확인하세요.')
+    } catch (error) {
+      setFailure(positionFailureMessage(error))
     } finally {
       setLocating(false)
     }

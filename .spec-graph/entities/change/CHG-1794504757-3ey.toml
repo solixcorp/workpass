@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794504757-3ey"
+type = "change"
+title = "Fallback to coarse browser position and clearer failure text"
+description = "web/src/lib/location.ts currentPosition tries high accuracy for 10s then a coarse fix; positionFailureMessage maps GeolocationPositionError codes; used by web/src/features/location/places-dialog.tsx. QA: web:build and lint pass; no browser available."
+status = "resolved"
+created_at = 2026-11-13T02:32:37+09:00
+updated_at = 2026-11-13T02:32:37+09:00
+
+[[relations]]
+to = "REQ-1794504757-5zd"
+type = "covers"
