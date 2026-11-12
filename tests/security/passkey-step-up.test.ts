@@ -64,7 +64,10 @@ describe("session-bound passkey step-up", () => {
     publicKey = Buffer.from(cose).toString("base64");
   });
   test("anonymous and unenrolled users are denied", async () => {
-    expect((await enrollment()).verification.required).toBe(false);
+    // No factor yet: adding the first one still needs the password and an emailed code.
+    const first = await enrollment();
+    expect(first.verification.required).toBe(true);
+    expect(first.verification.steps).toMatchObject({ passwordOk: false, secondOk: false, secondMode: "email" });
     expect((await call("/api/security/step-up/passkey/options", {}, true)).status).toBe(401);
     expect((await verify({}, true)).status).toBe(401);
     const response = await options(); expect(response.status).toBe(409); expect(await response.json()).toEqual({ error: "등록된 패스키가 없습니다." });
@@ -188,6 +191,15 @@ describe("session-bound passkey step-up", () => {
 
     const valid = await (await options()).json() as { challenge: string };
     expect((await verify(await assertion(valid.challenge))).status).toBe(200);
+    // The passkey is the second check; the password must be re-proved too.
+    const afterPasskey = await enrollment();
+    expect(afterPasskey.verification.required).toBe(true);
+    expect(afterPasskey.verification.steps).toMatchObject({ passwordOk: false, secondOk: true, secondMode: "existing" });
+    expect((await enable()).status).toBe(403);
+    await db.prepare(
+      `INSERT INTO mfa_enroll_gates (session_token, user_id, password_at) VALUES (?, ?, ?)
+       ON CONFLICT (session_token) DO UPDATE SET password_at = excluded.password_at`,
+    ).bind(token, userId, Date.now()).run();
     expect((await enrollment()).verification.required).toBe(false);
     const enabled = await enable();
     expect(enabled.status).toBe(200);

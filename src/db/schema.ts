@@ -429,6 +429,29 @@ export async function ensureApplicationTables(env: Env): Promise<void> {
       expires_at INTEGER NOT NULL
     )`,
   ).run();
+  // Fresh-reverification gate for adding any second factor: the acting
+  // session must re-prove its password AND a second verification inside a
+  // short window. One row per session; nothing here satisfies app policies.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS mfa_enroll_gates (
+      session_token TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      password_at INTEGER,
+      second_at INTEGER,
+      code_digest TEXT,
+      code_attempts INTEGER NOT NULL DEFAULT 0,
+      code_expires_at INTEGER
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS mfa_gate_transcripts (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      session_token TEXT NOT NULL,
+      expected TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`,
+  ).run();
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS wsfed_relying_parties (
       id TEXT PRIMARY KEY NOT NULL,

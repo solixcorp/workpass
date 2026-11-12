@@ -115,12 +115,12 @@ function SessionsSection() {
                     {entry.ipAddress ? <span className="block">{entry.ipAddress}</span> : null}
                     {!location && !entry.ipAddress ? <span className="block">IP/위치 정보 없음</span> : null}
                     <span className="block">마지막 활동 {formatDateTime(entry.updatedAt ?? entry.createdAt)}</span>
-                    <span className={`block ${TRUST_COPY[entry.trust.level].className}`} title={TRUST_COPY[entry.trust.level].note}>
-                      {entry.trust.level === 'unknown'
-                        ? TRUST_COPY.unknown.note
-                        : `이 기기는 ${TRUST_COPY[entry.trust.level].label}으로 판단했습니다 (점수 ${entry.trust.score}/100)`}
-                    </span>
                   </ItemDescription>
+                  <p className={`text-sm ${TRUST_COPY[entry.trust.level].className}`} title={TRUST_COPY[entry.trust.level].note}>
+                    {entry.trust.level === 'unknown'
+                      ? TRUST_COPY.unknown.note
+                      : `이 기기는 ${TRUST_COPY[entry.trust.level].label}으로 판단했습니다 (점수 ${entry.trust.score}/100)`}
+                  </p>
                 </ItemContent>
                 {!isCurrent ? (
                   <ItemActions>

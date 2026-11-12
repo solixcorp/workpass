@@ -62,6 +62,8 @@ function appChallenge(body: unknown): StepUpUi | null {
   return ui && Array.isArray(ui.methods) && ui.methods.length > 0 ? ui : null
 }
 
+const CHECKING_DEVICE = '기기를 확인하는 중입니다…'
+
 export function LoginPage() {
   const queryClient = useQueryClient()
   const { oq } = useSearch({ from: '/login' })
@@ -189,7 +191,9 @@ export function LoginPage() {
     if (!idx) return
     setError(null)
     setPending(true)
+    if (fingerprintConfig) setNotice(CHECKING_DEVICE)
     const eventId = await fingerprintEventId(fingerprintConfig, 'login.passkey')
+    setNotice(null)
     const result = await authClient.signIn.passkey(
       undefined,
       eventId
@@ -284,7 +288,9 @@ export function LoginPage() {
       setValues({})
       setError(null)
       setPending(true)
+      if (fingerprintConfig) setNotice(CHECKING_DEVICE)
       const eventId = await fingerprintEventId(fingerprintConfig, 'login.password', identifier)
+      setNotice(null)
       const result: OpaqueSignInResult = await opaqueSignIn(identifier, secret, eventId)
       setPending(false)
       if (result.status !== 'ok') {

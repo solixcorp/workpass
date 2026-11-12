@@ -75,6 +75,7 @@ export async function applySettings(env: Env): Promise<Env> {
   // How e-mail and SMS leave the system, when an administrator chose.
   Object.assign(overrides, await deliveryOverrides(env));
   if (env.FINGERPRINT_BREAK_GLASS === "true") overrides.FINGERPRINT_MODE = "disabled";
+  // Device assessment cannot be switched off from settings; see fingerprintMode().
   if (Object.keys(overrides).length === 0) return env;
   return { ...env, ...overrides } as Env;
 }

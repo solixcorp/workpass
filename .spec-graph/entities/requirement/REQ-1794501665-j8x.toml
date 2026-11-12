@@ -1,0 +1,8 @@
+schema = 1
+id = "REQ-1794501665-j8x"
+type = "requirement"
+title = "Reverify password and a second check before adding any MFA factor; device assessment always runs"
+description = "Adding any second factor (authenticator app, security token, one-time codes, passkey) requires the acting session to re-prove the account password via a session-bound OPAQUE exchange that issues no session, and a second verification within 10 minutes: an existing factor, or an emailed one-time code when the account has none. Device assessment (Fingerprint) runs whenever the server key exists; FINGERPRINT_BREAK_GLASS is the only off switch."
+status = "active"
+created_at = 2026-11-13T01:41:05+09:00
+updated_at = 2026-11-13T01:41:05+09:00

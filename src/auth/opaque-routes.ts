@@ -139,7 +139,7 @@ export async function storeCredentialRecord(env: Env, userId: string, identity: 
   ]);
 }
 
-async function loadCredentialRecord(
+export async function loadCredentialRecord(
   env: Env,
   userId: string,
 ): Promise<{ identity: string; record: Uint8Array } | null> {

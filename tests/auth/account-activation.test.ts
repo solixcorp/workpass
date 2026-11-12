@@ -5,6 +5,7 @@ import {
 import mod from "../../src/index";
 import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
+import { grantEnrollGate } from "../mfa/enroll-gate-helper";
 
 const ORIGIN = "http://127.0.0.1:8787";
 const config = getOpaqueConfig(OpaqueID.OPAQUE_P256);
@@ -242,6 +243,8 @@ describe("account activation", () => {
     })).status).toBe(401);
     const enrollment = await (await call("/api/mfa/enrollment")).json() as { passwordRequired: boolean };
     expect(enrollment.passwordRequired).toBeFalse();
+    expect((await call("/api/auth/two-factor/enable", { method: "POST", body: {} })).status).toBe(403);
+    await grantEnrollGate(db);
     expect((await call("/api/auth/two-factor/enable", { method: "POST", body: {} })).status).toBe(200);
     // The link is single-use.
     expect((await activate(token, "admin@activation.test", "Another-Passw0rd-9q1X", "203.0.113.77")).start.status).not.toBe(200);

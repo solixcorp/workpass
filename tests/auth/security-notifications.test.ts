@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import mod from "../../src/index";
 import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
+import { grantEnrollGate } from "../mfa/enroll-gate-helper";
 import { notifySecurity } from "../../src/users/notifications";
 import { recordLogin } from "../../src/users/login-history";
 import { enforceLocationAfterPasskeyLogin } from "../../src/security/location-gate";
@@ -133,6 +134,7 @@ describe("security notifications", () => {
     expect(await notices(target.id, "security_account")).toEqual(expect.arrayContaining([accountNotice("계정이 잠겼습니다"), accountNotice("계정 잠금이 해제되었습니다")]));
   });
   test("confirmed TOTP enrollment and removal notify; an invalid code does not", async () => {
+    await grantEnrollGate(db);
     const enabled = await call("/api/auth/two-factor/enable", { method: "POST", body: { method: "totp", password: PASSWORD } });
     expect(enabled.status).toBe(200);
     const { totpURI } = await enabled.json() as { totpURI: string };
@@ -167,6 +169,7 @@ describe("security notifications", () => {
     await db.prepare("DELETE FROM user_notifications WHERE user_id = ? AND kind = 'security_mfa'").bind(userId).run();
   });
   test("HOTP enrollment and removal notify the affected user", async () => {
+    await grantEnrollGate(db);
     const response = await call("/api/mfa/hotp/enroll", { method: "POST", body: { label: "내 토큰" } });
     expect(response.status).toBe(201);
     const token = await response.json() as { tokenId: string };
@@ -243,6 +246,7 @@ describe("security notifications", () => {
     await saveLocationPolicy(env, { ...DEFAULT_LOCATION_POLICY, mode: "off" }, userId);
     expect((await call("/api/auth/sign-in/username", { method: "POST", body: { username: "securityadmin", password: PASSWORD } })).status).toBe(200);
     await db.prepare("DROP TABLE user_notifications").run();
+    await grantEnrollGate(db);
     expect((await call("/api/mfa/hotp/enroll", { method: "POST", body: { label: "다른 토큰" } })).status).toBe(201);
     expect(await recordLogin(env, { headers: new Headers({ "user-agent": "Linux Firefox/1" }), cf: { country: "GB" } }, userId, "password")).not.toBeNull();
     await notifySecurity(env, userId, { kind: "security_account", title: "테스트", body: "알림" });

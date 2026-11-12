@@ -3,6 +3,7 @@ import mod from "../../src/index";
 import type { Env } from "../../src/env";
 import { insertAuditEvent, verifyAuditEventChain } from "../../src/audit/store";
 import { createTestD1 } from "../test-d1";
+import { grantEnrollGate } from "../mfa/enroll-gate-helper";
 
 const ORIGIN = "http://127.0.0.1:8787";
 const PASSWORD = "SelfSvc-7d9Kpw9zL2xQ";
@@ -107,6 +108,7 @@ describe("my activity event details", () => {
   });
 
   test("real HOTP and passkey events record their method and token label", async () => {
+    await grantEnrollGate(db);
     const enrolled = await call("/api/mfa/hotp/enroll", { method: "POST", body: { label: "  Desk key  " } });
     expect(enrolled.status).toBe(201);
     const token = await json(enrolled);

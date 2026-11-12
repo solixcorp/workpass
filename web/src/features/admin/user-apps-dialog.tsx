@@ -35,7 +35,7 @@ export type ActivityUser = { id: string; name: string; email: string }
 
 function RiskCell({ risk, empty }: { risk: Risk | null; empty?: string }) {
   if (!risk) {
-    return <span className="text-xs text-muted-foreground">{empty ?? '기록 없음'}</span>
+    return <span className="text-xs text-muted-foreground">{empty ?? '확인 기록 없음'}</span>
   }
   const action = RISK_ACTIONS[risk.action] ?? { label: risk.action, tone: 'outline' as const }
   return (
@@ -51,15 +51,24 @@ function RiskCell({ risk, empty }: { risk: Risk | null; empty?: string }) {
   )
 }
 
+const SCOPES_SHOWN = 3
+
 function Scopes({ scopes }: { scopes: string[] }) {
   if (scopes.length === 0) return <span className="text-xs text-muted-foreground">—</span>
+  const label = (scope: string) => SCOPE_LABELS[scope] ?? scope
+  const rest = scopes.slice(SCOPES_SHOWN)
   return (
-    <div className="flex flex-wrap gap-1">
-      {scopes.map((scope) => (
-        <Badge key={scope} variant="secondary">
-          {SCOPE_LABELS[scope] ?? scope}
+    <div className="flex max-w-xs flex-wrap gap-1">
+      {scopes.slice(0, SCOPES_SHOWN).map((scope) => (
+        <Badge key={scope} variant="secondary" className="max-w-40 truncate" title={scope}>
+          {label(scope)}
         </Badge>
       ))}
+      {rest.length > 0 ? (
+        <Badge variant="outline" title={rest.map(label).join('\n')}>
+          +{rest.length}
+        </Badge>
+      ) : null}
     </div>
   )
 }
@@ -72,7 +81,7 @@ export function UserAppsDialog({ user, onClose }: { user: ActivityUser | null; o
         <DialogHeader>
           <DialogTitle>{user?.name} 연결된 앱</DialogTitle>
           <DialogDescription>
-            {user?.email}이(가) 로그인하거나 권한을 허용한 앱입니다. 위험도는 그 순간의 기기 판정을 복사해 둔 값이라, 기기 위험 판정이 꺼져 있던 때는 "기록 없음"입니다.
+            {user?.email}이(가) 로그인하거나 권한을 허용한 앱입니다. 위험도는 그 순간의 기기 판정을 복사해 둔 값입니다. 기기 확인은 이제 항상 실행되므로, 앞으로의 기록에는 채워집니다. 이전 기록은 "확인 기록 없음"으로 표시됩니다.
           </DialogDescription>
         </DialogHeader>
         {user ? <Body userId={user.id} /> : null}

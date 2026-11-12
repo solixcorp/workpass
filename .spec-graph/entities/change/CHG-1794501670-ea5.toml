@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794501670-ea5"
+type = "change"
+title = "Add MFA enrollment reverification gate, always-on device assessment and UI polish"
+description = "src/mfa/enroll-gate.ts (OPAQUE password reconfirmation + emailed code), mayEnrollFactor now requires fresh password and second check, fingerprintMode raises disabled to observe when the server key exists, trust line no longer clipped, login shows device-check state, connected-apps history collapses scopes. QA: bun test 708 pass, typecheck, web:build."
+status = "resolved"
+created_at = 2026-11-13T01:41:10+09:00
+updated_at = 2026-11-13T01:41:11+09:00
+
+[[relations]]
+to = "REQ-1794501665-j8x"
+type = "covers"

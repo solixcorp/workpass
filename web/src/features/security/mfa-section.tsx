@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { ApiError, apiFetch } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
+import { opaqueConfirmPassword } from '@/lib/opaque'
 import { formatDateTime } from '@/lib/format'
 import { enrollmentKey, enrollmentQuery, type EnrollmentView } from '@/lib/mfa'
 import { TwoFactorForm } from '@/features/auth/two-factor-form'
@@ -157,30 +158,152 @@ export function EnrollmentDialogs({
   )
 }
 
-/** Lists the existing methods that can prove ownership, then runs the one the person picks. */
+/** Adding a factor needs the password again and a second check: an existing method, or an emailed code when there is none. */
 function VerificationDialog({ view, open, onClose }: { view: EnrollmentView; open: boolean; onClose: () => void }) {
   const refresh = useRefresh()
   const [selected, setSelected] = useState<string | null>(null)
-  const { ui, blockedReason } = view.verification
+  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [sent, setSent] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { ui, blockedReason, steps } = view.verification
   const method = ui.methods.find((entry) => entry.key === selected) ?? null
 
   function close() {
     setSelected(null)
+    setPassword('')
+    setCode('')
+    setSent(false)
+    setError(null)
     onClose()
   }
+
+  async function confirmPassword(event: FormEvent) {
+    event.preventDefault()
+    setError(null)
+    setPending(true)
+    const result = await opaqueConfirmPassword(password)
+    setPending(false)
+    setPassword('')
+    if (result === 'ok') {
+      await refresh()
+      return
+    }
+    setError(
+      result === 'invalid'
+        ? '비밀번호가 올바르지 않습니다.'
+        : result === 'rate_limited'
+          ? '시도가 너무 많습니다. 잠시 후 다시 시도하세요.'
+          : result === 'no_password'
+            ? '이 계정에는 확인할 비밀번호가 없습니다. 관리자에게 문의하세요.'
+            : '확인하지 못했습니다. 잠시 후 다시 시도하세요.',
+    )
+  }
+
+  async function sendCode() {
+    setError(null)
+    setPending(true)
+    try {
+      await apiFetch('/api/mfa/gate/code/start', { method: 'POST' })
+      setSent(true)
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : '코드를 보내지 못했습니다.')
+    }
+    setPending(false)
+  }
+
+  async function confirmCode(event: FormEvent) {
+    event.preventDefault()
+    setError(null)
+    setPending(true)
+    try {
+      await apiFetch('/api/mfa/gate/code/confirm', { method: 'POST', body: JSON.stringify({ code }) })
+      setCode('')
+      setSent(false)
+      await refresh()
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : '확인하지 못했습니다.')
+    }
+    setPending(false)
+  }
+
+  const step = !steps.passwordOk ? 'password' : !steps.secondOk ? 'second' : 'done'
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{ui.title}</DialogTitle>
-          <DialogDescription>{ui.description}</DialogDescription>
+          <DialogDescription>
+            {step === 'password'
+              ? '1/2 계정 비밀번호를 다시 입력하세요.'
+              : steps.secondMode === 'email'
+                ? '2/2 계정 이메일로 보낸 코드를 입력하세요.'
+                : '2/2 이미 등록한 인증 수단 중 하나로 확인하세요.'}
+          </DialogDescription>
         </DialogHeader>
         {blockedReason ? (
           <>
             <Alert><AlertDescription>{blockedReason}</AlertDescription></Alert>
             <DialogFooter><Button variant="outline" onClick={close}>닫기</Button></DialogFooter>
           </>
+        ) : step === 'password' ? (
+          <form onSubmit={confirmPassword} className="flex flex-col gap-4">
+            <FieldGroup>
+              <Field data-invalid={error ? true : undefined}>
+                <FieldLabel htmlFor="mfa-gate-password">계정 비밀번호</FieldLabel>
+                <Input
+                  id="mfa-gate-password"
+                  type="password"
+                  autoComplete="current-password"
+                  autoFocus
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                {error ? <FieldError>{error}</FieldError> : null}
+              </Field>
+            </FieldGroup>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={close}>취소</Button>
+              <Button type="submit" disabled={pending || !password}>
+                {pending ? <Spinner data-icon="inline-start" /> : null}
+                확인
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : steps.secondMode === 'email' ? (
+          sent ? (
+            <form onSubmit={confirmCode} className="flex flex-col gap-4">
+              <FieldGroup>
+                <Field data-invalid={error ? true : undefined}>
+                  <FieldLabel htmlFor="mfa-gate-code">확인 코드</FieldLabel>
+                  <CodeInput id="mfa-gate-code" value={code} onChange={setCode} />
+                  <FieldDescription>10분 안에 입력하세요.</FieldDescription>
+                  {error ? <FieldError>{error}</FieldError> : null}
+                </Field>
+              </FieldGroup>
+              <DialogFooter>
+                <Button type="button" variant="outline" disabled={pending} onClick={sendCode}>다시 보내기</Button>
+                <Button type="submit" disabled={pending || code.length !== 6}>
+                  {pending ? <Spinner data-icon="inline-start" /> : null}
+                  확인
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-muted-foreground">등록된 인증 수단이 아직 없어서, 계정 이메일로 확인 코드를 보냅니다.</p>
+              {error ? <FieldError>{error}</FieldError> : null}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={close}>취소</Button>
+                <Button type="button" disabled={pending} onClick={sendCode}>
+                  {pending ? <Spinner data-icon="inline-start" /> : null}
+                  코드 보내기
+                </Button>
+              </DialogFooter>
+            </div>
+          )
         ) : method ? (
           <TwoFactorForm
             key={method.key}

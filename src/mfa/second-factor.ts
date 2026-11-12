@@ -90,7 +90,56 @@ export async function sessionSatisfiesRequireMfa(env: Env, session: MfaCheckedSe
     (requiredMethods.length === 0 || requiredMethods.some((method) => proof.methods.includes(method)));
 }
 
-/** Enrollment is bootstrap-only without proof; check again at confirmation. */
+/** How long a password or second-factor reverification stays valid for adding a factor. */
+export const ENROLL_GATE_TTL_MS = 10 * 60 * 1000;
+
+export interface EnrollGateState {
+  passwordOk: boolean;
+  secondOk: boolean;
+  /** "existing": a factor the account already holds must be verified. "email": none exists, so a one-time code is the minimum. */
+  secondMode: "existing" | "email";
+}
+
+/**
+ * Where the acting session stands on the reverification needed to add a
+ * factor: a fresh password proof AND a fresh second verification. Throws on
+ * storage failure so callers fail closed.
+ */
+export async function enrollGateState(env: Env, session: MfaCheckedSession): Promise<EnrollGateState> {
+  const token = proofSessionToken(session);
+  const userId = session.user.id;
+  const none: EnrollGateState = { passwordOk: false, secondOk: false, secondMode: "email" };
+  if (!token) return none;
+  const fresh = (at: number | null | undefined) => typeof at === "number" && Date.now() - at <= ENROLL_GATE_TTL_MS && at <= Date.now() + 5000;
+  const gate = await env.DB.prepare("SELECT user_id AS userId, password_at AS passwordAt, second_at AS secondAt FROM mfa_enroll_gates WHERE session_token = ?")
+    .bind(token).first<{ userId: string; passwordAt: number | null; secondAt: number | null }>();
+  const ownGate = gate && gate.userId === userId ? gate : null;
+
+  const user = await env.DB.prepare('SELECT "twoFactorEnabled" AS enabled FROM "user" WHERE id = ?')
+    .bind(userId).first<{ enabled: number | boolean | null }>();
+  if (!user) return none;
+  const passkey = await env.DB.prepare('SELECT id FROM "passkey" WHERE "userId" = ? LIMIT 1')
+    .bind(userId).first<{ id: string }>();
+  const { usableSecondFactors } = await import("../security/step-up");
+  const { duoConfig } = await import("./duo");
+  const hasExisting = Boolean(user.enabled) || Boolean(passkey) || await userHasHotpToken(env, userId)
+    || (await usableSecondFactors(env, userId)).length > 0 || Boolean(duoConfig(env));
+
+  let secondOk = false;
+  if (hasExisting) {
+    const proof = await getSessionMfaProof(env, token, true);
+    secondOk = proof?.userId === userId && fresh(Date.parse(proof.verifiedAt));
+  } else {
+    secondOk = fresh(ownGate?.secondAt);
+  }
+  return { passwordOk: fresh(ownGate?.passwordAt), secondOk, secondMode: hasExisting ? "existing" : "email" };
+}
+
+/**
+ * Adding any second factor needs this session to have just re-proved the
+ * account password and a second verification (an existing factor, or a
+ * one-time code when the account has none). Checked again at confirmation.
+ */
 export async function mayEnrollFactor(env: Env, session: MfaCheckedSession): Promise<boolean> {
   try {
     const token = proofSessionToken(session);
@@ -98,20 +147,8 @@ export async function mayEnrollFactor(env: Env, session: MfaCheckedSession): Pro
     const { getStepUpChallenge } = await import("../security/step-up");
     const challenge = await getStepUpChallenge(env, token, true);
     if (challenge.state === "pending" || challenge.state === "expired") return false;
-    const proof = await getSessionMfaProof(env, token, true);
-    if (proof?.userId === session.user.id) {
-      return true;
-    }
-    if (challenge.state !== "none") return false;
-    const user = await env.DB.prepare('SELECT "twoFactorEnabled" AS enabled FROM "user" WHERE id = ?')
-      .bind(session.user.id).first<{ enabled: number | boolean | null }>();
-    if (!user || user.enabled) return false;
-    if (await userHasHotpToken(env, session.user.id)) return false;
-    const passkey = await env.DB.prepare('SELECT id FROM "passkey" WHERE "userId" = ? LIMIT 1')
-      .bind(session.user.id).first<{ id: string }>();
-    if (passkey) return false;
-    const { duoConfig } = await import("./duo");
-    return !duoConfig(env);
+    const state = await enrollGateState(env, session);
+    return state.passwordOk && state.secondOk;
   } catch {
     return false;
   }

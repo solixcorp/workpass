@@ -62,10 +62,18 @@ const REGION_HOSTS: Record<NonNullable<Env["FINGERPRINT_REGION"]>, string> = {
   ap: "ap.api.fpjs.io",
 };
 
+/**
+ * Device assessment always runs once the provider keys exist: "disabled" (or
+ * an unset mode) is raised to "observe", which records without blocking.
+ * Only the operator's FINGERPRINT_BREAK_GLASS switch turns it fully off.
+ */
 export function fingerprintMode(env: Env): FingerprintMode {
   const mode = env.FINGERPRINT_MODE ?? "disabled";
   if (mode !== "disabled" && mode !== "observe" && mode !== "enforce") {
     throw new Error("FINGERPRINT_MODE must be disabled, observe, or enforce");
+  }
+  if (mode === "disabled" && env.FINGERPRINT_BREAK_GLASS !== "true" && env.FINGERPRINT_SERVER_API_KEY?.trim()) {
+    return "observe";
   }
   return mode;
 }

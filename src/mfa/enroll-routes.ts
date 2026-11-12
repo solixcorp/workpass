@@ -18,7 +18,7 @@ import { duoConfig } from "./duo";
 import { isSmsOtpAvailable } from "./otp-senders";
 import { mfaPolicy, userMustUseMfa, workpassMfaRequired } from "./policy";
 import { getStepUpChallenge, usableSecondFactors } from "../security/step-up";
-import { mayEnrollFactor, type MfaCheckedSession } from "./second-factor";
+import { enrollGateState, mayEnrollFactor, type EnrollGateState, type MfaCheckedSession } from "./second-factor";
 import { stepUpUi, type StepUpUi } from "../security/step-up-ui";
 
 export const mfaEnrollRoutes = new Hono<{ Bindings: Env }>();
@@ -52,7 +52,7 @@ export interface EnrollmentView {
   /** The account still holds a server-side password, which Better Auth asks for on enable/disable. */
   passwordRequired: boolean;
   passwordLabel: string;
-  verification: { required: boolean; ui: StepUpUi; blockedReason: string | null };
+  verification: { required: boolean; ui: StepUpUi; blockedReason: string | null; steps: EnrollGateState };
   requiredNotice: string;
   methods: MethodView[];
   /** The card shown during sign-in when a required second factor is not set up yet. */
@@ -131,27 +131,29 @@ export async function buildEnrollmentView(
   const mustEnrollNow = userMustUseMfa(env, user) || required;
   const locked = userMustUseMfa(env, user);
   const mayEnroll = await mayEnrollFactor(env, session);
-  const verificationMethods = mayEnroll ? [] : [...factors];
+  const steps = await enrollGateState(env, session).catch((): EnrollGateState => ({ passwordOk: false, secondOk: false, secondMode: "existing" }));
+  // Only the existing-factor path lists methods; the email path has none to pick.
+  const verificationMethods = !mayEnroll && steps.secondMode === "existing" && !steps.secondOk ? [...factors] : [];
   let blockedReason: string | null = null;
   if (!mayEnroll) {
     const challenge = await getStepUpChallenge(env, String(session.session?.token ?? ""), true);
     if (challenge.state === "expired") {
       verificationMethods.length = 0;
       blockedReason = "추가 인증 기한이 지났습니다. 다시 로그인한 뒤 등록하세요.";
-    } else if (challenge.state !== "pending") {
+    } else if (challenge.state !== "pending" && steps.secondMode === "existing" && !steps.secondOk) {
       // A registered passkey proves ownership for enrollment. It must never
       // substitute for the independent factor required by an open risk gate.
       const passkey = await env.DB.prepare('SELECT id FROM "passkey" WHERE "userId" = ? LIMIT 1')
         .bind(user.id).first<{ id: string }>();
       if (passkey) verificationMethods.push("passkey");
     }
-    if (!blockedReason && verificationMethods.length === 0) {
+    if (!blockedReason && steps.secondMode === "existing" && !steps.secondOk && verificationMethods.length === 0) {
       blockedReason = "확인할 수 있는 기존 인증 수단이 없습니다. 관리자에게 인증 수단 복구를 요청하세요.";
     }
   }
   const verificationUi = stepUpUi(verificationMethods);
   verificationUi.title = "추가 인증이 필요합니다";
-  verificationUi.description = "인증 수단을 추가하기 전에 이미 등록한 수단 중 하나로 본인을 확인하세요.";
+  verificationUi.description = "인증 수단을 추가하기 전에 비밀번호와 추가 확인으로 본인임을 다시 확인합니다.";
   verificationUi.alternatives = [{ label: "취소", action: "cancel" }];
 
   return {
@@ -162,7 +164,7 @@ export async function buildEnrollmentView(
     enabled,
     passwordRequired: Boolean(credential?.password),
     passwordLabel: "계정 비밀번호",
-    verification: { required: !mayEnroll, ui: verificationUi, blockedReason },
+    verification: { required: !mayEnroll, ui: verificationUi, blockedReason, steps },
     requiredNotice: "관리자가 이 계정에 2차 인증을 필수로 정했습니다. 등록을 마쳐야 앱을 열 수 있습니다.",
     methods,
     signIn: {

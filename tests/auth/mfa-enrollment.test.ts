@@ -4,6 +4,7 @@ import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
 import { userHasHotpToken, hotpVerify } from "../../src/mfa/hotp";
 import { openStepUpChallenge } from "../../src/security/step-up";
+import { grantEnrollGate } from "../mfa/enroll-gate-helper";
 
 /** Second-factor enrollment and the administrator's controls, against a real Better Auth. */
 
@@ -94,6 +95,8 @@ describe("second-factor enrollment", () => {
       const me = await (await call("/api/auth/get-session")).json() as any;
       const id = me.user.id;
       expect((await call("/api/auth/two-factor/enable", { method: "POST", body: { method: "otp", password: PASSWORD } })).status).toBe(403);
+      expect((await call("/api/mfa/otp/confirm", { method: "POST", body: { code: "000000" } })).status).toBe(403);
+      await grantEnrollGate(db);
       expect((await call("/api/mfa/otp/confirm", { method: "POST", body: { code: "000000" } })).status).toBe(400);
       const start = await call("/api/mfa/otp/start", { method: "POST" });
       expect(await start.json()).toEqual({ sent: true, expires_in: 600 });
@@ -132,6 +135,8 @@ describe("second-factor enrollment", () => {
 
     // The bootstrap administrator still holds a credential password, so the view says so.
     expect(view.passwordRequired).toBeTrue();
+    expect((await call("/api/auth/two-factor/enable", { method: "POST", body: { method: "totp" } })).status).toBe(403);
+    await grantEnrollGate(db);
     expect((await call("/api/auth/two-factor/enable", { method: "POST", body: { method: "totp" } })).status).toBe(400);
     const enable = await call("/api/auth/two-factor/enable", { method: "POST", body: { method: "totp", password: PASSWORD } });
     expect(enable.status).toBe(200);
@@ -178,6 +183,7 @@ describe("second-factor enrollment", () => {
 
   test("a hardware token can be enrolled, verified and removed by its owner", async () => {
     const me = await (await call("/api/auth/get-session")).json() as any;
+    await grantEnrollGate(db);
     const enroll = await (await call("/api/mfa/hotp/enroll", { method: "POST", body: { label: "내 토큰" } })).json() as any;
     expect(enroll.secretBase32.length).toBeGreaterThan(15);
     const code = await hotp(base32Decode(enroll.secretBase32), 0);
@@ -232,6 +238,7 @@ describe("second-factor enrollment", () => {
     expect((await call(`/api/admin/users/${me.user.id}/mfa`)).status).toBe(403);
     const after = await (await call("/api/mfa/enrollment")).json() as any;
     expect(after).toMatchObject({ required: true, mustEnroll: true, enabled: false });
+    await grantEnrollGate(db);
     const enable = await call("/api/auth/two-factor/enable", { method: "POST", body: { method: "totp", password: PASSWORD } });
     const { totpURI } = await enable.json() as { totpURI: string };
     const code = await hotp(base32Decode(new URL(totpURI).searchParams.get("secret")!), Math.floor(Date.now() / 30000));
@@ -245,6 +252,7 @@ describe("second-factor enrollment", () => {
     await db.prepare("DELETE FROM account WHERE userId = ? AND providerId = 'credential'").bind(me.user.id).run();
     const view = await (await call("/api/mfa/enrollment")).json() as any;
     expect(view.passwordRequired).toBeFalse();
+    await grantEnrollGate(db);
     const enable = await call("/api/auth/two-factor/enable", { method: "POST", body: { method: "totp" } });
     expect(enable.status).toBe(200);
   });

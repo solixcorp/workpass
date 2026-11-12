@@ -107,3 +107,42 @@ export async function opaqueSignIn(
   }
   return { status: 'ok', stepUp: body.stepUpChallenge?.required ? body.stepUpChallenge : null }
 }
+
+export type PasswordConfirmResult = 'ok' | 'invalid' | 'rate_limited' | 'no_password' | 'unavailable'
+
+/**
+ * Re-proves the signed-in user's password over the same OPAQUE exchange as
+ * sign-in, without issuing a session. The server records the proof against
+ * the current session for a short window.
+ */
+export async function opaqueConfirmPassword(password: string): Promise<PasswordConfirmResult> {
+  const client = new OpaqueClient(config, ScryptMemHardFn)
+  const ke1 = await client.authInit(password)
+  if (ke1 instanceof Error) return 'unavailable'
+
+  const startResponse = await postJson('/api/mfa/gate/password/start', { ke1: toWire(ke1.serialize()) }).catch(() => null)
+  if (!startResponse) return 'unavailable'
+  if (startResponse.status === 429) return 'rate_limited'
+  if (startResponse.status === 409) return 'no_password'
+  if (!startResponse.ok) return 'unavailable'
+  const start = (await startResponse.json()) as {
+    ke2: string
+    credentialIdentifier: string
+    serverIdentity: string
+    transcriptId: string
+  }
+
+  const finished = await client
+    .authFinish(KE2.deserialize(config, fromWire(start.ke2)), start.serverIdentity, start.credentialIdentifier)
+    .catch((error: unknown) => (error instanceof Error ? error : new Error('OPAQUE finish failed')))
+  if (finished instanceof Error) return 'invalid'
+
+  const finishResponse = await postJson('/api/mfa/gate/password/finish', {
+    ke3: toWire(finished.ke3.serialize()),
+    transcriptId: start.transcriptId,
+  }).catch(() => null)
+  if (!finishResponse) return 'unavailable'
+  if (finishResponse.status === 401) return 'invalid'
+  if (finishResponse.status === 429) return 'rate_limited'
+  return finishResponse.ok ? 'ok' : 'unavailable'
+}

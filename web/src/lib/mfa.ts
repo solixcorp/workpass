@@ -13,7 +13,12 @@ export type EnrollmentView = {
   enabled: boolean
   passwordRequired: boolean
   passwordLabel: string
-  verification: { required: boolean; ui: StepUpUi; blockedReason: string | null }
+  verification: {
+    required: boolean
+    ui: StepUpUi
+    blockedReason: string | null
+    steps: { passwordOk: boolean; secondOk: boolean; secondMode: 'existing' | 'email' }
+  }
   requiredNotice: string
   methods: Array<{
     key: MfaMethodKey

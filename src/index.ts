@@ -22,6 +22,7 @@ import { consentRoutes } from "./pages/consent";
 import { oidcSignInRoutes } from "./pages/sign-in";
 import { swaUserRoutes } from "./swa/routes";
 import { mfaRoutes } from "./mfa/duo-routes";
+import { cleanupEnrollGates, mfaEnrollGateRoutes } from "./mfa/enroll-gate";
 import { mfaEnrollRoutes } from "./mfa/enroll-routes";
 import { opaqueRoutes } from "./auth/opaque-routes";
 import { passwordChangeRoutes } from "./auth/password-change-routes";
@@ -121,6 +122,7 @@ app.route("/", swaUserRoutes);
 // matching every caller, audit record, and document.
 app.route("/api", mfaRoutes);
 app.route("/api", mfaEnrollRoutes);
+app.route("/api", mfaEnrollGateRoutes);
 // OPAQUE sessions issue only after the login gate (banned accounts and the
 // shared device-risk pipeline) passes; see src/auth/opaque-login.ts.
 app.route("/", opaqueRoutes);
@@ -183,6 +185,7 @@ async function scheduled(
     ["cleanupSamlRequestClaims", () => cleanupSamlRequestClaims(env, new Date(time))],
     ["cleanupSwaGrants", () => cleanupSwaGrants(env, new Date(time))],
     ["cleanupSessionMfaProofs", () => cleanupSessionMfaProofs(env, new Date(time))],
+    ["cleanupEnrollGates", () => cleanupEnrollGates(env, time)],
     ["cleanupOAuth1Temporaries", () => cleanupOAuth1Temporaries(env, time)],
     ["cleanupDeviceGrants", () => cleanupDeviceGrants(env, new Date(time))],
     ["cleanupCibaRequests", () => cleanupCibaRequests(env, new Date(time))],

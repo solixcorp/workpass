@@ -241,7 +241,14 @@ describe("admin settings", () => {
     const after = await (await call("/api/config/login", { cookies: false })).json() as any;
     expect(after.fingerprint).toEqual({ publicKey: "public-key-for-tests", region: "eu", endpoint: null });
     expect((await call("/api/admin/settings/fingerprint.mode", { method: "DELETE" })).status).toBe(200);
+    // Device assessment is always on once the server key exists.
     const reset = await (await call("/api/config/login", { cookies: false })).json() as any;
-    expect(reset.fingerprint).toBeNull();
+    expect(reset.fingerprint).toEqual({ publicKey: "public-key-for-tests", region: "eu", endpoint: null });
+    env.FINGERPRINT_BREAK_GLASS = "true";
+    invalidateSettings(env);
+    const recovered = await (await call("/api/config/login", { cookies: false })).json() as any;
+    expect(recovered.fingerprint).toBeNull();
+    delete env.FINGERPRINT_BREAK_GLASS;
+    invalidateSettings(env);
   });
 });
