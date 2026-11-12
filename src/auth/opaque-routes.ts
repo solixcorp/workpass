@@ -123,12 +123,20 @@ async function requireSession(context: Context<{ Bindings: Env }>) {
 export async function storeCredentialRecord(env: Env, userId: string, identity: string, recordBytes: Uint8Array): Promise<void> {
   const sealed = await sealString(env, JSON.stringify(Array.from(recordBytes)), `opaque_record:${userId}`);
   const now = new Date().toISOString();
-  await env.DB.prepare(
-    `INSERT INTO opaque_credential_records (user_id, record, credential_identifier, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (user_id) DO UPDATE SET record = excluded.record,
-       credential_identifier = excluded.credential_identifier, updated_at = excluded.updated_at`,
-  ).bind(userId, sealed, identity, now, now).run();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO opaque_credential_records (user_id, record, credential_identifier, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (user_id) DO UPDATE SET record = excluded.record,
+         credential_identifier = excluded.credential_identifier, updated_at = excluded.updated_at`,
+    ).bind(userId, sealed, identity, now, now),
+    // OPAQUE replaces the legacy credential password. Keeping a bootstrap hash
+    // makes password confirmation (including MFA enrollment) ask for an obsolete
+    // password that the user never chose. Retire it atomically with the record.
+    env.DB.prepare(
+      "UPDATE account SET password = NULL WHERE userId = ? AND providerId = 'credential'",
+    ).bind(userId),
+  ]);
 }
 
 async function loadCredentialRecord(

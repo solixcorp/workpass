@@ -80,7 +80,7 @@ describe("account activation", () => {
     return { start, finish };
   }
 
-  async function opaqueLogin(email: string, password: string) {
+  async function opaqueLogin(email: string, password: string, keepJar = true) {
     const client = new OpaqueClient(config, ScryptMemHardFn);
     const ke1 = await client.authInit(password);
     if (ke1 instanceof Error) throw ke1;
@@ -89,7 +89,7 @@ describe("account activation", () => {
     const done = await client.authFinish(KE2.deserialize(config, fromWire(sb.ke2)), sb.serverIdentity, email).catch((e) => e);
     if (done instanceof Error) return 401;
     const finish = await call("/api/opaque/auth/finish", {
-      method: "POST", cookies: false, keepJar: true,
+      method: "POST", cookies: false, keepJar,
       body: { username: email, ke3: toWire(done.ke3.serialize()), transcriptId: sb.transcriptId },
     });
     return finish.status;
@@ -231,7 +231,18 @@ describe("account activation", () => {
     expect(await opaqueLogin("admin@activation.test", "First-Admin-Passw0rd-4k2Z")).toBe(401);
     const { finish } = await activate(token, "admin@activation.test", "First-Admin-Passw0rd-4k2Z", "203.0.113.77");
     expect(finish!.status).toBe(200);
-    expect(await opaqueLogin("admin@activation.test", "First-Admin-Passw0rd-4k2Z")).toBe(200);
+    expect(await opaqueLogin("admin@activation.test", "First-Admin-Passw0rd-4k2Z", false)).toBe(200);
+    // The old bootstrap password must not survive OPAQUE activation: otherwise
+    // the MFA screen asks for it instead of the password just set by the user.
+    const credential = await db.prepare("SELECT password FROM account WHERE providerId = 'credential' AND userId = (SELECT id FROM user WHERE email = ?)")
+      .bind("admin@activation.test").first<{ password: string | null }>();
+    expect(credential?.password).toBeNull();
+    expect((await call("/api/auth/sign-in/username", {
+      method: "POST", body: { username: "actadmin", password: "ActivationOnly-7d9Kpw9zL2" }, keepJar: true,
+    })).status).toBe(401);
+    const enrollment = await (await call("/api/mfa/enrollment")).json() as { passwordRequired: boolean };
+    expect(enrollment.passwordRequired).toBeFalse();
+    expect((await call("/api/auth/two-factor/enable", { method: "POST", body: {} })).status).toBe(200);
     // The link is single-use.
     expect((await activate(token, "admin@activation.test", "Another-Passw0rd-9q1X", "203.0.113.77")).start.status).not.toBe(200);
   });

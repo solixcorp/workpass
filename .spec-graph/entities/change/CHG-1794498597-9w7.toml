@@ -1,0 +1,14 @@
+schema = 1
+id = "CHG-1794498597-9w7"
+type = "change"
+title = "Fix obsolete bootstrap passwords blocking administrator recovery"
+description = "Atomically clear legacy credential passwords when storing OPAQUE registration records. Regression covers bootstrap activation, successful OPAQUE login, obsolete bootstrap password rejection, passwordRequired=false, and TOTP enable without the obsolete password in tests/auth/account-activation.test.ts. QA: bun test (694 passed across 113 files); bun run typecheck passed. Local recovery snapshot retained, MFA requirement temporarily off, passkeys retained, and recovery recorded in a verified audit log. Live administrator user listing/settings and MFA enrollment returned HTTP 200; recovery link inspection returned HTTP 200."
+status = "resolved"
+created_at = 2026-11-13T00:49:57+09:00
+updated_at = 2026-11-13T00:54:33+09:00
+amendment_forced = true
+amendment_reason = "Record verified regression evidence and completion without changing the approved implementation scope."
+
+[[relations]]
+to = "REQ-1794498597-jsw"
+type = "covers"

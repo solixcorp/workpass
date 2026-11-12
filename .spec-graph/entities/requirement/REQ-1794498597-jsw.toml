@@ -1,0 +1,12 @@
+schema = 1
+id = "REQ-1794498597-jsw"
+type = "requirement"
+title = "OPAQUE registration retires obsolete credential passwords"
+description = "Successful OPAQUE registration or activation atomically clears the legacy credential password so MFA management cannot require an obsolete bootstrap password and legacy password sign-in no longer works. Existing factors and MFA proof checks remain intact."
+status = "active"
+created_at = 2026-11-13T00:49:57+09:00
+updated_at = 2026-11-13T00:49:57+09:00
+
+[metadata]
+kind = "functional"
+priority = "must"
