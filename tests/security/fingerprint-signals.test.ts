@@ -5,7 +5,6 @@ import { evaluateFingerprintRisk, verifyFingerprintEvent } from "../../src/secur
 const env = {
   AUTH_SECRET: "fingerprint-test-secret",
   AUTH_BASE_URL: "https://idp.test",
-  FINGERPRINT_MODE: "enforce",
   FINGERPRINT_SERVER_API_KEY: "test",
   GEOIP_CHECK_IMPOSSIBLE_TRAVEL: "false",
   DB: { prepare: () => ({ bind: () => ({ first: async () => ({ id: "trusted" }), all: async () => ({ results: [] }) }) }) },
@@ -63,7 +62,7 @@ describe("Fingerprint Smart Signals", () => {
     [{ ip_info: { v6: { datacenter_result: true } } }, "datacenter_ip_detected", "step_up"],
     [{ ip_blocklist: { tor_node: true } }, "tor_network_detected", "deny"],
     [{ ip_blocklist: { attack_source: true } }, "ip_blocklisted", "deny"],
-    [{ virtual_machine: true }, "virtual_machine_detected", "deny"],
+    [{ virtual_machine: true }, "virtual_machine_detected", "step_up"],
     [{ developer_tools: true }, "developer_tools_detected", "allow"],
   ];
   test.each(cases)("classifies signal %#", async (raw, reason, action) => {

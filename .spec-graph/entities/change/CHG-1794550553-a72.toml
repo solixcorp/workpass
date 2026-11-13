@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794550553-a72"
+type = "change"
+title = "Remove fingerprint mode; move three reasons from deny to step-up"
+description = "fingerprintMode() in src/security/fingerprint.ts returns enforce when the server key exists and break-glass is off. FINGERPRINT_MODE env and fingerprint.mode setting removed. isNewDeviceOnly lets a no-second-factor account sign in from a new device. QA: tests updated, 713 pass in a clean worktree, typecheck clean."
+status = "resolved"
+created_at = 2026-11-13T15:15:53+09:00
+updated_at = 2026-11-13T15:15:53+09:00
+
+[[relations]]
+to = "REQ-1794550553-y94"
+type = "covers"

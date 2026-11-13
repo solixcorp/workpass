@@ -5,7 +5,6 @@ export interface Env extends Partial<WorkerBindings> {
   OIDC_EMAIL_DOMAIN?: string;
   /** "true" forces device-risk checks off whatever the stored setting says (lockout recovery). */
   FINGERPRINT_BREAK_GLASS?: string;
-  FINGERPRINT_MODE?: "disabled" | "observe" | "enforce";
   FINGERPRINT_REGION?: "us" | "eu" | "ap";
   FINGERPRINT_SERVER_API_KEY?: string;
   /** Public (browser) key for the Fingerprint JS agent; safe to expose. */
@@ -16,7 +15,7 @@ export interface Env extends Partial<WorkerBindings> {
   FINGERPRINT_MAX_EVENT_AGE_SECONDS?: string;
   /**
    * GeoIP login-history policy (authentik GeoIP Policy semantics; requires
-   * FINGERPRINT_MODE != disabled and a position in event/history data).
+   * device assessment being on and a position in event/history data).
    */
   GEOIP_CHECK_HISTORY_DISTANCE?: string;
   GEOIP_HISTORY_MAX_DISTANCE_KM?: string;

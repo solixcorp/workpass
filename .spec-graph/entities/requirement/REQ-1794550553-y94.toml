@@ -1,0 +1,8 @@
+schema = 1
+id = "REQ-1794550553-y94"
+type = "requirement"
+title = "Device assessment is always on; VM, suspect-score and rapid change require step-up"
+description = "Fingerprint device assessment has no mode: it applies whenever FINGERPRINT_SERVER_API_KEY is set, and FINGERPRINT_BREAK_GLASS=true is the only off switch. Bot, tampering, Tor and blocklisted-IP findings deny. Virtual machine, suspect-score threshold and rapid device-and-country change require a second factor. An account with no second factor still signs in from a device that is only new."
+status = "active"
+created_at = 2026-11-13T15:15:53+09:00
+updated_at = 2026-11-13T15:15:53+09:00

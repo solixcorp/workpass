@@ -37,9 +37,10 @@ describe("normalizeSettingValue", () => {
     expect(() => normalizeSettingValue(ttl, 999999)).toThrow();
     expect(() => normalizeSettingValue(ttl, 10.5)).toThrow();
     expect(() => normalizeSettingValue(ttl, "abc")).toThrow();
-    const mode = settingDefinition("fingerprint.mode")!;
-    expect(normalizeSettingValue(mode, "observe")).toBe("observe");
-    expect(() => normalizeSettingValue(mode, "yolo")).toThrow();
+    const mfa = settingDefinition("mfa.require")!;
+    expect(normalizeSettingValue(mfa, "everyone")).toBe("everyone");
+    expect(() => normalizeSettingValue(mfa, "yolo")).toThrow();
+    expect(settingDefinition("fingerprint.mode")).toBeNull();
   });
 });
 
@@ -58,7 +59,6 @@ describe("settings read failures", () => {
       };
       return Reflect.get(target, key);
     } }));
-    env.FINGERPRINT_MODE = "disabled";
     await ensureApplicationTables(env);
     return { env, fail(value: boolean) { failing = value; }, reads: () => reads };
   }
@@ -73,14 +73,14 @@ describe("settings read failures", () => {
     expect(await response.json()).toEqual({ error: "Internal server error" });
     expect(f.reads()).toBe(3);
     f.fail(false);
-    await saveSetting(f.env, "fingerprint.mode", "enforce", "admin");
-    expect((await applySettings(f.env)).FINGERPRINT_MODE).toBe("enforce");
+    await saveSetting(f.env, "mfa.require", "everyone", "admin");
+    expect((await applySettings(f.env)).MFA_REQUIRE).toBe("everyone");
   });
 
   test("expired cache and forced refresh retain administrator security overrides", async () => {
     const f = await fixture();
     for (const [key, value] of [
-      ["fingerprint.mode", "enforce"], ["mfa.require", "everyone"],
+      ["mfa.require", "everyone"],
       ["login.allow_passkey", "off"], ["mfa.allow_totp", "off"],
       ["step_up.challenge_ttl_seconds", "300"], ["activation.token_ttl_minutes", "5"],
     ]) await saveSetting(f.env, key!, value!, "admin");
@@ -90,7 +90,6 @@ describe("settings read failures", () => {
     const clock = spyOn(Date, "now").mockReturnValue(now + 31_000);
     try {
       const effective = await applySettings(f.env);
-      expect(effective.FINGERPRINT_MODE).toBe("enforce");
       expect(mfaPolicy(effective)).toMatchObject({ require: "everyone", allow: { totp: false } });
       expect(passkeyAllowed(effective)).toBe(false);
       expect(effective.STEP_UP_CHALLENGE_TTL_SECONDS).toBe("300");
@@ -98,13 +97,13 @@ describe("settings read failures", () => {
       const reads = f.reads();
       await applySettings(f.env);
       expect(f.reads()).toBe(reads); // outage retry is also bounded by the TTL
-      expect((await resolveSettings(f.env)).find((s) => s.definition.key === "fingerprint.mode"))
-        .toMatchObject({ value: "enforce", source: "admin" });
+      expect((await resolveSettings(f.env)).find((s) => s.definition.key === "mfa.require"))
+        .toMatchObject({ value: "everyone", source: "admin" });
       invalidateSettings(f.env);
       expect((await applySettings(f.env)).MFA_REQUIRE).toBe("everyone");
       f.fail(false);
-      await saveSetting(f.env, "fingerprint.mode", "observe", "admin");
-      expect((await applySettings(f.env)).FINGERPRINT_MODE).toBe("observe");
+      await saveSetting(f.env, "mfa.require", "admins", "admin");
+      expect((await applySettings(f.env)).MFA_REQUIRE).toBe("admins");
     } finally {
       clock.mockRestore();
     }
@@ -115,11 +114,11 @@ describe("settings read failures", () => {
     const env = testEnv(db);
     expect(await applySettings(env)).toBe(env);
     await ensureApplicationTables(env);
-    await db.prepare("INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ('fingerprint.mode', 'enforce', 'admin', 'now')").run();
-    expect((await applySettings(env)).FINGERPRINT_MODE).toBe("enforce");
+    await db.prepare("INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ('mfa.require', 'everyone', 'admin', 'now')").run();
+    expect((await applySettings(env)).MFA_REQUIRE).toBe("everyone");
     await db.prepare("DROP TABLE app_settings").run();
     invalidateSettings(env);
-    expect((await applySettings(env)).FINGERPRINT_MODE).toBe("enforce");
+    expect((await applySettings(env)).MFA_REQUIRE).toBe("everyone");
   });
 });
 
@@ -193,35 +192,9 @@ describe("admin settings", () => {
   test("rejects unknown keys and out-of-range values", async () => {
     expect((await call("/api/admin/settings/AUTH_SECRET", { method: "PUT", body: { value: "x" } })).status).toBe(404);
     expect((await call("/api/admin/settings/step_up.challenge_ttl_seconds", { method: "PUT", body: { value: 5 } })).status).toBe(400);
-    expect((await call("/api/admin/settings/fingerprint.mode", { method: "PUT", body: { value: "bogus" } })).status).toBe(400);
-  });
-
-  test("device-risk checks cannot be switched on without the server key", async () => {
-    const response = await call("/api/admin/settings/fingerprint.mode", { method: "PUT", body: { value: "enforce" } });
-    expect(response.status).toBe(409);
-  });
-
-  test("enforcement needs a recorded device check for the acting admin, and a break-glass switch turns checks off", async () => {
-    env.FINGERPRINT_SERVER_API_KEY = "server-key-for-tests";
-    const refused = await call("/api/admin/settings/fingerprint.mode", { method: "PUT", body: { value: "enforce" } });
-    expect(refused.status).toBe(409);
-    expect(((await refused.json()) as { error: string }).error).toContain("관찰");
-
-    // Observe mode is always allowed; it is how the proof gets recorded.
-    expect((await call("/api/admin/settings/fingerprint.mode", { method: "PUT", body: { value: "observe" } })).status).toBe(200);
-    const me = await (await call("/api/auth/get-session")).json() as { user: { id: string } };
-    await db.prepare(
-      "INSERT INTO fingerprint_risk_decisions (id, user_id, event_id, action, reasons, request_path, occurred_at) VALUES ('d1', ?, 'evt-1', 'observe', '[]', '/p', ?)",
-    ).bind(me.user.id, new Date().toISOString()).run();
-    expect((await call("/api/admin/settings/fingerprint.mode", { method: "PUT", body: { value: "enforce" } })).status).toBe(200);
-
-    // Operator recovery: the deployment flag wins over the stored setting.
-    const { applySettings } = await import("../../src/settings/store");
-    expect((await applySettings(env)).FINGERPRINT_MODE).toBe("enforce");
-    const recovered = await applySettings({ ...env, FINGERPRINT_BREAK_GLASS: "true" } as typeof env);
-    expect(recovered.FINGERPRINT_MODE).toBe("disabled");
-    expect((await call("/api/admin/settings/fingerprint.mode", { method: "DELETE" })).status).toBe(200);
-    delete (env as { FINGERPRINT_SERVER_API_KEY?: string }).FINGERPRINT_SERVER_API_KEY;
+    expect((await call("/api/admin/settings/mfa.require", { method: "PUT", body: { value: "bogus" } })).status).toBe(400);
+    // Device assessment is not a setting: there is no mode to switch.
+    expect((await call("/api/admin/settings/fingerprint.mode", { method: "PUT", body: { value: "enforce" } })).status).toBe(404);
   });
 
   test("the organization name is a validated text setting that reaches the login config", async () => {
@@ -233,22 +206,18 @@ describe("admin settings", () => {
     expect((await call("/api/admin/settings/organization.name", { method: "DELETE" })).status).toBe(200);
   });
 
-  test("a stored value reaches the request handlers (login config reads the overridden mode)", async () => {
+  test("the login config offers device assessment once the server key exists, and break-glass turns it off", async () => {
     const before = await (await call("/api/config/login", { cookies: false })).json() as any;
     expect(before.fingerprint).toBeNull();
     env.FINGERPRINT_SERVER_API_KEY = "server-key-for-tests";
-    expect((await call("/api/admin/settings/fingerprint.mode", { method: "PUT", body: { value: "observe" } })).status).toBe(200);
     const after = await (await call("/api/config/login", { cookies: false })).json() as any;
     expect(after.fingerprint).toEqual({ publicKey: "public-key-for-tests", region: "eu", endpoint: null });
-    expect((await call("/api/admin/settings/fingerprint.mode", { method: "DELETE" })).status).toBe(200);
-    // Device assessment is always on once the server key exists.
-    const reset = await (await call("/api/config/login", { cookies: false })).json() as any;
-    expect(reset.fingerprint).toEqual({ publicKey: "public-key-for-tests", region: "eu", endpoint: null });
     env.FINGERPRINT_BREAK_GLASS = "true";
     invalidateSettings(env);
     const recovered = await (await call("/api/config/login", { cookies: false })).json() as any;
     expect(recovered.fingerprint).toBeNull();
     delete env.FINGERPRINT_BREAK_GLASS;
+    delete (env as { FINGERPRINT_SERVER_API_KEY?: string }).FINGERPRINT_SERVER_API_KEY;
     invalidateSettings(env);
   });
 });

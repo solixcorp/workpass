@@ -148,20 +148,6 @@ export const SETTINGS: SettingDefinition[] = [
     ],
   },
   {
-    key: "fingerprint.mode",
-    envName: "FINGERPRINT_MODE",
-    group: "device-risk",
-    type: "enum",
-    label: "동작 방식",
-    description: "기기 확인은 항상 실행됩니다(서버 키가 있을 때). 관찰: 기록만 하고 막지 않음. 강제: 위험하면 막거나 추가 인증을 요구함. '끔'은 관찰로 취급됩니다.",
-    default: "observe",
-    options: [
-      { value: "disabled", label: "끔" },
-      { value: "observe", label: "관찰" },
-      { value: "enforce", label: "강제" },
-    ],
-  },
-  {
     key: "fingerprint.min_confidence",
     envName: "FINGERPRINT_MIN_CONFIDENCE",
     group: "device-risk",

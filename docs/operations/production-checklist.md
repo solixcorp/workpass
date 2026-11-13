@@ -32,7 +32,7 @@
 2. `web/public/_headers` took effect: `curl -sI $ORIGIN/` must show `content-security-policy`, `x-frame-options: DENY` and `strict-transport-security`; `curl -sI $ORIGIN/assets/<hashed file>` must show `cache-control: public, max-age=31536000, immutable`. If they are missing, static headers are not applied and the SPA is served without a CSP.
 3. Backend paths still reach the Worker: `curl -s -o /dev/null -w "%{http_code}\n" $ORIGIN/health` is 200 and `$ORIGIN/auth/login` redirects (302) to `/oauth2/v1/authorize`. Every path in `run_worker_first` must stay in sync with `BACKEND_PATHS` in `web/vite.config.ts`. The current lists cover `/api`, `/.well-known`, `/saml`, `/wsfed`, `/scim`, `/sign-in`, `/auth`, `/oauth2`, `/enduser`, `/idp`, `/health`, `/dev`, `/_internal` and `/application`: Wrangler uses `/*` descendants except for the exact `/sign-in` and `/health` entries; Vite uses segment-boundary prefixes for local proxying.
 4. Sign in as the first administrator from the activation link above, then open users, settings, policies and the security page; the browser console must show no Content-Security-Policy violation.
-5. Fingerprint, after the keys are set (`FINGERPRINT_SERVER_API_KEY`, `FINGERPRINT_PUBLIC_API_KEY`): keep `fingerprint.mode` at `observe` in the settings page, sign out and in once, and watch the console for CSP violations. The policy allows the loader host `fpnpmcdn.net`, `*.fpjs.io` and `*.workpass.solixllc.com` (the custom subdomain in `FINGERPRINT_ENDPOINT`). If you use another subdomain, change `script-src` and `connect-src` in `web/public/_headers` and redeploy. Switch to `enforce` only after the admin's own device check shows up (the settings page refuses otherwise).
+5. Fingerprint, after the keys are set (`FINGERPRINT_SERVER_API_KEY`, `FINGERPRINT_PUBLIC_API_KEY`): device assessment turns on by itself once the server key is set (there is no mode setting). Sign out and in once and watch the console for CSP violations. The policy allows the loader host `fpnpmcdn.net`, `*.fpjs.io` and `*.workpass.solixllc.com` (the custom subdomain in `FINGERPRINT_ENDPOINT`). If you use another subdomain, change `script-src` and `connect-src` in `web/public/_headers` and redeploy. If device checks lock everyone out, set `FINGERPRINT_BREAK_GLASS=true` and redeploy; it is the only off switch.
 6. Mail: with the mail provider configured, create a user from the users page with "send email" and check `account.invitation.email` in the audit log. Without a provider the page shows the link once instead.
 
 ## 3. Post-deployment verification (Phase 6's deferred half)
@@ -153,7 +153,7 @@ Implemented across `src/security/` and documented in
 1. MFA coverage first. In `enforce` mode, accounts without any enrollable
    second factor fail closed on `step_up` decisions. Check
    `session.twoFactorEnabled` / hardware-token / Duo coverage before tightening.
-2. `FINGERPRINT_MODE=observe` with the GeoIP history knobs at defaults
+2. Device assessment on (server key set) with the GeoIP history knobs at defaults
    (`GEOIP_HISTORY_LOGIN_COUNT=5`, impossible travel on with the built-in
    1,000 km/h allowance, history distance off). Review
    `authentication.fingerprint.risk_*` audit events for false positives

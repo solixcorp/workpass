@@ -18,7 +18,7 @@ function envWith(db: TestD1, extra: Record<string, string> = {}): Env {
     DB: db as unknown as Env["DB"],
     AUTH_SECRET: SECRET,
     AUTH_BASE_URL: "https://idp.test",
-    FINGERPRINT_MODE: "enforce",
+    FINGERPRINT_SERVER_API_KEY: "server-key-for-tests",
     ...extra,
   } as unknown as Env;
 }
@@ -381,7 +381,7 @@ describe("login-time GeoIP detection in the risk pipeline", () => {
       event: event({ visitorId: "visitor-b", countryCode: "US" }),
     });
     expect(risk.reasons).toContain("rapid_device_and_country_change");
-    expect(risk.action).toBe("deny");
+    expect(risk.action).toBe("step_up");
   });
 
   test("a first login with no history does not flag travel", async () => {

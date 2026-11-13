@@ -5,6 +5,7 @@ import { transactionEmailAvailable } from "../mail/send";
 import { auditStandaloneOperation } from "../audit/store";
 import type { Env } from "../env";
 import { requireAdministrator } from "../security/authorization";
+import { fingerprintMode } from "../security/fingerprint";
 import { smsAvailable } from "../sms/provider";
 import { notifyUser } from "./notifications";
 
@@ -63,14 +64,14 @@ overviewRoutes.get("/overview", async (context) => {
   if (pendingRequests > 0) tasks.push({ id: "requests", title: "승인을 기다리는 접근 요청", count: pendingRequests, to: "/admin/access-requests", severity: "normal" });
   if (noPassword > 0) tasks.push({ id: "passwords", title: "아직 비밀번호를 설정하지 않은 사용자", count: noPassword, to: "/admin/users", severity: "normal" });
 
-  const fingerprint = env.FINGERPRINT_MODE ?? "disabled";
+  const fingerprint = fingerprintMode(env);
   return context.json({
     counts: { users, activeUsers, groups, apps, enabledApps },
     services: [
       { name: "인증 서버와 데이터베이스", state: "ok", note: "응답 중" },
       { name: "메일 발송", state: transactionEmailAvailable(env) ? "ok" : "off", note: transactionEmailAvailable(env) ? "설정됨" : "설정하지 않음" },
       { name: "문자(SMS) 코드", state: smsAvailable(env) ? "ok" : "off", note: smsAvailable(env) ? "설정됨" : "설정하지 않음" },
-      { name: "기기 위험 판정", state: fingerprint === "disabled" ? "off" : "ok", note: fingerprint === "disabled" ? "꺼짐" : fingerprint === "observe" ? "관찰만" : "적용 중" },
+      { name: "기기 위험 판정", state: fingerprint === "disabled" ? "off" : "ok", note: fingerprint === "disabled" ? "꺼짐" : "적용 중" },
     ],
     tasks,
     changes: changes.map((c) => ({ id: c.id, at: c.at, type: c.type, outcome: c.outcome, actor: c.actorId ? names.get(c.actorId) ?? null : null })),

@@ -15,6 +15,7 @@ import {
   consumeFingerprintLookupBudget,
   evaluateFingerprintRisk,
   fingerprintMode,
+  isNewDeviceOnly,
   recordFingerprintObservation,
   verifyFingerprintEvent,
 } from "./fingerprint";
@@ -146,31 +147,24 @@ export async function handleFingerprintRiskAuthorization(input: {
   env: Env;
   auth: AuthInstance;
 }): Promise<Response | null> {
-  const mode = fingerprintMode(input.env);
-  if (mode === "disabled") return null;
+  if (fingerprintMode(input.env) === "disabled") return null;
 
   try {
-    return await handleFingerprintRiskAuthorizationEnabled(input, mode);
+    return await handleFingerprintRiskAuthorizationEnabled(input);
   } catch {
-    if (mode === "enforce") {
-      return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
-    }
-    return null;
+    return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
   }
 }
 
 async function handleFingerprintRiskAuthorizationEnabled(
   input: { request: Request; env: Env; auth: AuthInstance },
-  mode: "observe" | "enforce",
 ): Promise<Response | null> {
 
   let session: Awaited<ReturnType<typeof input.auth.api.getSession>>;
   try {
     session = await input.auth.api.getSession({ headers: input.request.headers });
   } catch {
-    return mode === "enforce"
-      ? Response.json({ error: "Device risk verification is unavailable" }, { status: 503 })
-      : null;
+    return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
   }
   if (!session) return null;
 
@@ -197,18 +191,15 @@ async function handleFingerprintRiskAuthorizationEnabled(
       input.env,
       session.user.id,
       eventId,
-      mode === "enforce" ? "deny" : "observe",
+      "deny",
       [verification.error ?? "lookup_rate_limited"],
       url.pathname,
       appSubject,
     );
-    if (mode === "enforce" && !recorded) {
+    if (!recorded) {
       return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
     }
-    if (mode === "enforce") {
-      return Response.json({ error: "Additional device verification is required" }, { status: 403 });
-    }
-    return null;
+    return Response.json({ error: "Additional device verification is required" }, { status: 403 });
   }
 
   const claimed = await claimAndConsumeFingerprintEvent({
@@ -222,18 +213,15 @@ async function handleFingerprintRiskAuthorizationEnabled(
       input.env,
       session.user.id,
       eventId,
-      mode === "enforce" ? "deny" : "observe",
+      "deny",
       ["replayed_event"],
       url.pathname,
       appSubject,
     );
-    if (mode === "enforce" && !recorded) {
+    if (!recorded) {
       return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
     }
-    if (mode === "enforce") {
-      return Response.json({ error: "Additional device verification is required" }, { status: 403 });
-    }
-    return null;
+    return Response.json({ error: "Additional device verification is required" }, { status: 403 });
   }
 
   const risk = await evaluateFingerprintRisk({
@@ -241,18 +229,6 @@ async function handleFingerprintRiskAuthorizationEnabled(
     userId: session.user.id,
     event: verification.event,
   });
-  if (mode === "observe") {
-    try {
-      await recordFingerprintObservation({
-        env: input.env,
-        userId: session.user.id,
-        event: verification.event,
-        risk,
-      });
-    } catch {
-      // Observation is best-effort and must not change the authorization response.
-    }
-  }
   const effectiveAction = risk.action;
   const recorded = await writeRiskDecision(
     input.env,
@@ -263,15 +239,16 @@ async function handleFingerprintRiskAuthorizationEnabled(
     url.pathname,
     appSubject,
   );
-  if (mode === "enforce" && !recorded) {
+  if (!recorded) {
     return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
   }
-  if (mode === "enforce" && effectiveAction !== "allow") {
+  if (effectiveAction !== "allow") {
     if (effectiveAction === "deny") {
       return Response.json({ error: "Authentication could not be completed" }, { status: 403 });
     }
     // step_up: the session continues after a second factor is verified; SSO
     // issuance stays withheld until then.
+    if (isNewDeviceOnly(risk.reasons) && (await usableSecondFactors(input.env, session.user.id)).length === 0) return null;
     const gate = await evaluateStepUpGate(input.env, session);
     if (gate.action === "allow") return null;
     return stepUpChallengeResponseForSession({
@@ -293,6 +270,7 @@ export async function handleFingerprintRiskLogin(
   onVisitorDigest?: (digest: string | null) => void,
 ): Promise<Response> {
   const mode = fingerprintMode(env);
+  const enforcing = mode !== "disabled";
   const path = new URL(request.url).pathname;
   const auditId = crypto.randomUUID();
 
@@ -355,7 +333,7 @@ export async function handleFingerprintRiskLogin(
       signalError = verification.error ?? "invalid_event";
     }
 
-    if (mode === "enforce" && !verifiedEvent) {
+    if (enforcing && !verifiedEvent) {
       await finalizeAudit(env, auditId, null, null, "failure");
       const decisionRecorded = await writeRiskDecision(
         env,
@@ -385,7 +363,7 @@ export async function handleFingerprintRiskLogin(
       } catch {
         signalError = "event_claim_unavailable";
       }
-      if (mode === "enforce" && !eventClaimed) {
+      if (enforcing && !eventClaimed) {
         await finalizeAudit(env, auditId, null, null, "failure");
         const decisionRecorded = await writeRiskDecision(
           env,
@@ -448,7 +426,7 @@ export async function handleFingerprintRiskLogin(
       sessionToken = sessionToken ?? sessionFromCookie?.token ?? null;
       userId = userId ?? sessionFromCookie?.userId ?? null;
     } catch {
-      if (mode === "enforce") {
+      if (enforcing) {
         if (sessionToken) await revokeNewSession(env, sessionToken);
         await finalizeAudit(env, auditId, userId, null, "failure");
         return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
@@ -484,7 +462,7 @@ export async function handleFingerprintRiskLogin(
     }
   }
 
-  if (mode === "enforce" && (!userId || !sessionToken)) {
+  if (enforcing && (!userId || !sessionToken)) {
     if (sessionToken) await revokeNewSession(env, sessionToken);
     await finalizeAudit(env, auditId, userId, null, "failure");
     return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
@@ -496,33 +474,33 @@ export async function handleFingerprintRiskLogin(
       onVisitorDigest?.(risk.visitorDigest);
       const effectiveAction = risk.action;
       let decisionRecorded = true;
-      if (mode === "observe" || mode === "enforce") {
-        decisionRecorded = await writeRiskDecision(
-          env,
-          userId,
-          verifiedEvent.eventId,
-          effectiveAction,
-          risk.reasons,
-          path,
-        );
-      }
+      decisionRecorded = await writeRiskDecision(
+        env,
+        userId,
+        verifiedEvent.eventId,
+        effectiveAction,
+        risk.reasons,
+        path,
+      );
 
-      if (mode === "enforce" && !decisionRecorded) {
+      if (enforcing && !decisionRecorded) {
         if (sessionToken) await revokeNewSession(env, sessionToken);
         await finalizeAudit(env, auditId, userId, null, "failure");
         return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
       }
 
-      if (mode === "enforce" && effectiveAction === "deny") {
+      if (enforcing && effectiveAction === "deny") {
         if (sessionToken) await revokeNewSession(env, sessionToken);
         await finalizeAudit(env, auditId, userId, null, "failure");
         return Response.json({ error: "Authentication could not be completed" }, { status: 403 });
       }
-      if (mode === "enforce" && effectiveAction === "step_up" && sessionToken) {
+      if (enforcing && effectiveAction === "step_up" && sessionToken) {
         // The session is issued, but SSO issuance stays withheld until the
         // user completes a second factor (gate lives at the authorize path).
         const methods = await usableSecondFactors(env, userId!);
-        if (methods.length === 0) {
+        if (methods.length === 0 && isNewDeviceOnly(risk.reasons)) {
+          // Nothing to challenge with and nothing beyond a new device: sign-in continues.
+        } else if (methods.length === 0) {
           await revokeNewSession(env, sessionToken);
           await finalizeAudit(env, auditId, userId, null, "failure");
           return Response.json({ error: "Additional verification is required before signing in" }, { status: 403 });
@@ -542,32 +520,17 @@ export async function handleFingerprintRiskLogin(
         const challenge = await getStepUpChallenge(env, sessionToken);
         pendingStepUpAnnotation = { methods, expiresAt: challenge.expiresAt };
       }
-      if (mode === "observe") {
-        try {
-          await recordFingerprintObservation({ env, userId, event: verifiedEvent, risk });
-        } catch {
-          // Observation is best-effort and must not change authentication in observe mode.
-        }
-      } else if (mode === "enforce") {
-        await recordFingerprintObservation({ env, userId, event: verifiedEvent, risk });
-      }
+      await recordFingerprintObservation({ env, userId, event: verifiedEvent, risk });
       await bindFingerprintEventUser(env, verifiedEvent.eventId, userId);
     } catch {
-      if (mode === "enforce") {
+      if (enforcing) {
         if (sessionToken) await revokeNewSession(env, sessionToken);
         await finalizeAudit(env, auditId, userId, null, "failure");
         return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
       }
-      if (mode === "observe") {
-        try {
-          await writeRiskDecision(env, userId, verifiedEvent.eventId, "observe", ["risk_store_unavailable"], path);
-        } catch {
-          // Risk recording is best-effort when enforcement is disabled.
-        }
-      }
     }
   } else if (mode !== "disabled") {
-    if (verifiedEvent && mode === "enforce") {
+    if (verifiedEvent && enforcing) {
       if (sessionToken) await revokeNewSession(env, sessionToken);
       await finalizeAudit(env, auditId, userId, null, "failure");
       return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });
@@ -580,7 +543,7 @@ export async function handleFingerprintRiskLogin(
       [signalError ?? "event_not_bound_to_user"],
       path,
     );
-    if (mode === "enforce" && !decisionRecorded) {
+    if (enforcing && !decisionRecorded) {
       if (sessionToken) await revokeNewSession(env, sessionToken);
       await finalizeAudit(env, auditId, userId, null, "failure");
       return Response.json({ error: "Device risk verification is unavailable" }, { status: 503 });

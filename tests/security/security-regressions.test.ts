@@ -3,7 +3,7 @@ import type { Env } from "../../src/env";
 import { issueSwaGrant } from "../../src/swa/applications";
 import { hotpVerify } from "../../src/mfa/hotp";
 import { handleTwoFactorVerification } from "../../src/audit/auth-middleware";
-import { evaluateOpaqueLoginGate } from "../../src/auth/opaque-login";
+import { evaluateOpaqueLoginGate, stepUpOutcome } from "../../src/auth/opaque-login";
 import {
   cleanupSessionMfaProofs,
   getSessionMfaProof,
@@ -220,7 +220,7 @@ describe("security regressions", () => {
   // shared device-risk pipeline before any session issues.
   test("OPAQUE login gate denies banned accounts and fails closed", async () => {
     let bannedValue: unknown = 1;
-    const env = { FINGERPRINT_MODE: "disabled", DB: { prepare: (sql: string) => ({ bind: () => ({
+    const env = { DB: { prepare: (sql: string) => ({ bind: () => ({
       first: async () => {
         if (sql.includes('banned FROM "user"')) {
           if (bannedValue === "throw") throw new Error("db unavailable");
@@ -243,52 +243,33 @@ describe("security regressions", () => {
     expect(failed.reasons).toContain("account_unavailable");
   });
 
-  test("OPAQUE login gate applies device-risk modes", async () => {
+  test("OPAQUE login gate always assesses the device once the server key exists", async () => {
     const input = { userId: "u1", eventId: null, request: new Request("https://idp.test/api/opaque/auth/finish", { method: "POST" }), contextPath: "/api/opaque/auth/finish" };
-    // Disabled mode: no fingerprint requirements at all.
-    const disabled = { FINGERPRINT_MODE: "disabled", DB: { prepare: () => ({ bind: () => ({ first: async () => ({ banned: 0 }) }) }) } } as unknown as Env;
-    expect((await evaluateOpaqueLoginGate(disabled, input)).allowed).toBe(true);
-    // Enforce mode: a login without a submitted event is denied.
-    const decisions: string[] = [];
-    const enforce = { FINGERPRINT_MODE: "enforce", DB: { prepare: (sql: string) => ({ bind: () => ({
+    const db = (decisions: string[]) => ({ prepare: (sql: string) => ({ bind: () => ({
       first: async () => sql.includes('banned FROM "user"') ? { banned: 0 } : null,
       run: async () => { if (sql.includes("INSERT INTO fingerprint_risk_decisions")) decisions.push(sql); return { meta: { changes: 1 } }; },
-    }) }) } } as unknown as Env;
-    const denied = await evaluateOpaqueLoginGate(enforce, input);
+    }) }) });
+    // No server key: there is nothing to assess with.
+    expect((await evaluateOpaqueLoginGate({ DB: db([]) } as unknown as Env, input)).allowed).toBe(true);
+    // Server key present: a login without a submitted event is denied and recorded.
+    const decisions: string[] = [];
+    const denied = await evaluateOpaqueLoginGate({ FINGERPRINT_SERVER_API_KEY: "key", DB: db(decisions) } as unknown as Env, input);
     expect(denied.allowed).toBe(false);
     expect(denied.action).toBe("deny");
     expect(denied.reasons).toContain("missing_event");
     expect(decisions.length).toBeGreaterThan(0);
-    // Observe mode: baseline authentication proceeds, the outcome is recorded.
-    const decisionCount = decisions.length;
-    const observe = { FINGERPRINT_MODE: "observe", DB: { prepare: (sql: string) => ({ bind: () => ({
-      first: async () => sql.includes('banned FROM "user"') ? { banned: 0 } : null,
-      run: async () => { if (sql.includes("INSERT INTO fingerprint_risk_decisions")) decisions.push(sql); return { meta: { changes: 1 } }; },
-    }) }) } } as unknown as Env;
-    const observed = await evaluateOpaqueLoginGate(observe, input);
-    expect(observed.allowed).toBe(true);
-    expect(decisions.length).toBeGreaterThan(decisionCount);
+    // Break-glass is the only way to turn it off.
+    expect((await evaluateOpaqueLoginGate({ FINGERPRINT_SERVER_API_KEY: "key", FINGERPRINT_BREAK_GLASS: "true", DB: db([]) } as unknown as Env, input)).allowed).toBe(true);
   });
 
-  test("observe mode never turns a risky verdict into a step-up the account cannot answer", async () => {
-    const original = globalThis.fetch;
-    globalThis.fetch = (async () => Response.json({
-      event_id: "event", timestamp: Date.now(), identification: { visitor_id: "v", confidence: { score: 1 } },
-      incognito: true, ip_address: "203.0.113.9",
-    })) as typeof fetch;
-    try {
-      const db = { prepare: (sql: string) => ({ bind: () => ({
-        first: async () => sql.includes('banned FROM "user"') ? { banned: 0 } : null,
-        all: async () => ({ results: [] }),
-        run: async () => ({ meta: { changes: 1 } }),
-      }) }) };
-      const env = { FINGERPRINT_MODE: "observe", FINGERPRINT_SERVER_API_KEY: "key", AUTH_SECRET: "s", AUTH_BASE_URL: "https://idp.test", DB: db } as unknown as Env;
-      const request = new Request("https://idp.test/api/opaque/auth/finish", { method: "POST", headers: { origin: "https://idp.test" } });
-      const result = await evaluateOpaqueLoginGate(env, { userId: "u1", eventId: "event", request, contextPath: "/api/opaque/auth/finish" });
-      expect(result.allowed).toBe(true);
-      expect(result.action).toBe("allow");
-    } finally {
-      globalThis.fetch = original;
-    }
+  test("a new device alone does not lock out an account that has no second factor, but a stronger signal still does", async () => {
+    const env = { DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }), first: async () => null }) }) } } as unknown as Env;
+    const fresh = await stepUpOutcome(env, "u1", ["untrusted_device", "incognito_detected"]);
+    expect(fresh).toMatchObject({ allowed: true, action: "allow" });
+    const vm = await stepUpOutcome(env, "u1", ["virtual_machine_detected"]);
+    expect(vm).toMatchObject({ allowed: false, action: "deny" });
+    expect(vm.reasons).toContain("no_second_factor");
+    const mixed = await stepUpOutcome(env, "u1", ["untrusted_device", "rapid_device_and_country_change"]);
+    expect(mixed.allowed).toBe(false);
   });
 });

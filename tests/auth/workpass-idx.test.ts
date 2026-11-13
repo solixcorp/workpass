@@ -21,7 +21,6 @@ function testEnv(db: D1Database): Env {
     ADMIN_BOOTSTRAP_TOKEN: "bootstrap-token-0123456789abcdef-0123456789",
     ALLOW_PLAINTEXT_PASSWORD_LOGIN: "true",
     FINGERPRINT_PUBLIC_API_KEY: "public-key-for-tests",
-    FINGERPRINT_MODE: "observe",
     FINGERPRINT_REGION: "eu",
     AEAD_SEALING_KEY: btoa(String.fromCharCode(...new Uint8Array(32).fill(7))),
   } as unknown as Env;
@@ -158,7 +157,9 @@ describe("WorkPass client and IDX identify", () => {
   });
 
   test("login config exposes only the public Fingerprint key", async () => {
+    env.FINGERPRINT_SERVER_API_KEY = "server-key-for-tests";
     const response = await call("/api/config/login", { cookies: false });
+    delete (env as { FINGERPRINT_SERVER_API_KEY?: string }).FINGERPRINT_SERVER_API_KEY;
     const body = await response.json() as { app: { name: string }; fingerprint: { publicKey: string; region: string } | null };
     expect(body.app.name).toBe("WorkPass Dashboard");
     expect(body.app.icon).toBe("/workpass.svg");

@@ -9,7 +9,7 @@
 import type { Env } from "../env";
 import { haversineKm, resolveGeoPoint, type GeoPoint } from "./geo";
 
-export type FingerprintMode = "disabled" | "observe" | "enforce";
+export type FingerprintMode = "disabled" | "enforce";
 
 export interface FingerprintEvent {
   eventId: string;
@@ -63,19 +63,27 @@ const REGION_HOSTS: Record<NonNullable<Env["FINGERPRINT_REGION"]>, string> = {
 };
 
 /**
- * Device assessment always runs once the provider keys exist: "disabled" (or
- * an unset mode) is raised to "observe", which records without blocking.
- * Only the operator's FINGERPRINT_BREAK_GLASS switch turns it fully off.
+ * Device assessment is not a setting. It applies to every sign-in whenever the
+ * provider's server key exists. The operator's FINGERPRINT_BREAK_GLASS switch
+ * is the only way to turn it off, and a missing server key leaves nothing to
+ * assess with.
  */
 export function fingerprintMode(env: Env): FingerprintMode {
-  const mode = env.FINGERPRINT_MODE ?? "disabled";
-  if (mode !== "disabled" && mode !== "observe" && mode !== "enforce") {
-    throw new Error("FINGERPRINT_MODE must be disabled, observe, or enforce");
-  }
-  if (mode === "disabled" && env.FINGERPRINT_BREAK_GLASS !== "true" && env.FINGERPRINT_SERVER_API_KEY?.trim()) {
-    return "observe";
-  }
-  return mode;
+  if (env.FINGERPRINT_BREAK_GLASS === "true") return "disabled";
+  return env.FINGERPRINT_SERVER_API_KEY?.trim() ? "enforce" : "disabled";
+}
+
+/**
+ * A device the account has simply not used before. When these are the only
+ * reasons for a step-up and the account has no second factor to answer with,
+ * sign-in continues instead of locking the person out of every new device.
+ * Any stronger reason still needs the factor.
+ */
+const NEW_DEVICE_REASONS = new Set(["untrusted_device", "low_identification_confidence"]);
+
+export function isNewDeviceOnly(reasons: string[]): boolean {
+  const meaningful = reasons.filter((reason) => reason !== "incognito_detected" && reason !== "developer_tools_detected");
+  return meaningful.length > 0 && meaningful.every((reason) => NEW_DEVICE_REASONS.has(reason));
 }
 
 export function validateFingerprintConfig(env: Env): void {
@@ -162,7 +170,7 @@ function configBoolean(env: Env, name: string, fallback: boolean): boolean {
 
 export function geoIpHistoryPolicy(env: Env): GeoIpHistoryPolicy {
   // checkImpossibleTravel defaults ON: the detection is the point of the
-  // feature and the pipeline itself is already gated behind FINGERPRINT_MODE.
+  // feature and the pipeline itself is already gated behind the server API key (device assessment is on whenever it is set).
   // checkHistoryDistance defaults OFF (authentik's default) because its range
   // is deployment-specific and must be calibrated in observe mode first.
   return {
@@ -540,12 +548,12 @@ export async function evaluateFingerprintRisk(input: {
     "tampering_detected",
     "tor_network_detected",
     "ip_blocklisted",
-    "virtual_machine_detected",
-    "suspect_score_threshold",
-    "rapid_device_and_country_change",
   ]);
   if (reasons.some((reason) => hardSignals.has(reason))) action = "deny";
   else if (
+    reasons.includes("virtual_machine_detected") ||
+    reasons.includes("suspect_score_threshold") ||
+    reasons.includes("rapid_device_and_country_change") ||
     reasons.includes("impossible_travel") ||
     reasons.includes("history_distance_exceeded") ||
     reasons.includes("geo_position_unavailable") ||

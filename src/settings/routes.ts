@@ -65,29 +65,6 @@ settingsRoutes.put("/settings/:key", async (context) => {
     return context.json({ error: error instanceof Error ? error.message : "잘못된 값입니다." }, 400);
   }
 
-  // Switching device-risk checks on without the server key would reject every
-  // login, administrators included.
-  if (key === "fingerprint.mode" && value !== "disabled" && !context.env.FINGERPRINT_SERVER_API_KEY) {
-    return context.json({ error: "서버 키(FINGERPRINT_SERVER_API_KEY)가 설정되지 않아 켤 수 없습니다." }, 409);
-  }
-
-  // Enforcement rejects any login without a verified device event. Before it
-  // goes on, prove the browser side works for the person turning it on.
-  if (key === "fingerprint.mode" && value === "enforce") {
-    if (!context.env.FINGERPRINT_PUBLIC_API_KEY?.trim()) {
-      return context.json({ error: "공개 키(FINGERPRINT_PUBLIC_API_KEY)가 없어 브라우저가 기기를 확인할 수 없습니다. 강제로 바꾸면 모두 로그인하지 못합니다." }, 409);
-    }
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const proof = await context.env.DB.prepare(
-      "SELECT 1 AS ok FROM fingerprint_risk_decisions WHERE user_id = ? AND event_id IS NOT NULL AND occurred_at > ? LIMIT 1",
-    ).bind(actor.userId, since).first().catch(() => null);
-    if (!proof) {
-      return context.json({
-        error: "이 관리자 계정으로 기기 확인에 성공한 기록이 없습니다. 먼저 '관찰'로 바꾸고 로그아웃한 뒤 다시 로그인해 확인되는지 본 다음에 강제로 바꾸세요.",
-      }, 409);
-    }
-  }
-
   return auditStandaloneOperation(context.env, "admin.setting.updated", `/api/admin/settings/${key}`, async () => {
     await saveSetting(context.env, key, value, actor.userId);
     return { response: context.json({ key, value }), actorUserId: actor.userId, targetUserId: key };

@@ -5,13 +5,14 @@
  *
  * 1. Account state: a banned account (or one whose row cannot be read) is
  *    denied — enrollment keys must never resurrect a disabled identity.
- * 2. Device risk: with FINGERPRINT_MODE enabled, the fingerprint event the
- *    client submitted at /auth/start is verified, claimed (single use) and
- *    risk-evaluated here. `enforce` withholds the session on deny and on any
+ * 2. Device risk: whenever FINGERPRINT_SERVER_API_KEY is set (and
+ *    FINGERPRINT_BREAK_GLASS is not), the fingerprint event the client
+ *    submitted at /auth/start is verified, claimed (single use) and
+ *    risk-evaluated here. The session is withheld on deny and on any
  *    missing or unverifiable event; a `step_up` decision issues the session
  *    with a step-up challenge when the account has an enrollable second
- *    factor (src/security/step-up.ts) and fails closed otherwise; `observe`
- *    records outcomes best-effort and never blocks baseline authentication.
+ *    factor (src/security/step-up.ts). Without one, a device that is merely
+ *    new (isNewDeviceOnly) still signs in; any stronger reason is denied.
  *
  * Decisions are recorded through the shared risk-decision writer so the
  * OPAQUE surface audits exactly like the other login flows.
@@ -23,6 +24,7 @@ import {
   consumeFingerprintLookupBudget,
   evaluateFingerprintRisk,
   fingerprintMode,
+  isNewDeviceOnly,
   type FingerprintRisk,
   recordFingerprintObservation,
   verifyFingerprintEvent,
@@ -75,10 +77,9 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
     if (account.banned === 1) return { allowed: false, action: "deny", reasons: ["account_disabled"] };
   }
 
-  const mode = fingerprintMode(env);
-  if (mode === "disabled") return { allowed: true, action: "allow", reasons };
+  if (fingerprintMode(env) === "disabled") return { allowed: true, action: "allow", reasons };
 
-  // 2. Device risk — the shared login pipeline.
+  // 2. Device risk: the shared login pipeline.
   let withinBudget = false;
   try {
     withinBudget = await consumeFingerprintLookupBudget({ env, request: input.request, limit: 10 });
@@ -93,10 +94,8 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
 
   if (!verified.event) {
     reasons.push(verified.error ?? "invalid_event");
-    await recordDecision(env, null, input.eventId, mode === "enforce" ? "deny" : "observe", reasons, input.contextPath);
-    return mode === "enforce"
-      ? { allowed: false, action: "deny", reasons }
-      : { allowed: true, action: "allow", reasons };
+    await recordDecision(env, null, input.eventId, "deny", reasons, input.contextPath);
+    return { allowed: false, action: "deny", reasons };
   }
 
   const event = verified.event;
@@ -113,12 +112,8 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
   }
   if (!claimed) {
     reasons.push("replayed_event");
-    await recordDecision(env, null, event.eventId, mode === "enforce" ? "deny" : "observe", reasons, input.contextPath);
-    return mode === "enforce"
-      ? { allowed: false, action: "deny", reasons }
-      : // Observe mode: a replayed event is recorded but never blocks baseline
-        // authentication, matching the shared login pipeline.
-        { allowed: true, action: "allow", reasons };
+    await recordDecision(env, null, event.eventId, "deny", reasons, input.contextPath);
+    return { allowed: false, action: "deny", reasons };
   }
 
   let risk: FingerprintRisk | null = null;
@@ -129,41 +124,30 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
   }
   if (!risk) {
     reasons.push("risk_evaluation_unavailable");
-    await recordDecision(env, input.userId, event.eventId, mode === "enforce" ? "deny" : "observe", reasons, input.contextPath);
-    return mode === "enforce"
-      ? { allowed: false, action: "deny", reasons }
-      : { allowed: true, action: "allow", reasons };
+    await recordDecision(env, input.userId, event.eventId, "deny", reasons, input.contextPath);
+    return { allowed: false, action: "deny", reasons };
   }
 
   try {
     await recordFingerprintObservation({ env, userId: input.userId ?? "", event, risk });
   } catch {
-    if (mode === "enforce") reasons.push("observation_unavailable");
+    reasons.push("observation_unavailable");
   }
 
-  await recordDecision(
-    env,
-    input.userId,
-    event.eventId,
-    mode === "enforce" ? risk.action : "observe",
-    [...risk.reasons, ...reasons],
-    input.contextPath,
-  );
+  await recordDecision(env, input.userId, event.eventId, risk.action, [...risk.reasons, ...reasons], input.contextPath);
 
-  if (mode === "enforce" && (risk.action !== "allow" || reasons.includes("observation_unavailable"))) {
+  if (risk.action !== "allow" || reasons.includes("observation_unavailable")) {
     if (risk.action === "deny" || !input.userId) {
       return { allowed: false, action: "deny", reasons: [...risk.reasons, ...reasons] };
     }
     // Step-up with the challenge flow: the session issues and SSO issuance
-    // stays withheld until a second factor is verified — when the account can
+    // stays withheld until a second factor is verified, when the account can
     // complete one. Without any factor this stays fail closed (denied).
     return await stepUpOutcome(env, input.userId, [...risk.reasons, ...reasons]);
   }
-  // Observe records the verdict but never changes the outcome: handing a
-  // step_up back would make accounts without a second factor fail with 503.
   return {
     allowed: true,
-    action: mode === "enforce" ? risk.action : "allow",
+    action: risk.action,
     reasons: [...risk.reasons, ...reasons],
     visitorDigest: risk.visitorDigest,
   };
@@ -177,6 +161,7 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
  */
 export async function stepUpOutcome(env: Env, userId: string, reasons: string[]): Promise<OpaqueLoginDecision> {
   const methods = await usableSecondFactors(env, userId).catch(() => [] as string[]);
+  if (methods.length === 0 && isNewDeviceOnly(reasons)) return { allowed: true, action: "allow", reasons };
   if (methods.length === 0) {
     return { allowed: false, action: "deny", reasons: [...reasons, "no_second_factor"] };
   }

@@ -117,7 +117,7 @@ workpassRoutes.get("/auth/login", async (context) => {
     ["scope", ["openid", "profile", "email", ...WORKPASS_SCOPES].join(" ")],
   ];
   // Device-risk event for this authorization (single use; the login already
-  // consumed its own). Ignored unless FINGERPRINT_MODE is enabled.
+  // consumed its own). Ignored unless device assessment is on (server key set, no break-glass).
   if (fingerprintEventId && fingerprintEventId.length <= 256) entries.push(["fingerprint_event_id", fingerprintEventId]);
   const authorize = `${origin}/oauth2/v1/authorize?${entries
     .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)

@@ -130,7 +130,7 @@ disabled and does not call it.
 
 | Flag/settings | Default | Notes |
 |---|---|---|
-| `FINGERPRINT_MODE` | `disabled` | `observe`/`enforce` need `FINGERPRINT_SERVER_API_KEY` (region `us`/`eu`/`ap`); enforce holds logins/sessions on risk findings. **Rotate the key if it was ever exposed in a terminal.** |
+| `FINGERPRINT_SERVER_API_KEY` | unset | Device assessment is always on while this is set (region `us`/`eu`/`ap` in `FINGERPRINT_REGION`); there is no mode. Deny holds the sign-in; step-up asks for a second factor. `FINGERPRINT_BREAK_GLASS=true` turns it off. **Rotate the key if it was ever exposed in a terminal.** |
 | `FINGERPRINT_*` thresholds | provider defaults | `FINGERPRINT_MIN_CONFIDENCE`, `FINGERPRINT_SUSPECT_SCORE_THRESHOLD`, `FINGERPRINT_MAX_EVENT_AGE_SECONDS`, `FINGERPRINT_ALLOWED_ORIGINS`. |
 | `ENABLE_DYNAMIC_CLIENT_REGISTRATION` | `false` | see flag matrix. |
 | `ENABLE_SCIM_PROVISIONING` / `ENABLE_INBOUND_SCIM` | `false` | SCIM sender/receiver with bearer tokens; `SCIM_DEV_LOOPBACK_TARGET` is dev-only. |

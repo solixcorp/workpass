@@ -58,7 +58,6 @@
     "ENABLE_ADMIN_BOOTSTRAP": "false",
     "ENABLE_MIGRATIONS": "false",
     "ENABLE_DYNAMIC_CLIENT_REGISTRATION": "false",
-    "FINGERPRINT_MODE": "disabled",
     "FINGERPRINT_REGION": "us",
     "FINGERPRINT_ENDPOINT": "https://risksecurity.workpass.solixllc.com"
   },

@@ -60,7 +60,7 @@ export function invalidateSettings(env: Env): void {
 
 /**
  * The environment with stored settings laid over it. Everything downstream
- * keeps reading `env.FINGERPRINT_MODE` and friends; a stored value simply
+ * keeps reading `env.MFA_REQUIRE` and friends; a stored value simply
  * takes the place of the deployment value for this request.
  */
 export async function applySettings(env: Env): Promise<Env> {
@@ -70,12 +70,8 @@ export async function applySettings(env: Env): Promise<Env> {
     const definition = settingDefinition(key);
     if (definition) overrides[definition.envName] = row.value;
   }
-  // Lockout recovery: the operator sets FINGERPRINT_BREAK_GLASS=true on the
-  // deployment and device-risk checks are off again, whatever was stored.
   // How e-mail and SMS leave the system, when an administrator chose.
   Object.assign(overrides, await deliveryOverrides(env));
-  if (env.FINGERPRINT_BREAK_GLASS === "true") overrides.FINGERPRINT_MODE = "disabled";
-  // Device assessment cannot be switched off from settings; see fingerprintMode().
   if (Object.keys(overrides).length === 0) return env;
   return { ...env, ...overrides } as Env;
 }
