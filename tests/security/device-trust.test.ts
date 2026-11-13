@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Env } from "../../src/env";
 import { createTestD1 } from "../test-d1";
-import { gradeDeviceTrust, latestObservations } from "../../src/security/device-trust";
+import { DEVICE_TRUST_BANDS, deviceTrustReasons, gradeDeviceTrust, latestObservations } from "../../src/security/device-trust";
 import { fingerprintSignalSnapshot } from "../../src/security/fingerprint";
 
 describe("device trust grading", () => {
@@ -23,12 +23,14 @@ describe("device trust grading", () => {
     expect(gradeDeviceTrust("allow", [], { suspectScore: 0 })).toEqual({ level: "trusted", score: 100 });
     expect(gradeDeviceTrust("allow", [], { suspectScore: 12 })).toEqual({ level: "trusted", score: 88 });
     expect(gradeDeviceTrust("allow", [], { suspectScore: 30 })).toEqual({ level: "normal", score: 70 });
-    expect(gradeDeviceTrust("allow", [], { suspectScore: 90 })).toEqual({ level: "review", score: 10 });
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 90 })).toEqual({ level: "risky", score: 10 });
+    expect(gradeDeviceTrust("allow", [], { suspectScore: 45 })).toEqual({ level: "review", score: 55 });
     // The provider's number wins over the count of reasons.
     expect(gradeDeviceTrust("allow", ["vpn_detected", "proxy_detected"], { suspectScore: 12 }).score).toBe(88);
     expect(gradeDeviceTrust("allow", [], { suspectScore: 250 }).score).toBe(0);
-    expect(gradeDeviceTrust("step_up", ["untrusted_device"], { suspectScore: 23 })).toEqual({ level: "review", score: 77 });
-    expect(gradeDeviceTrust("deny", ["bot_detected", "tampering_detected"], { suspectScore: 23 })).toEqual({ level: "risky", score: 77 });
+    // The verdict does not move the score or the band when the provider's number exists.
+    expect(gradeDeviceTrust("step_up", ["untrusted_device"], { suspectScore: 23 })).toEqual({ level: "normal", score: 77 });
+    expect(gradeDeviceTrust("deny", ["bot_detected", "tampering_detected"], { suspectScore: 23 })).toEqual({ level: "normal", score: 77 });
   });
 
   test("step-up verdicts are capped at review and hard reasons are risky", () => {
@@ -39,7 +41,27 @@ describe("device trust grading", () => {
   });
 
   test("no recorded verdict is reported as unknown, not as safe", () => {
-    expect(gradeDeviceTrust(null, [])).toEqual({ level: "unknown", score: 0 });
+    expect(gradeDeviceTrust(null, [])).toEqual({ level: "unknown", score: null });
+  });
+
+  test("with a Suspect Score the level is only the band of 100 minus it", () => {
+    for (const action of ["allow", "step_up", "deny"]) {
+      for (let suspicion = 0; suspicion <= 100; suspicion++) {
+        const grade = gradeDeviceTrust(action, ["bot_detected"], { suspectScore: suspicion });
+        const band = DEVICE_TRUST_BANDS[grade.level as keyof typeof DEVICE_TRUST_BANDS];
+        expect(grade.score).toBe(100 - suspicion);
+        expect(grade.score!).toBeGreaterThanOrEqual(band.min);
+        expect(grade.score!).toBeLessThanOrEqual(band.max);
+      }
+    }
+    // Without a Suspect Score the verdict still decides the band.
+    expect(gradeDeviceTrust("step_up", [])).toEqual({ level: "review", score: 59 });
+    expect(gradeDeviceTrust("allow", ["bot_detected"])).toMatchObject({ level: "risky" });
+    expect(deviceTrustReasons(["new_country", "vpn_detected", "tampering_detected"])).toEqual([
+      { code: "new_country", label: "처음 보는 국가", severity: "info" },
+      { code: "vpn_detected", label: "VPN 감지", severity: "warning" },
+      { code: "tampering_detected", label: "기기 정보 조작 감지", severity: "danger" },
+    ]);
   });
 });
 

@@ -1,0 +1,8 @@
+schema = 1
+id = "REQ-1794582575-tvj"
+type = "requirement"
+title = "Device safety score and grade follow the Fingerprint Pro Suspect Score"
+description = "When a Suspect Score was recorded, the displayed safety score is 100 minus it (clamped 0-100) and the grade is only the score band: risky 0-29, review 30-59, normal 60-84, trusted 85-100. The sign-in verdict and reasons no longer cap or move either value. Observations without a Suspect Score keep the verdict and reason-count fallback."
+status = "active"
+created_at = 2026-11-14T00:09:35+09:00
+updated_at = 2026-11-14T00:09:35+09:00

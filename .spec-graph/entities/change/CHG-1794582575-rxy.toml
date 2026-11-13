@@ -1,0 +1,12 @@
+schema = 1
+id = "CHG-1794582575-rxy"
+type = "change"
+title = "Grade devices by Suspect Score band only"
+description = "gradeDeviceTrust in src/security/device-trust.ts returns score 100 - suspectScore and level from levelForScore when a Suspect Score exists; fallback unchanged otherwise. QA: tests/security/device-trust.test.ts covers suspect 0-100 across allow/step_up/deny; bun test 732 pass, typecheck, web:build, web lint."
+status = "resolved"
+created_at = 2026-11-14T00:09:35+09:00
+updated_at = 2026-11-14T00:09:35+09:00
+
+[[relations]]
+to = "REQ-1794582575-tvj"
+type = "covers"
