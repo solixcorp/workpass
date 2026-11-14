@@ -138,7 +138,7 @@ deliveryRoutes.post("/delivery/:kind/test", async (context) => {
   const body = (await context.req.json().catch(() => null)) as { to?: unknown } | null;
   const to = typeof body?.to === "string" ? body.to.trim() : "";
   if (kind === "email" && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(to)) return context.json({ error: "받을 이메일 주소를 확인하세요." }, 400);
-  if (kind === "sms" && !/^\+[1-9][0-9]{5,14}$/.test(to)) return context.json({ error: "받을 번호는 +821012345678 형식으로 넣으세요." }, 400);
+  if (kind === "sms" && !/^010\d{8}$/.test(to)) return context.json({ error: "받을 번호는 01012345678처럼 010으로 시작하는 숫자 11자리로 넣으세요." }, 400);
 
   const stored = await loadDelivery(context.env, kind, true);
   const effective = { ...context.env, ...(await deliveryOverrides(context.env)) } as Env;

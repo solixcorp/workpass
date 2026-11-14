@@ -43,7 +43,7 @@ type DeliveryView = {
 
 const COPY: Record<Kind, { title: string; description: string; testLabel: string; testPlaceholder: string }> = {
   email: { title: '이메일', description: '비밀번호 설정 링크, 인증 코드 메일을 보내는 방법입니다.', testLabel: '받을 이메일', testPlaceholder: 'me@example.com' },
-  sms: { title: '문자(SMS)', description: '휴대전화로 보내는 인증 코드를 보내는 방법입니다.', testLabel: '받을 번호', testPlaceholder: '+821012345678' },
+  sms: { title: '문자(SMS)', description: '휴대전화로 보내는 인증 코드를 보내는 방법입니다.', testLabel: '받을 번호', testPlaceholder: '01012345678' },
 }
 
 const SOURCES = {

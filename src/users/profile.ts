@@ -68,8 +68,8 @@ export function validateProfile(body: unknown): ProfileUpdate | { error: string 
   }
   if (value.phoneNumber !== undefined) {
     if (value.phoneNumber === null || value.phoneNumber === "") out.phoneNumber = null;
-    else if (typeof value.phoneNumber === "string" && /^\+[1-9][0-9]{5,14}$/.test(value.phoneNumber.trim())) out.phoneNumber = value.phoneNumber.trim();
-    else return { error: "휴대전화 번호는 국가 번호를 포함해 +821012345678 형식으로 넣으세요." };
+    else if (typeof value.phoneNumber === "string" && /^010\d{8}$/.test(value.phoneNumber.trim())) out.phoneNumber = value.phoneNumber.trim();
+    else return { error: "휴대전화 번호는 01012345678처럼 010으로 시작하는 숫자 11자리로 넣으세요." };
   }
   if (value.fields !== undefined) {
     if (!value.fields || typeof value.fields !== "object" || Array.isArray(value.fields)) return { error: "프로필 항목 형식이 올바르지 않습니다." };

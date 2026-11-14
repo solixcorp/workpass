@@ -309,7 +309,7 @@ function PhoneDialog({ open, onOpenChange, me }: { open: boolean; onOpenChange: 
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="my-phone">휴대전화 번호</FieldLabel>
-              <Input id="my-phone" inputMode="tel" autoComplete="tel" placeholder="+821012345678" value={phone} onChange={(event) => setPhone(event.target.value)} />
+              <Input id="my-phone" inputMode="tel" autoComplete="tel" placeholder="01012345678" value={phone} onChange={(event) => setPhone(event.target.value)} />
               <FieldDescription>번호를 바꾸면 확인 전 상태로 돌아갑니다.</FieldDescription>
             </Field>
           </FieldGroup>

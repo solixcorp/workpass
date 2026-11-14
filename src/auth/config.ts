@@ -162,7 +162,7 @@ export function createAuth(env: Env) {
           const { sendSmsCode } = await import("../mfa/otp-senders");
           await sendSmsCode(env, { to: phoneNumber, code });
         },
-        phoneNumberValidator: (phoneNumber) => /^\+[1-9][0-9]{5,14}$/.test(phoneNumber.trim()),
+        phoneNumberValidator: (phoneNumber) => /^010\d{8}$/.test(phoneNumber.trim()),
       }),
       twoFactor({
         issuer: authBaseUrl.hostname,

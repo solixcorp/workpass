@@ -73,8 +73,8 @@ describe("self service and overview", () => {
 
   test("a person edits their own name and phone number, not the administrator fields", async () => {
     expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "010" } })).status).toBe(400);
-    expect((await call("/api/me/profile", { method: "PUT", body: { name: "Admin Self", phoneNumber: "+821099998888" } })).status).toBe(200);
-    expect(await json(await call("/api/me/profile"))).toMatchObject({ name: "Admin Self", phoneNumber: "+821099998888", phoneVerified: false });
+    expect((await call("/api/me/profile", { method: "PUT", body: { name: "Admin Self", phoneNumber: "01099998888" } })).status).toBe(200);
+    expect(await json(await call("/api/me/profile"))).toMatchObject({ name: "Admin Self", phoneNumber: "01099998888", phoneVerified: false });
     // A cross-origin write is refused.
     const refused = await call("/api/me/profile", { method: "PUT", body: { name: "x" }, headers: { Origin: "https://evil.example" } });
     expect(refused.status).toBe(403);

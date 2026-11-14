@@ -73,11 +73,11 @@ describe("user detail", () => {
     expect((await put({ phoneNumber: "010-1234-5678" })).status).toBe(400);
     expect((await put({ fields: { nope: "x" } })).status).toBe(400);
     expect((await put({ fields: { secondEmail: "not-an-email" } })).status).toBe(400);
-    expect((await put({ name: "Admin Kim", phoneNumber: "+821012345678", fields: { title: "CTO", department: "Platform" } })).status).toBe(200);
+    expect((await put({ name: "Admin Kim", phoneNumber: "01012345678", fields: { title: "CTO", department: "Platform" } })).status).toBe(200);
     const profile = await json(await call(`/api/admin/users/${adminId}/profile`));
-    expect(profile).toMatchObject({ name: "Admin Kim", phoneNumber: "+821012345678", fields: { title: "CTO", department: "Platform" } });
+    expect(profile).toMatchObject({ name: "Admin Kim", phoneNumber: "01012345678", fields: { title: "CTO", department: "Platform" } });
     // The number is not verified until the user proves it: it must not receive codes yet.
-    expect((await json(await call(`/api/admin/users/${adminId}/detail`))).user).toMatchObject({ phoneNumber: "+821012345678", phoneVerified: false });
+    expect((await json(await call(`/api/admin/users/${adminId}/detail`))).user).toMatchObject({ phoneNumber: "01012345678", phoneVerified: false });
     // Clearing a field removes it.
     await put({ fields: { department: "" } });
     expect((await json(await call(`/api/admin/users/${adminId}/profile`))).fields).toEqual({ title: "CTO" });

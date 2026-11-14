@@ -89,7 +89,7 @@ export const SMS_PROVIDERS: DeliveryProviderSpec[] = [
   {
     id: "solapi",
     label: "솔라피 (Solapi)",
-    description: "국내 문자 발송 서비스입니다. +82 번호로만 보낼 수 있습니다.",
+    description: "국내 문자 발송 서비스입니다. 010으로 시작하는 번호로만 보낼 수 있습니다.",
     fields: [
       { key: "apiKey", label: "API Key", required: true, placeholder: "NCS..." },
       { key: "apiSecret", label: "API Secret", secret: true, required: true },

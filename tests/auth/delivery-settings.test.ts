@@ -120,21 +120,22 @@ describe("e-mail and SMS providers", () => {
   test("SMS goes out through Twilio or Solapi with the right credentials", async () => {
     expect((await put("sms", { provider: "twilio", values: { accountSid: "AC123", from: "+12025550123" }, secrets: { authToken: "tok_abcdef" } })).status).toBe(200);
     sent = [];
-    expect(await json(await sendTest("sms", "+821012345678"))).toEqual({ ok: true });
+    expect(await json(await sendTest("sms", "01012345678"))).toEqual({ ok: true });
     expect(sent[0]!.url).toBe("https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json");
     expect(sent[0]!.headers.get("authorization")).toBe(`Basic ${btoa("AC123:tok_abcdef")}`);
     const form = new URLSearchParams(sent[0]!.body);
-    expect(form.get("To")).toBe("+821012345678");
+    expect(form.get("To")).toBe("+821012345678"); // Twilio is sent the international form
     expect(form.get("From")).toBe("+12025550123");
 
     expect((await put("sms", { provider: "solapi", values: { apiKey: "NCSKEY", from: "0212345678" }, secrets: { apiSecret: "solapi_secret" } })).status).toBe(200);
     sent = [];
-    expect(await json(await sendTest("sms", "+821012345678"))).toEqual({ ok: true });
-    expect(sent[0]!.url).toBe("https://api.solapi.com/messages/v4/send");
+    expect(await json(await sendTest("sms", "01012345678"))).toEqual({ ok: true });
+    expect(sent[0]!.url).toBe("https://api.solapi.com/messages/v4/send-many/detail");
     expect(sent[0]!.headers.get("authorization")).toMatch(/^HMAC-SHA256 apiKey=NCSKEY, date=.+, salt=[0-9a-f]{32}, signature=[0-9a-f]{64}$/);
-    expect(JSON.parse(sent[0]!.body).message).toMatchObject({ to: "01012345678", from: "0212345678" });
-    // Solapi only reaches Korean numbers, and says so.
-    expect((await json(await sendTest("sms", "+14155550123"))).ok).toBe(false);
+    expect(JSON.parse(sent[0]!.body).messages[0]).toMatchObject({ to: "01012345678", from: "0212345678", type: "SMS", autoTypeDetect: false, country: "82" });
+    // Numbers are written as 010XXXXXXXX; the international form is refused.
+    expect((await sendTest("sms", "+14155550123")).status).toBe(400);
+    expect((await sendTest("sms", "+821012345678")).status).toBe(400);
     expect((await sendTest("sms", "010-1234")).status).toBe(400);
 
     // Switching provider drops the old provider's secrets: they must be given again.

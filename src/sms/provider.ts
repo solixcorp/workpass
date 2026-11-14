@@ -39,7 +39,9 @@ const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toSt
 async function sendTwilio(env: Env, to: string, text: string): Promise<void> {
   const sid = env.SMS_TWILIO_ACCOUNT_SID!;
   const from = env.SMS_FROM!;
-  const body = new URLSearchParams({ To: to, Body: text });
+  // Twilio wants the international form; numbers are stored as 010XXXXXXXX.
+  const international = /^0\d+$/.test(to) ? `+82${to.slice(1)}` : to;
+  const body = new URLSearchParams({ To: international, Body: text });
   body.set(from.startsWith("MG") ? "MessagingServiceSid" : "From", from);
   const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
     method: "POST",
@@ -50,22 +52,32 @@ async function sendTwilio(env: Env, to: string, text: string): Promise<void> {
 }
 
 async function sendSolapi(env: Env, to: string, text: string): Promise<void> {
-  // Solapi sends to domestic numbers: +8210… becomes 010….
-  if (!to.startsWith("+82")) throw new Error("솔라피는 +82 번호로만 보낼 수 있습니다.");
-  const local = `0${to.slice(3)}`;
+  // Numbers are stored as 010XXXXXXXX. A number saved earlier as +8210… is
+  // sent in the same domestic form.
+  const local = to.startsWith("+82") ? `0${to.slice(3)}` : to;
+  if (!/^010\d{8}$/.test(local)) throw new Error("솔라피는 010으로 시작하는 번호로만 보낼 수 있습니다.");
   const date = new Date().toISOString();
   const salt = hex(crypto.getRandomValues(new Uint8Array(16)).buffer);
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.SMS_SOLAPI_API_SECRET!), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(date + salt)));
-  const response = await fetch("https://api.solapi.com/messages/v4/send", {
+  // https://solapi.com/developers/api/messages-sms — SMS holds 90 bytes (Korean
+  // counts 2 each); anything longer goes as LMS. The type is stated outright
+  // so the provider does not pick one for us.
+  const bytes = [...text].reduce((sum, char) => sum + (char.charCodeAt(0) < 128 ? 1 : 2), 0);
+  const type = bytes <= 90 ? "SMS" : "LMS";
+  const response = await fetch("https://api.solapi.com/messages/v4/send-many/detail", {
     method: "POST",
     headers: {
       Authorization: `HMAC-SHA256 apiKey=${env.SMS_SOLAPI_API_KEY}, date=${date}, salt=${salt}, signature=${signature}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message: { to: local, from: env.SMS_FROM, text } }),
+    body: JSON.stringify({ messages: [{ to: local, from: env.SMS_FROM, text, type, autoTypeDetect: false, country: "82" }] }),
   });
   if (!response.ok) throw await failure("Solapi SMS delivery failed", response);
+  // A 200 can still carry messages that were not accepted.
+  const result = (await response.json().catch(() => null)) as { failedMessageList?: Array<{ statusCode?: string; statusMessage?: string }> } | null;
+  const failed = result?.failedMessageList?.[0];
+  if (failed) throw new Error(`Solapi SMS delivery failed: ${failed.statusCode ?? ""} ${failed.statusMessage ?? ""}`.trim());
 }
 
 async function sendWebhook(env: Env, to: string, text: string, code: string | null): Promise<void> {

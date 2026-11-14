@@ -56,7 +56,7 @@ describe("application MFA methods", () => {
       const deliveryEnv = { ...env, MFA_OTP_EMAIL_WEBHOOK_URL: "https://mail.test", AUTH_BASE_URL: "http://localhost" };
       await sendOtpWithFallback(deliveryEnv, { userId: "user1", email: "u@example.test", otp: "111111" });
       expect(await otpChannel(env, "user1", "111111")).toBe("email");
-      await db.prepare('UPDATE "user" SET "phoneNumber" = ?, "phoneNumberVerified" = 1 WHERE id = ?').bind("+821012345678", "user1").run();
+      await db.prepare('UPDATE "user" SET "phoneNumber" = ?, "phoneNumberVerified" = 1 WHERE id = ?').bind("01012345678", "user1").run();
       await sendOtpWithFallback(deliveryEnv, { userId: "user1", email: "u@example.test", otp: "222222" });
       expect(await otpChannel(env, "user1", "222222")).toBe("sms");
     } finally {

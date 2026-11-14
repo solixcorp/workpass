@@ -76,7 +76,7 @@ describe("phone number verification", () => {
   test("a code needs a saved number, and the person is told what is missing", async () => {
     expect((await send()).status).toBe(409);
     expect((await json(await call("/api/me/profile"))).smsAvailable).toBe(true);
-    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "+821077778888" } })).status).toBe(200);
+    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "01077778888" } })).status).toBe(200);
     expect((await json(await call("/api/me/profile"))).phoneVerified).toBe(false);
     expect((await verify("123456")).status).toBe(400); // no code requested yet
   });
@@ -84,7 +84,7 @@ describe("phone number verification", () => {
   test("the right code verifies the number, the wrong ones are counted and stop", async () => {
     expect((await json(await send()))).toMatchObject({ sent: true, expiresInSeconds: 600 });
     expect(texts).toHaveLength(1);
-    expect(texts[0]).toMatchObject({ to: "+821077778888" });
+    expect(texts[0]).toMatchObject({ to: "01077778888" });
     const code = texts[0]!.code;
     expect(code).toMatch(/^[0-9]{6}$/);
     const stored = await db.prepare("SELECT code_hash FROM phone_verifications WHERE user_id = ?").bind(adminId).first<{ code_hash: string }>();
@@ -107,13 +107,13 @@ describe("phone number verification", () => {
   });
 
   test("changing the number cancels the code and clears the verified flag", async () => {
-    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "+821099990000" } })).status).toBe(200);
+    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "01099990000" } })).status).toBe(200);
     expect((await json(await call("/api/me/profile"))).phoneVerified).toBe(false);
     await send();
     const code = texts.at(-1)!.code;
-    expect(texts.at(-1)!.to).toBe("+821099990000");
+    expect(texts.at(-1)!.to).toBe("01099990000");
     // A code sent to one number cannot confirm another.
-    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "+821011112222" } })).status).toBe(200);
+    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "01011112222" } })).status).toBe(200);
     expect((await json(await verify(code))).reason).toBe("no_code");
     expect((await json(await call("/api/me/profile"))).phoneVerified).toBe(false);
   });
@@ -162,10 +162,10 @@ describe("phone number verification", () => {
 
   test("a text message is never a way to sign in", async () => {
     for (const [method, path] of [["POST", "/api/auth/phone-number/send-otp"], ["POST", "/api/auth/phone-number/verify"], ["POST", "/api/auth/sign-in/phone-number"], ["POST", "/api/auth/phone-number/reset-password"]] as const) {
-      expect((await call(path, { method, body: { phoneNumber: "+821011112222", code: "123456" } })).status).toBe(404);
+      expect((await call(path, { method, body: { phoneNumber: "01011112222", code: "123456" } })).status).toBe(404);
     }
     jar.clear();
-    expect((await call("/api/auth/phone-number/verify", { method: "POST", body: { phoneNumber: "+821011112222", code: "123456" } })).status).toBe(404);
+    expect((await call("/api/auth/phone-number/verify", { method: "POST", body: { phoneNumber: "01011112222", code: "123456" } })).status).toBe(404);
     expect((await send()).status).toBe(401);
     expect((await verify("123456")).status).toBe(401);
   });
