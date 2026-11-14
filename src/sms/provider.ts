@@ -80,9 +80,16 @@ async function sendWebhook(env: Env, to: string, text: string, code: string | nu
 /** Send one text message. `code` is passed to a webhook next to the text, as before. */
 export async function sendSms(env: Env, input: { to: string; text: string; code?: string | null }): Promise<void> {
   if (!smsAvailable(env)) throw new Error("SMS delivery is not configured");
-  switch (selectedSmsProvider(env)) {
-    case "twilio": return sendTwilio(env, input.to, input.text);
-    case "solapi": return sendSolapi(env, input.to, input.text);
-    default: return sendWebhook(env, input.to, input.text, input.code ?? null);
+  const provider = selectedSmsProvider(env);
+  try {
+    switch (provider) {
+      case "twilio": return await sendTwilio(env, input.to, input.text);
+      case "solapi": return await sendSolapi(env, input.to, input.text);
+      default: return await sendWebhook(env, input.to, input.text, input.code ?? null);
+    }
+  } catch (error) {
+    // Callers report a generic failure to the person; the cause stays in the logs.
+    console.error("sms delivery failed", provider, error instanceof Error ? error.message : String(error));
+    throw error;
   }
 }
