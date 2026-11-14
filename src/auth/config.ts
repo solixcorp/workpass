@@ -98,6 +98,11 @@ export function createAuth(env: Env) {
     // successful writes record their metadata and reuse history.
     hooks: createPasswordPolicyHooks(env),
     advanced: {
+      // The schema is owned by src/db/schema.ts and applied by /_internal/migrate.
+      // The runtime check re-introspects every table (100+ PRAGMA queries) on
+      // each request because createAuth builds a new adapter per request, and
+      // each query is a round trip to D1.
+      database: { validateSchema: false },
       useSecureCookies: authBaseUrl.protocol === "https:",
       defaultCookieAttributes: {
         sameSite: "lax",
