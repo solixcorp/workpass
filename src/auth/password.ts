@@ -1,4 +1,8 @@
-const PASSWORD_HASH_PREFIX = "pbkdf2-sha256$600000$";
+// Workers cap PBKDF2 at 100,000 iterations (deriveBits throws above that), so
+// this is the most the runtime allows. Passwords are only hashed here for
+// bootstrap and recovery; sign-in uses OPAQUE.
+const PBKDF2_ITERATIONS = 100_000;
+const PASSWORD_HASH_PREFIX = `pbkdf2-sha256$${PBKDF2_ITERATIONS}$`;
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -10,7 +14,7 @@ export async function hashPassword(password: string): Promise<string> {
     ["deriveBits"],
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 600_000 },
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITERATIONS },
     key,
     256,
   );
@@ -30,7 +34,7 @@ export async function verifyPassword(input: {
   const [algorithm, iterationsValue, saltHex, expectedHex] = input.hash.split("$");
   if (
     algorithm !== "pbkdf2-sha256" ||
-    iterationsValue !== "600000" ||
+    iterationsValue !== String(PBKDF2_ITERATIONS) ||
     !saltHex ||
     !expectedHex
   ) {
