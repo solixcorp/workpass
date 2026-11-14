@@ -47,9 +47,6 @@
       "/application/*"
     ]
   },
-  "limits": {
-    "subrequests": 1000
-  },
   "placement": {
     "mode": "smart"
   },
