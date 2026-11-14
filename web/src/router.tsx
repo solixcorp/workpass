@@ -35,6 +35,7 @@ import { SettingsPage } from '@/features/admin/settings-page'
 import { AdminOverviewPage } from '@/features/admin/overview-page'
 import { UsersPage } from '@/features/admin/users-page'
 import { ActivationPage } from '@/features/auth/activation-page'
+import { LoggedOutPage, LogoutConfirmPage } from '@/features/auth/logout-pages'
 import { LoginPage } from '@/features/auth/login-page'
 import { VerifyDevicePage } from '@/features/auth/verify-device-page'
 import { PortalHomePage } from '@/features/portal/home-page'
@@ -109,6 +110,23 @@ const loginRoute = createRoute({
   },
   pendingComponent: LoadingScreen,
   component: LoginPage,
+})
+
+const logoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/logout',
+  component: LogoutConfirmPage,
+})
+
+const loggedOutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/logged-out',
+  validateSearch: (search: Record<string, unknown>): { error?: string; redirect?: string } => ({
+    // The address parser turns a bare 1 into a number.
+    ...(String(search.error) === '1' ? { error: '1' } : {}),
+    ...(search.redirect === 'invalid' ? { redirect: 'invalid' } : {}),
+  }),
+  component: LoggedOutPage,
 })
 
 const verifyDeviceRoute = createRoute({
@@ -336,6 +354,8 @@ const routeTree = rootRoute.addChildren([
   consentRoute,
   locationRoute,
   verifyDeviceRoute,
+  logoutRoute,
+  loggedOutRoute,
   authenticatedRoute.addChildren([
     homeRoute,
     securityRoute,

@@ -84,4 +84,25 @@ describe("sign-in card names the application that asked", () => {
     expect(await api.json()).toEqual({ error: "Additional device verification is required" });
     delete (env as { FINGERPRINT_SERVER_API_KEY?: string }).FINGERPRINT_SERVER_API_KEY;
   });
+
+  test("logging out through the provider ends on the web app's own screens", async () => {
+    const nav = { "Sec-Fetch-Mode": "navigate", Accept: "text/html" };
+    const ask = await mod.fetch(new Request(`${ORIGIN}/api/auth/oauth2/end-session`, { headers: nav, redirect: "manual" }), env,
+      { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext);
+    expect(ask.status).toBe(303);
+    expect(new URL(ask.headers.get("location")!).pathname).toBe("/logout");
+    const cookie = ask.headers.getSetCookie().map((entry) => entry.split(";")[0]).join("; ");
+    expect(cookie).toContain("oauth_logout_confirmation");
+
+    const confirm = await mod.fetch(new Request(`${ORIGIN}/api/auth/oauth2/end-session/confirm`, {
+      method: "POST", redirect: "manual", body: "action=confirm",
+      headers: { ...nav, Origin: ORIGIN, Cookie: cookie, "Content-Type": "application/x-www-form-urlencoded" },
+    }), env, { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext);
+    expect(confirm.status).toBe(303);
+    expect(new URL(confirm.headers.get("location")!).pathname).toBe("/logged-out");
+
+    // A program calling the endpoint keeps the provider's own answer.
+    const api = await call("/api/auth/oauth2/end-session", { headers: { Accept: "application/json" } });
+    expect(api.status).not.toBe(303);
+  });
 });

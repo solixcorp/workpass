@@ -6,6 +6,7 @@ import {
 import type { Env } from "../env";
 import { createAuth } from "./config";
 import { auditAuthRequest } from "../audit/auth-middleware";
+import { logoutScreenRedirect } from "./logout-pages";
 import { evaluateAppAccess, loadAppAccessPolicy } from "../access/policies";
 import { insertAuditEvent } from "../audit/store";
 
@@ -134,5 +135,6 @@ async function checkRefreshEntitlement(request: Request, env: Env, resolvedUser:
 authRoutes.all("/api/auth/*", async (context) => {
   const rejection = await enforceRefreshEntitlement(context.req.raw, context.env);
   if (rejection) return rejection;
-  return auditAuthRequest(await stripUntrustedOAuthQuery(context.req.raw), context.env);
+  const response = await auditAuthRequest(await stripUntrustedOAuthQuery(context.req.raw), context.env);
+  return logoutScreenRedirect(context.req.raw, context.env, response);
 });
