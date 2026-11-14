@@ -16,7 +16,7 @@ import {
   buildTbsCertificateDer,
   finalizeCertificateDer,
   derToPem,
-} from "../tests/saml-x509";
+} from "../tests/saml/saml-x509";
 import {
   importSamlIdpPrivateKey,
   importSamlServiceProviderTrustedKey,

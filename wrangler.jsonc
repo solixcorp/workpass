@@ -58,9 +58,18 @@
     "ENABLE_ADMIN_BOOTSTRAP": "false",
     "ENABLE_MIGRATIONS": "false",
     "ENABLE_DYNAMIC_CLIENT_REGISTRATION": "false",
+    "AUTH_BASE_URL": "https://auth.solixllc.com",
+    "OIDC_EMAIL_DOMAIN": "auth.solixllc.com",
+    "MAIL_PROVIDER": "resend",
+    "MAIL_FROM": "noreply@auth.solixllc.com",
+    "SMS_PROVIDER": "solapi",
+    "FINGERPRINT_ALLOWED_ORIGINS": "https://auth.solixllc.com",
     "FINGERPRINT_REGION": "us",
     "FINGERPRINT_ENDPOINT": "https://risksecurity.workpass.solixllc.com"
   },
+  "routes": [
+    { "pattern": "auth.solixllc.com", "custom_domain": true }
+  ],
   "triggers": {
     "crons": [
       "17 4 * * *"
@@ -69,8 +78,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "internal-auth-local",
-      "database_id": "00000000-0000-0000-0000-000000000001"
+      "database_name": "internal-auth",
+      "database_id": "16a9f10f-4deb-4c56-9b55-0332c0a8f75e"
     }
   ],
   // Independent audit backup (docs/security/audit-backup.md): the scheduled

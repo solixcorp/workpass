@@ -8,7 +8,7 @@
  * Disposable local database and throwaway inline credentials only.
  */
 
-import { buildTbsCertificateDer, finalizeCertificateDer, fromBase64Url } from "../tests/saml-x509";
+import { buildTbsCertificateDer, finalizeCertificateDer, fromBase64Url } from "../tests/saml/saml-x509";
 import { importSamlServiceProviderTrustedKey } from "../src/saml/certificates";
 
 interface Options {

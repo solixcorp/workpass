@@ -12,8 +12,8 @@
  * Disposable local database and throwaway inline credentials only.
  */
 
-import { toBase64Url, fromBase64Url } from "../tests/saml-x509";
-import { buildTbsCertificateDer, finalizeCertificateDer } from "../tests/saml-x509";
+import { toBase64Url, fromBase64Url } from "../tests/saml/saml-x509";
+import { buildTbsCertificateDer, finalizeCertificateDer } from "../tests/saml/saml-x509";
 import { importSamlServiceProviderTrustedKey } from "../src/saml/certificates";
 
 interface Options {
