@@ -63,6 +63,7 @@ describe("Fingerprint Smart Signals", () => {
     [{ ip_blocklist: { tor_node: true } }, "tor_network_detected", "deny"],
     [{ ip_blocklist: { attack_source: true } }, "ip_blocklisted", "deny"],
     [{ virtual_machine: true }, "virtual_machine_detected", "step_up"],
+    [{ tampering: true }, "tampering_detected", "step_up"],
     [{ developer_tools: true }, "developer_tools_detected", "allow"],
   ];
   test.each(cases)("classifies signal %#", async (raw, reason, action) => {

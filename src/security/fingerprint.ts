@@ -543,14 +543,17 @@ export async function evaluateFingerprintRisk(input: {
   // Travel plausibility and distance are review-grade evidence, not proof:
   // VPNs, carrier NAT, and GeoIP database error cause false positives, so
   // these findings yield step_up, never deny.
+  // Tampering is step-up, not deny: privacy browsers and extensions that
+  // spoof fingerprint values trip it for honest users, who can still prove
+  // themselves with a second factor.
   const hardSignals = new Set([
     "bot_detected",
-    "tampering_detected",
     "tor_network_detected",
     "ip_blocklisted",
   ]);
   if (reasons.some((reason) => hardSignals.has(reason))) action = "deny";
   else if (
+    reasons.includes("tampering_detected") ||
     reasons.includes("virtual_machine_detected") ||
     reasons.includes("suspect_score_threshold") ||
     reasons.includes("rapid_device_and_country_change") ||
