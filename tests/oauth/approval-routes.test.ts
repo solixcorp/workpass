@@ -16,6 +16,7 @@ async function fixture(kind: "device" | "ciba", proof = true) {
   const env = { DB: db, AUTH_BASE_URL: "https://auth.example.test", ENABLE_DEVICE_FLOW: "true",
     ENABLE_CIBA: "true", MFA_REQUIRE: "everyone" } as unknown as Env;
   await ensureApplicationTables(env);
+  await db.prepare("INSERT INTO applications (id, slug, name, protocol, binding, enabled, created_by, created_at, updated_at) VALUES ('app-cli-1', 'app-cli-1', 'CLI', 'oidc', 'cli-1', 1, 'test', '2026-01-01', '2026-01-01')").run();
   await db.prepare('CREATE TABLE "user" (id TEXT PRIMARY KEY, role TEXT, banned INTEGER)').run();
   await db.prepare('INSERT INTO "user" VALUES (\'u1\', \'user\', 0)').run();
   if (proof) await db.prepare(

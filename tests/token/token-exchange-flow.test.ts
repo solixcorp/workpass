@@ -113,6 +113,7 @@ describe("RFC 8693 token exchange end to end", () => {
     expect(register.status).toBe(201);
     const registered = await register.json() as { client_id?: string; client_secret?: string };
     clientId = registered.client_id ?? "";
+    await env.DB.prepare("INSERT OR IGNORE INTO applications (id, slug, name, protocol, binding, created_by, created_at, updated_at) VALUES (?, ?, ?, 'oidc', ?, 'test', '2026-01-01', '2026-01-01')").bind(`app-${clientId}`, `app-${clientId}`, "RP", clientId).run();
     clientSecret = registered.client_secret ?? "";
     expect(clientId.length > 0 && clientSecret.length > 0).toBeTrue();
     env.TOKEN_EXCHANGE_ALLOWED_RESOURCES = JSON.stringify({ [clientId]: [RESOURCE_DELEGATED] });

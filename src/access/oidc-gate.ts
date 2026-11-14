@@ -46,6 +46,12 @@ export async function enforceOidcPolicy(request: Request, env: Env, auth: AuthIn
 /** Shared issuance policy; callers translate denials for their protocol. */
 export async function checkOidcAccess(env: Env, clientId: string, session: { user: { id: string; role?: unknown }; session?: { token?: unknown } | null }): Promise<Response | null> {
     const sessionUser = session.user as { id: string; role?: unknown };
+    // A client with no application behind it is not part of the registry:
+    // nothing may be issued for it, whatever the OAuth provider still has on file.
+    const registered = await env.DB.prepare(
+      "SELECT 1 AS ok FROM applications WHERE protocol = 'oidc' AND binding = ? LIMIT 1",
+    ).bind(clientId).first<{ ok: number }>();
+    if (!registered) return Response.json({ error: "access_denied", reason: "application_not_registered" }, { status: 403 });
     if (clientId === (await workpassClientId(env))) {
       // WorkPass itself: a user who can complete a second factor must have done
       // so. One with no factor yet is let in to enroll.

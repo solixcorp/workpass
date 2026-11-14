@@ -19,6 +19,7 @@ async function fixture(options: { deviceFlow: boolean; ciba: boolean }) {
     AUTH_BASE_URL: "https://auth.example.test",
   } as unknown as Env;
   await ensureApplicationTables(env);
+  await env.DB.prepare("INSERT INTO applications (id, slug, name, protocol, binding, enabled, created_by, created_at, updated_at) VALUES ('app-cli-1', 'app-cli-1', 'CLI', 'oidc', 'cli-1', 1, 'test', '2026-01-01', '2026-01-01')").run();
   // The grant handlers re-check the user's ban state at the token moment.
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS "user" (id TEXT PRIMARY KEY NOT NULL, email TEXT, username TEXT, banned INTEGER, role TEXT)',

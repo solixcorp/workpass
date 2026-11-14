@@ -64,6 +64,7 @@ describe("scoped sign-in places", () => {
     }))).user.id;
     expect((await call("/api/auth/sign-in/username", { method: "POST", body: { username: "locadmin", password: PASSWORD } })).status).toBe(200);
     clientId = (await json(await call("/api/admin/oidc-clients", { method: "POST", body: { name: "Wiki", applicationType: "web", redirectUris: [CALLBACK] } }))).client.clientId;
+    await db.prepare("INSERT OR IGNORE INTO applications (id, slug, name, protocol, binding, created_by, created_at, updated_at) VALUES (?, ?, ?, 'oidc', ?, 'test', '2026-01-01', '2026-01-01')").bind(`app-${clientId}`, `app-${clientId}`, "Wiki", clientId).run();
   });
 
   test("group union, exemption, lockout guard and scoped self verdict", async () => {

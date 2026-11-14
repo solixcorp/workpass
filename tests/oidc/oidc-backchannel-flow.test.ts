@@ -38,6 +38,7 @@ test("OIDC sign-out sends a signed logout token to an approved RP", async () => 
     response_types: ["code"], scope: "openid profile email" } });
   expect(registration.status).toBe(201);
   const { client_id: clientId } = await registration.json() as { client_id: string };
+  await db.prepare("INSERT OR IGNORE INTO applications (id, slug, name, protocol, binding, created_by, created_at, updated_at) VALUES (?, ?, ?, 'oidc', ?, 'test', '2026-01-01', '2026-01-01')").bind(`app-${clientId}`, `app-${clientId}`, "RP", clientId).run();
   const pkce = await generatePKCEPair();
   const authorize = await call(`/api/auth/oauth2/authorize?${new URLSearchParams({ client_id: clientId,
     redirect_uri: "https://rp.example.test/callback", response_type: "code", scope: "openid profile email",
