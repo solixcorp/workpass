@@ -304,7 +304,7 @@ function PhoneDialog({ open, onOpenChange, me }: { open: boolean; onOpenChange: 
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>휴대전화</DialogTitle>
-            <DialogDescription>국가 번호를 포함해 적습니다. 비워 두고 저장하면 번호를 지웁니다.</DialogDescription>
+            <DialogDescription>한국 휴대전화 번호(010)만 쓸 수 있고 숫자만 적습니다. 비워 두고 저장하면 번호를 지웁니다.</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>

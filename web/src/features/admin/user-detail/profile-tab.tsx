@@ -78,7 +78,7 @@ function ProfileForm({ id, profile }: { id: string; profile: Profile }) {
           <Field>
             <FieldLabel htmlFor="profile-phone">휴대전화</FieldLabel>
             <Input id="profile-phone" inputMode="tel" placeholder="01012345678" value={phone} onChange={(event) => setPhone(event.target.value)} />
-            <FieldDescription>국가 번호를 포함해 넣습니다. 본인이 확인하기 전에는 인증 코드를 보내는 데 쓰이지 않습니다.</FieldDescription>
+            <FieldDescription>한국 휴대전화 번호(010)만 넣을 수 있습니다. 본인이 확인하기 전에는 인증 코드를 보내는 데 쓰이지 않습니다.</FieldDescription>
           </Field>
         </FieldGroup>
       </Panel>

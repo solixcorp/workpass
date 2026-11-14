@@ -77,6 +77,11 @@ describe("phone number verification", () => {
     expect((await send()).status).toBe(409);
     expect((await json(await call("/api/me/profile"))).smsAvailable).toBe(true);
     expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "01077778888" } })).status).toBe(200);
+    // Spaces and hyphens are accepted and dropped; foreign numbers are refused.
+    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "010 7777 8888" } })).status).toBe(200);
+    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "+821077778888" } })).status).toBe(400);
+    expect((await call("/api/me/profile", { method: "PUT", body: { phoneNumber: "+14155550123" } })).status).toBe(400);
+    expect(((await (await call("/api/me/profile")).json()) as { phoneNumber: string }).phoneNumber).toBe("01077778888");
     expect((await json(await call("/api/me/profile"))).phoneVerified).toBe(false);
     expect((await verify("123456")).status).toBe(400); // no code requested yet
   });

@@ -70,7 +70,10 @@ describe("user detail", () => {
 
   test("the profile keeps administrator fields and the phone number, and refuses bad values", async () => {
     const put = (body: unknown) => call(`/api/admin/users/${adminId}/profile`, { method: "PUT", body });
-    expect((await put({ phoneNumber: "010-1234-5678" })).status).toBe(400);
+    // Only Korean 010 numbers; foreign and short numbers are refused.
+    expect((await put({ phoneNumber: "+821012345678" })).status).toBe(400);
+    expect((await put({ phoneNumber: "010-1234" })).status).toBe(400);
+    expect((await put({ phoneNumber: "011-1234-5678" })).status).toBe(400);
     expect((await put({ fields: { nope: "x" } })).status).toBe(400);
     expect((await put({ fields: { secondEmail: "not-an-email" } })).status).toBe(400);
     expect((await put({ name: "Admin Kim", phoneNumber: "01012345678", fields: { title: "CTO", department: "Platform" } })).status).toBe(200);

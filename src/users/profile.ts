@@ -68,7 +68,7 @@ export function validateProfile(body: unknown): ProfileUpdate | { error: string 
   }
   if (value.phoneNumber !== undefined) {
     if (value.phoneNumber === null || value.phoneNumber === "") out.phoneNumber = null;
-    else if (typeof value.phoneNumber === "string" && /^010\d{8}$/.test(value.phoneNumber.trim())) out.phoneNumber = value.phoneNumber.trim();
+    else if (typeof value.phoneNumber === "string" && /^010\d{8}$/.test(value.phoneNumber.replace(/[\s-]/g, ""))) out.phoneNumber = value.phoneNumber.replace(/[\s-]/g, "");
     else return { error: "휴대전화 번호는 01012345678처럼 010으로 시작하는 숫자 11자리로 넣으세요." };
   }
   if (value.fields !== undefined) {
