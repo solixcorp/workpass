@@ -47,8 +47,11 @@
       "/application/*"
     ]
   },
+  // D1 lives in Seoul (ICN). Smart Placement left the Worker in the visitor's
+  // nearest edge (LAX for Korean users), so each of a request's D1 queries
+  // crossed the Pacific. Pin the Worker next to the database instead.
   "placement": {
-    "mode": "smart"
+    "region": "aws:ap-northeast-2"
   },
   "vars": {
     "ENABLE_ADMIN_BOOTSTRAP": "false",
