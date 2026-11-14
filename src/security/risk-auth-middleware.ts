@@ -138,6 +138,23 @@ export function isFingerprintRiskLogin(path: string): boolean {
   return riskLoginPaths.has(path);
 }
 
+/**
+ * A browser that opens the authorize address cannot carry a device event. Send
+ * it to the page that collects one (and, when asked, a second factor) and
+ * back, instead of showing it raw JSON. Only page navigations are redirected.
+ */
+function deviceCheckRedirect(env: Env, request: Request, challenge = false): Response | null {
+  const isPage = request.method === "GET" &&
+    (request.headers.get("sec-fetch-mode") === "navigate" || (request.headers.get("accept") ?? "").includes("text/html"));
+  if (!isPage) return null;
+  const next = new URL(request.url);
+  next.searchParams.delete("fingerprint_event_id");
+  const target = new URL("/verify-device", env.AUTH_BASE_URL);
+  target.searchParams.set("next", `${next.pathname}${next.search}`);
+  if (challenge) target.searchParams.set("challenge", "1");
+  return new Response(null, { status: 302, headers: { Location: target.toString(), "Cache-Control": "no-store" } });
+}
+
 export function isInteractiveAuthorization(path: string): boolean {
   return path === "/api/auth/oauth2/authorize";
 }
@@ -170,6 +187,10 @@ async function handleFingerprintRiskAuthorizationEnabled(
 
   const url = new URL(input.request.url);
   const eventId = url.searchParams.get("fingerprint_event_id");
+  if (!eventId) {
+    const redirect = deviceCheckRedirect(input.env, input.request);
+    if (redirect) return redirect;
+  }
   const requestedClient = url.searchParams.get("client_id");
   const appSubject = requestedClient ? `oidc:${requestedClient.slice(0, 200)}` : null;
   let withinBudget = false;
@@ -251,13 +272,18 @@ async function handleFingerprintRiskAuthorizationEnabled(
     if (isNewDeviceOnly(risk.reasons) && (await usableSecondFactors(input.env, session.user.id)).length === 0) return null;
     const gate = await evaluateStepUpGate(input.env, session);
     if (gate.action === "allow") return null;
-    return stepUpChallengeResponseForSession({
+    const challengeResponse = await stepUpChallengeResponseForSession({
       env: input.env,
       session,
       reasons: risk.reasons,
       requestPath: url.pathname,
       gate,
     });
+    if (gate.action === "challenge" && challengeResponse.status === 403) {
+      const redirect = deviceCheckRedirect(input.env, input.request, true);
+      if (redirect) return redirect;
+    }
+    return challengeResponse;
   }
   return null;
 }

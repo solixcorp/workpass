@@ -36,6 +36,7 @@ import { AdminOverviewPage } from '@/features/admin/overview-page'
 import { UsersPage } from '@/features/admin/users-page'
 import { ActivationPage } from '@/features/auth/activation-page'
 import { LoginPage } from '@/features/auth/login-page'
+import { VerifyDevicePage } from '@/features/auth/verify-device-page'
 import { PortalHomePage } from '@/features/portal/home-page'
 import { RequestsPage } from '@/features/requests/requests-page'
 import { SecurityPage } from '@/features/security/security-page'
@@ -108,6 +109,17 @@ const loginRoute = createRoute({
   },
   pendingComponent: LoadingScreen,
   component: LoginPage,
+})
+
+const verifyDeviceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/verify-device',
+  validateSearch: (search: Record<string, unknown>): { next?: string; challenge?: string } => ({
+    ...(typeof search.next === 'string' && search.next.length <= 8192 ? { next: search.next } : {}),
+    // The address parser turns a bare 1 into a number.
+    ...(String(search.challenge) === '1' ? { challenge: '1' } : {}),
+  }),
+  component: VerifyDevicePage,
 })
 
 const consentRoute = createRoute({
@@ -323,6 +335,7 @@ const routeTree = rootRoute.addChildren([
   activateRoute,
   consentRoute,
   locationRoute,
+  verifyDeviceRoute,
   authenticatedRoute.addChildren([
     homeRoute,
     securityRoute,

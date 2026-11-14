@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { useSearch } from '@tanstack/react-router'
 import { UserIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Separator } from '@/components/ui/separator'
+import { appBrandQuery } from '@/lib/app-brand'
 import { loginConfigQuery } from '@/lib/fingerprint'
 
 /**
@@ -13,23 +15,31 @@ export function AuthShell({
   folded = false,
   identifier,
   badge,
+  heading,
   children,
 }: {
   folded?: boolean
   identifier?: string
+  /** A title for screens that are not a sign-in to one application. */
+  heading?: string
   badge?: ReactNode
   children?: ReactNode
 }) {
   const { data } = useQuery(loginConfigQuery)
+  // The sign-in belongs to the application that asked for it, not always to WorkPass.
+  const { oq } = useSearch({ strict: false }) as { oq?: string }
+  const brandQuery = useQuery({ ...appBrandQuery(oq ?? ''), enabled: Boolean(oq) })
+  const waiting = Boolean(oq) && brandQuery.isPending
+  const app = brandQuery.data ?? data?.app
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted p-4 sm:p-6">
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-background shadow-sm ring-1 ring-foreground/10">
         <div className="flex min-h-44 flex-col items-center justify-center gap-3 px-6 py-7">
-          {data ? (
+          {data && app && !waiting ? (
             <div className="fold-fade flex flex-col items-center gap-3">
               <span className="text-base text-muted-foreground">{data.organization.name}</span>
-              {data.app.icon ? <img src={data.app.icon} alt="" className="size-12 rounded-xl" /> : null}
-              <span className="text-base font-semibold">{data.app.signInTitle}</span>
+              {heading ? null : app.icon ? <img src={app.icon} alt="" className="size-12 rounded-xl" /> : null}
+              <span className="text-base font-semibold">{heading ?? app.signInTitle}</span>
             </div>
           ) : null}
         </div>
