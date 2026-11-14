@@ -69,7 +69,8 @@ describe("sign-in card names the application that asked", () => {
       body: { email: "admin@brand.test", name: "Admin", username: "brandadmin", password: PASSWORD },
     });
     expect((await call("/api/auth/sign-in/username", { method: "POST", body: { username: "brandadmin", password: PASSWORD } })).status).toBe(200);
-    (env as { FINGERPRINT_SERVER_API_KEY?: string }).FINGERPRINT_SERVER_API_KEY = "server-key-for-tests";
+    (env as { FINGERPRINT_SERVER_API_KEY?: string; FINGERPRINT_BLOCK_SIGN_IN?: string }).FINGERPRINT_SERVER_API_KEY = "server-key-for-tests";
+    (env as { FINGERPRINT_BLOCK_SIGN_IN?: string }).FINGERPRINT_BLOCK_SIGN_IN = "true";
     const path = "/api/auth/oauth2/authorize?client_id=client-wiki&response_type=code&state=s";
 
     const page = await call(path, { headers: { "Sec-Fetch-Mode": "navigate", Accept: "text/html" } });
@@ -82,6 +83,10 @@ describe("sign-in card names the application that asked", () => {
     const api = await call(path, { headers: { Accept: "application/json" } });
     expect(api.status).toBe(403);
     expect(await api.json()).toEqual({ error: "Additional device verification is required" });
+    // With blocking off the same request goes straight through to the provider.
+    delete (env as { FINGERPRINT_BLOCK_SIGN_IN?: string }).FINGERPRINT_BLOCK_SIGN_IN;
+    const open = await call(path, { headers: { "Sec-Fetch-Mode": "navigate", Accept: "text/html" } });
+    expect(new URL(open.headers.get("location") ?? "http://x/", ORIGIN).pathname).not.toBe("/verify-device");
     delete (env as { FINGERPRINT_SERVER_API_KEY?: string }).FINGERPRINT_SERVER_API_KEY;
   });
 

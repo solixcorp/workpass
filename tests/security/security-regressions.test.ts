@@ -251,9 +251,15 @@ describe("security regressions", () => {
     }) }) });
     // No server key: there is nothing to assess with.
     expect((await evaluateOpaqueLoginGate({ DB: db([]) } as unknown as Env, input)).allowed).toBe(true);
-    // Server key present: a login without a submitted event is denied and recorded.
+    // Server key present, blocking off (the default): the gap is recorded and sign-in goes on.
+    const observed: string[] = [];
+    const passed = await evaluateOpaqueLoginGate({ FINGERPRINT_SERVER_API_KEY: "key", DB: db(observed) } as unknown as Env, input);
+    expect(passed.allowed).toBe(true);
+    expect(passed.reasons).toContain("missing_event");
+    expect(observed.length).toBeGreaterThan(0);
+    // Blocking on: a login without a submitted event is denied and recorded.
     const decisions: string[] = [];
-    const denied = await evaluateOpaqueLoginGate({ FINGERPRINT_SERVER_API_KEY: "key", DB: db(decisions) } as unknown as Env, input);
+    const denied = await evaluateOpaqueLoginGate({ FINGERPRINT_SERVER_API_KEY: "key", FINGERPRINT_BLOCK_SIGN_IN: "true", DB: db(decisions) } as unknown as Env, input);
     expect(denied.allowed).toBe(false);
     expect(denied.action).toBe("deny");
     expect(denied.reasons).toContain("missing_event");

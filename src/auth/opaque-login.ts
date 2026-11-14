@@ -23,6 +23,7 @@ import {
   claimAndConsumeFingerprintEvent,
   consumeFingerprintLookupBudget,
   evaluateFingerprintRisk,
+  fingerprintBlocksSignIn,
   fingerprintMode,
   isNewDeviceOnly,
   type FingerprintRisk,
@@ -78,6 +79,10 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
   }
 
   if (fingerprintMode(env) === "disabled") return { allowed: true, action: "allow", reasons };
+  // Without blocking the device is still read and recorded, and sign-in goes on.
+  const blocks = fingerprintBlocksSignIn(env);
+  const pass = (list: string[], visitorDigest?: string | null): OpaqueLoginDecision =>
+    ({ allowed: true, action: "allow", reasons: list, ...(visitorDigest !== undefined ? { visitorDigest } : {}) });
 
   // 2. Device risk: the shared login pipeline.
   let withinBudget = false;
@@ -94,8 +99,8 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
 
   if (!verified.event) {
     reasons.push(verified.error ?? "invalid_event");
-    await recordDecision(env, null, input.eventId, "deny", reasons, input.contextPath);
-    return { allowed: false, action: "deny", reasons };
+    await recordDecision(env, null, input.eventId, blocks ? "deny" : "observe", reasons, input.contextPath);
+    return blocks ? { allowed: false, action: "deny", reasons } : pass(reasons);
   }
 
   const event = verified.event;
@@ -112,8 +117,8 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
   }
   if (!claimed) {
     reasons.push("replayed_event");
-    await recordDecision(env, null, event.eventId, "deny", reasons, input.contextPath);
-    return { allowed: false, action: "deny", reasons };
+    await recordDecision(env, null, event.eventId, blocks ? "deny" : "observe", reasons, input.contextPath);
+    return blocks ? { allowed: false, action: "deny", reasons } : pass(reasons);
   }
 
   let risk: FingerprintRisk | null = null;
@@ -124,8 +129,8 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
   }
   if (!risk) {
     reasons.push("risk_evaluation_unavailable");
-    await recordDecision(env, input.userId, event.eventId, "deny", reasons, input.contextPath);
-    return { allowed: false, action: "deny", reasons };
+    await recordDecision(env, input.userId, event.eventId, blocks ? "deny" : "observe", reasons, input.contextPath);
+    return blocks ? { allowed: false, action: "deny", reasons } : pass(reasons);
   }
 
   try {
@@ -135,6 +140,8 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
   }
 
   await recordDecision(env, input.userId, event.eventId, risk.action, [...risk.reasons, ...reasons], input.contextPath);
+
+  if (!blocks) return pass([...risk.reasons, ...reasons], risk.visitorDigest);
 
   if (risk.action !== "allow" || reasons.includes("observation_unavailable")) {
     if (risk.action === "deny" || !input.userId) {

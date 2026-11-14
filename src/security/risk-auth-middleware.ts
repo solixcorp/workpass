@@ -14,6 +14,7 @@ import {
   claimAndConsumeFingerprintEvent,
   consumeFingerprintLookupBudget,
   evaluateFingerprintRisk,
+  fingerprintBlocksSignIn,
   fingerprintMode,
   isNewDeviceOnly,
   recordFingerprintObservation,
@@ -164,7 +165,8 @@ export async function handleFingerprintRiskAuthorization(input: {
   env: Env;
   auth: AuthInstance;
 }): Promise<Response | null> {
-  if (fingerprintMode(input.env) === "disabled") return null;
+  // Verdicts no longer stop an authorization; see fingerprintBlocksSignIn.
+  if (!fingerprintBlocksSignIn(input.env)) return null;
 
   try {
     return await handleFingerprintRiskAuthorizationEnabled(input);
@@ -296,7 +298,8 @@ export async function handleFingerprintRiskLogin(
   onVisitorDigest?: (digest: string | null) => void,
 ): Promise<Response> {
   const mode = fingerprintMode(env);
-  const enforcing = mode !== "disabled";
+  // The verdict is still read and recorded; it only refuses or challenges when blocking is on.
+  const enforcing = fingerprintBlocksSignIn(env);
   const path = new URL(request.url).pathname;
   const auditId = crypto.randomUUID();
 

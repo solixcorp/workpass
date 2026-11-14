@@ -74,6 +74,17 @@ export function fingerprintMode(env: Env): FingerprintMode {
 }
 
 /**
+ * Whether a device verdict may stop a sign-in. Off by default: the verdict, the
+ * score and the reasons are still computed and recorded for every sign-in, but
+ * nothing is refused or challenged because of them. Set
+ * FINGERPRINT_BLOCK_SIGN_IN=true to bring the deny and step-up gates back.
+ */
+export function fingerprintBlocksSignIn(env: Env): boolean {
+  return fingerprintMode(env) !== "disabled" &&
+    (env as Env & { FINGERPRINT_BLOCK_SIGN_IN?: string }).FINGERPRINT_BLOCK_SIGN_IN === "true";
+}
+
+/**
  * A device the account has simply not used before. When these are the only
  * reasons for a step-up and the account has no second factor to answer with,
  * sign-in continues instead of locking the person out of every new device.
