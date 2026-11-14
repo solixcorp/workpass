@@ -19,6 +19,7 @@
  */
 
 import type { Env } from "../env";
+import { alertRiskyLogin, isBlockingRisk } from "../security/risky-login-alert";
 import {
   claimAndConsumeFingerprintEvent,
   consumeFingerprintLookupBudget,
@@ -140,6 +141,11 @@ export async function evaluateOpaqueLoginGate(env: Env, input: OpaqueLoginGateIn
   }
 
   await recordDecision(env, input.userId, event.eventId, risk.action, [...risk.reasons, ...reasons], input.contextPath);
+
+  // The owner hears about a bot, tampering, Tor or blocklisted device whether or not it was blocked.
+  if (input.userId && isBlockingRisk(risk.reasons)) {
+    await alertRiskyLogin(env, { userId: input.userId, request: input.request, reasons: risk.reasons, blocked: blocks });
+  }
 
   if (!blocks) return pass([...risk.reasons, ...reasons], risk.visitorDigest);
 
