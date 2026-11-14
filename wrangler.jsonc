@@ -48,7 +48,6 @@
     ]
   },
   "limits": {
-    "cpu_ms": 5000,
     "subrequests": 1000
   },
   "placement": {
